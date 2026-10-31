@@ -104,8 +104,8 @@ and hard ice only to 27°. Ice slides the furthest and is the hardest to stop on
   the hold, send stones down the slope and make you slip.
 
 **Ledges.** The 31 m elevation grid smooths away the small steps and terraces of a
-real face, so steep ground is dotted with small ledges (the level shelves you can see
-near you). You can stand on one where the slope around it is too steep, and a slide
+real face, so steep ground is dotted with small ledges, drawn into the terrain as
+narrow snowy steps with a shadow under the lip. You can stand on one where the slope around it is too steep, and a slide
 across one loses a lot of speed.
 
 **Rock and ice fall** is built (`rockfall_enabled` in `tuning.json`) but switched off
