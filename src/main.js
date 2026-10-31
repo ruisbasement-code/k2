@@ -244,10 +244,13 @@ async function shelterOrSleep() {
     return;
   }
   const option = expedition.shelterOption();
+  // Carrying a tent but the ground won't take it: say why.
+  const badSite = expedition.carriesTent() && option?.kind !== 'tent' && expedition.pitchProblem();
   if (!option) {
-    if (climber.mode !== Mode.FLY && !climber.falling && !climber.dead) hud.showMessage('No tent here');
+    if (climber.mode !== Mode.FLY && !climber.falling && !climber.dead) hud.showMessage(badSite || 'No tent here');
     return;
   }
+  if (badSite) hud.showMessage(badSite);
   if (option.kind === 'sack') {
     const s = expedition.makeShelter(option);
     if (climber.sleep()) hud.showSleep();

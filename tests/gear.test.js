@@ -84,13 +84,24 @@ describe('gear on the mountain', () => {
     expect(c.phys.frostbiteMult).toBeLessThan(1);
   });
 
-  it('a storm tent goes up anywhere not too steep, and you can sleep in it', () => {
+  it('a storm tent goes up on flat ground, and you can sleep in it', () => {
     const c = climber();
     const ex = new Expedition(c);
-    c.placeAt(c.position.x + 300, c.position.z, 0, 0);
+    // Flat, smooth ground well away from the camps.
+    let spot = null;
+    for (let x = -3000; x < 3000 && !spot; x += 53) {
+      for (let z = -3000; z < 3000 && !spot; z += 47) {
+        c.placeAt(x, z, 0, 0);
+        if (c._campNearby() || hm.glacierAt(x, z) > 0.3) continue;
+        const [gx, gz] = hm.gradient(x, z);
+        if (Math.hypot(gx, gz) < 0.08 && ex.footprint().tilt < 8 && ex.footprint().bump < 0.1) spot = { x, z };
+      }
+    }
+    c.placeAt(spot.x, spot.z, 0, 0);
+    c.slope = 4;
+    c.surface = { key: 'soft_snow' };
     expect(ex.shelterOption()).toBe(null);
     c.pack.gear.add('tent');
-    c.slope = 10;
     const opt = ex.shelterOption();
     expect(opt.kind).toBe('tent');
     ex.makeShelter(opt);
@@ -100,6 +111,52 @@ describe('gear on the mountain', () => {
     ex.strike(ex.ownTentNearby());
     expect(c.pack.gear.has('tent')).toBe(true);
     expect(c.canSleep()).toBe(false);
+  });
+
+  it('a tent only goes up on reasonably flat, stable ground, but always in a camp', () => {
+    const c = climber();
+    const ex = new Expedition(c);
+    c.pack.gear.add('tent');
+    // Somewhere steep and away from any camp: the tent is refused, with a reason.
+    let steep = null;
+    for (let x = -3000; x < 3000 && !steep; x += 37) {
+      for (let z = -3000; z < 3000 && !steep; z += 41) {
+        const [gx, gz] = hm.gradient(x, z);
+        const far = c.places.every((p) => Math.hypot(p.x - x, p.z - z) > tuning.camp_radius_m);
+        if (far && Math.atan(Math.hypot(gx, gz)) * 180 / Math.PI > 33) steep = { x, z };
+      }
+    }
+    c.placeAt(steep.x, steep.z, 0, 0);
+    c.slope = 34;
+    c.surface = { key: 'firm_snow' };
+    c.onLedge = false;
+    expect(c._campNearby()).toBeFalsy();
+    expect(ex.pitchProblem()).toMatch(/steep/i);
+    expect(ex.shelterOption()).toBe(null);
+    c.surface = { key: 'rock' };
+    expect(ex.pitchProblem()).toMatch(/rock/i);
+    // The same ground in a camp is fine.
+    c.places = [{ name: 'Test Camp', x: steep.x, z: steep.z }];
+    expect(ex.pitchProblem()).toBe(null);
+    expect(ex.shelterOption().kind).toBe('tent');
+  });
+
+  it('not beside a crevasse you know about', () => {
+    const c = climber();
+    const ex = new Expedition(c);
+    c.pack.gear.add('tent');
+    c.placeAt(c.position.x + 300, c.position.z, 0, 0);
+    c.slope = 5;
+    c.surface = { key: 'glacier' };
+    const hole = { id: 'h', hidden: false };
+    const { x, z } = c.position;
+    c.features = {
+      corniceAt: () => null, seracAt: () => null, isKnown: (h) => !h.hidden,
+      holeAt: (px, pz) => (Math.hypot(px - (x + 4), pz - z) < 1.5 ? { hole } : null),
+    };
+    expect(ex.pitchProblem()).toMatch(/crevasse/i);
+    hole.hidden = true; // a hidden one you haven't found doesn't stop you
+    expect(ex.pitchProblem()).not.toMatch(/crevasse/i);
   });
 
   it('protection needs the rope and the right anchor for the surface', () => {
