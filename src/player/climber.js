@@ -174,6 +174,14 @@ export class Climber {
      * dangling (seconds until you regrab it from its leash after losing your grip).
      */
     this.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
+    /** Grip on the axe while hanging on a steep wall, 0..100. */
+    this.grip = 100;
+    /** On snow or ice too steep to walk, hanging on the axe between swings. */
+    this.onAxeWall = false;
+    /** Swing in progress: fraction left (0 none) and its direction. */
+    this._swing = 0;
+    this._swingDir = new THREE.Vector3();
+    this._swingQueued = false;
     this.trail = new SnowTrail();
     this.rockfall = new Rockfall(hm);
     /** The mountain's weather (sim/weather.js), or null for none. */
@@ -235,7 +243,7 @@ export class Climber {
     this.inHole = null;
     this.placeName = '';
     this.mode = this.mode === Mode.FLY ? Mode.WALK : Mode.FLY;
-    if (this.mode === Mode.WALK) this.position.y = this.hm.heightAt(this.position.x, this.position.z);
+    if (this.mode === Mode.WALK) this.position.y = this.hm.groundAt(this.position.x, this.position.z);
   }
 
   get clipped() {
@@ -277,6 +285,63 @@ export class Climber {
       a.inHand = true;
       a.drawing = tuning.axe_draw_s;
       if (!this.falling) this.onMessage('Ice axe in hand: steeper snow and ice, and a real self-arrest.');
+    }
+  }
+
+  /** Click: swing the axe in and pull up (on a wall too steep to walk). */
+  swingAxe() {
+    this._swingQueued = true;
+  }
+
+  /**
+   * Hanging on the axe on a steep wall. Each swing moves you up (or down, holding S)
+   * the slope; between swings your grip drains. Real seconds for the swing and grip.
+   */
+  _axeWall(dtM, dt, gx, gz, input) {
+    const t = tuning;
+    this.mode = Mode.STEEP;
+    this.pace = 0;
+    const queued = this._swingQueued;
+    this._swingQueued = false;
+    if (queued && this._swing <= 0 && !this.body.exhausted) {
+      const up = new THREE.Vector3(gx, 0, gz).normalize();
+      const across = new THREE.Vector3(-up.z, 0, up.x);
+      const sx = (input.x ?? 0) * 0.7;
+      const down = (input.y ?? 0) < -0.3;
+      this._swingDir.copy(up).multiplyScalar(down ? -1 : 1).addScaledVector(across, -sx).normalize();
+      this._swing = 1;
+      const thin = 1 / Math.max(Pace.oxygenVsReference(this.position.y), 0.3);
+      this.body.stamina = Math.max(0, this.body.stamina - t.axe_swing_stamina * thin);
+      this.grip = Math.min(100, this.grip + 4);
+      const skate = t.axe_skate_chance * (this.surface.key === 'ice' ? 3 : 1) * (this.pushing ? 2 : 1);
+      if (Math.random() < skate) {
+        this._swing = 0;
+        this.grip = Math.max(0, this.grip - t.axe_skate_grip);
+        this.shake = Math.max(this.shake, 0.6);
+        this.onMessage('The pick skated off! Swing again.');
+      }
+    }
+    if (this._swing > 0) {
+      const step = Math.min(this._swing, dt / t.axe_swing_s);
+      this._swing -= step;
+      // Along the slope: the horizontal part of a step up a slope this steep.
+      const slope = Math.atan(Math.hypot(gx, gz));
+      this.position.addScaledVector(this._swingDir, t.axe_swing_m * step * Math.cos(slope));
+      this.hm.clampInside(this.position);
+      this.position.y = this._groundAt(this.position.x, this.position.z);
+      this.heading = Math.atan2(-gx, -gz); // facing into the slope
+      this.moving = true;
+      this.effort = t.push_effort;
+    } else {
+      // Hanging: arms and calves burn; more on steeper ground and when spent.
+      const steep = 1 + (this.slope - 45) / 20;
+      const tired = this.body.stamina < 20 ? 2 : 1;
+      this.grip = Math.max(0, this.grip - t.axe_grip_drain_per_s * Math.max(steep, 0.6) * tired * dt);
+      this.effort = 0.9;
+    }
+    if (this.grip <= 0 || (this.body.exhausted && this._swing <= 0)) {
+      this.grip = 0;
+      this._startFall(gx, gz, "Your grip gave out and you came off the wall! Hold Space to arrest with the axe.", { back: false, head: false });
     }
   }
 
@@ -728,6 +793,16 @@ export class Climber {
     const clipped = this.clipped;
     // On steep ground, clipped in means jumaring.
     if (clipped && this.groundMode !== Mode.WALK) this.mode = Mode.ROPE;
+    this.onAxeWall = !clipped && axeBites && !this.onLedge
+      && this.slope >= tuning.axe_climb_max_deg && this.slope <= tuning.axe_wall_max_deg;
+    if (this.onAxeWall) {
+      this._axeWall(dtM, dt, gx, gz, input);
+      return;
+    }
+    // Off the wall the grip comes back.
+    this.grip = Math.min(100, this.grip + tuning.axe_grip_regen_per_s * dt);
+    this._swing = 0;
+    this._swingQueued = false;
     if (!clipped && footing > standLimit) {
       // Too steep for this surface to hold you without a rope.
       this._startFall(gx, gz, `Too steep to stand on ${this.surface.label.toLowerCase()}. You're sliding! Hold Space to self-arrest.`);
@@ -1002,7 +1077,7 @@ export class Climber {
       p.addScaledVector(v, h);
       this.hm.clampInside(p);
       if (!f.rope && this._slideIntoHole(p)) return;
-      const ground = this.hm.heightAt(p.x, p.z);
+      const ground = this.hm.groundAt(p.x, p.z);
       const hitGround = p.y <= ground;
       // Skimming just above the slope still counts as on it; only a real drop is airborne.
       if (p.y - ground > 0.4) {
@@ -1016,8 +1091,11 @@ export class Climber {
       if (hitGround) {
         p.y = ground;
         touching = true;
+        // The slope decides how you slide; the rocks and bumps underfoot decide how you hit.
         this.hm.normalAt(p.x, p.z, n);
         const slope = Math.acos(Math.min(n.y, 1)) * DEG;
+        const baseNy = n.y;
+        this.hm.groundNormalAt(p.x, p.z, n);
         const surface = Pace.surfaceAt(p.y, slope, this.hm.glacierAt(p.x, p.z), this.hour);
         this.surface = surface;
         const ledge = !f.rope && ledgeAt(p.x, p.z, slope);
@@ -1056,7 +1134,7 @@ export class Climber {
           }
           // A sliding body ploughs through snow and loses speed with it.
           if (f.phase === 'slide') v.multiplyScalar(Math.max(0, 1 - surface.slide_drag * speed * h));
-          const decel = mu * t.gravity * n.y * h;
+          const decel = mu * t.gravity * baseNy * h;
           v.multiplyScalar(Math.max(0, 1 - decel / speed));
           if (surface.key === 'rock' && speed > t.slide_damage_above_m_s) this._hurt(t.rock_slide_damage * speed * h);
         }
@@ -1112,7 +1190,7 @@ export class Climber {
     if (dist <= length) return false;
     d.divideScalar(dist);
     p.copy(anchor).addScaledVector(d, length);
-    p.y = Math.max(p.y, this.hm.heightAt(p.x, p.z));
+    p.y = Math.max(p.y, this.hm.groundAt(p.x, p.z));
     const out = v.dot(d);
     // The first real jolt tests the anchor: old fixed ropes sometimes fail.
     if (out > 0.5 && !this.fall.rope.tested) {
@@ -1148,7 +1226,7 @@ export class Climber {
     _caughtByRope() {
     const { id } = this.fall.rope;
     this.velocity.set(0, 0, 0);
-    this.position.y = this.hm.heightAt(this.position.x, this.position.z);
+    this.position.y = this.hm.groundAt(this.position.x, this.position.z);
     this.mode = Mode.WALK;
     this._updateGroundMode(this.slope);
     this.ropeId = id;
@@ -1250,7 +1328,7 @@ export class Climber {
     this.position.x += c.windX * push * dt;
     this.position.z += c.windZ * push * dt;
     this.hm.clampInside(this.position);
-    this.position.y = this.hm.heightAt(this.position.x, this.position.z);
+    this.position.y = this.hm.groundAt(this.position.x, this.position.z);
     if (this.clipped) this._keepOnLeash();
     const hard = c.gust - W.knockdown_m_s;
     if (hard > 0 && !this.clipped && steep && Math.random() < W.knockdown_per_s * (hard / 6) * dt) {
@@ -1343,7 +1421,7 @@ export class Climber {
 
   /** Height of the snow you stand on: the ground, or the top of a cornice over it. */
   _groundAt(x, z) {
-    const y = this.hm.heightAt(x, z);
+    const y = this.hm.groundAt(x, z);
     return this.features ? y + this.features.liftAt(x, z) : y;
   }
 
@@ -1399,7 +1477,7 @@ export class Climber {
         f.breakCornice(lip);
         // Down and out over the lee side with the falling snow.
         const lee = lip.cornice.lee;
-        this.position.y = this.hm.heightAt(x, z);
+        this.position.y = this.hm.groundAt(x, z);
         this._startFall(-lee.x - gx * 0.5, -lee.z - gz * 0.5, `The ${lip.cornice.kind === 'overhang' ? 'snow overhang' : 'cornice'} broke off under you! Hold Space to self-arrest.`, { speed: 4, back: true });
         this.velocity.y -= 2;
         return true;
@@ -1457,14 +1535,13 @@ export class Climber {
 
   /** Keep a body inside the slot: along it, and between its walls. */
   _confineToHole(p, hole) {
-    const dx = p.x - hole.x, dz = p.z - hole.z;
-    let u = dx * hole.ux + dz * hole.uz;
-    let v = -dx * hole.uz + dz * hole.ux;
+    let { u, v } = TerrainFeatures.local(hole, p.x, p.z);
     u = Math.min(Math.max(u, -hole.half * 0.85), hole.half * 0.85);
     const w = Math.max(0.05, TerrainFeatures.halfWidth(hole, u) * 0.7);
     v = Math.min(Math.max(v, -w), w);
-    p.x = hole.x + hole.ux * u - hole.uz * v;
-    p.z = hole.z + hole.uz * u + hole.ux * v;
+    const q = TerrainFeatures.point(hole, u, v);
+    p.x = q.x;
+    p.z = q.z;
   }
 
   /** Dropping down the slot: the walls rub and slow you until you wedge at the bottom. */
@@ -1558,11 +1635,10 @@ export class Climber {
       // Across the slot: the normal pointing the way you face.
       const nx = -hole.uz, nz = hole.ux;
       const side = fx * nx + fz * nz >= 0 ? 1 : -1;
-      const u = (p.x - hole.x) * hole.ux + (p.z - hole.z) * hole.uz;
-      const out = TerrainFeatures.halfWidth(hole, u) + 1.2;
-      const v = -(p.x - hole.x) * hole.uz + (p.z - hole.z) * hole.ux;
-      p.x += nx * (side * out - v);
-      p.z += nz * (side * out - v);
+      const { u } = TerrainFeatures.local(hole, p.x, p.z);
+      const q = TerrainFeatures.point(hole, u, side * (TerrainFeatures.halfWidth(hole, u) + 1.2));
+      p.x = q.x;
+      p.z = q.z;
     }
     p.y = this._groundAt(p.x, p.z);
     this.inHole = null;
@@ -1714,7 +1790,7 @@ export class Climber {
     this.position.addScaledVector(this._worldDir(input), speed * dt);
     this.position.y += ((input.up ? 1 : 0) - (input.down ? 1 : 0)) * speed * 0.6 * dt;
     this.hm.clampInside(this.position);
-    this.position.y = Math.max(this.position.y, this.hm.heightAt(this.position.x, this.position.z) + 2);
+    this.position.y = Math.max(this.position.y, this.hm.groundAt(this.position.x, this.position.z) + 2);
   }
 
   /** Rolling average of vertical speed over the last mountain hour (shorter if there is less). */

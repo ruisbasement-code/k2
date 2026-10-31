@@ -75,7 +75,7 @@ export class TerrainFeatures {
     /** Where serac ice breaks off: {x, y, z, along: {x, z}, length, name}. */
     this.icefalls = [];
     for (const [k, s] of (defs.seracs ?? []).entries()) this._serac(s, k, w);
-    this.cornices = (defs.cornices ?? []).map((c, k) => this._cornice(c, k, w));
+    this.cornices = tuning.cornices_enabled ? (defs.cornices ?? []).map((c, k) => this._cornice(c, k, w)) : [];
     this.caverns = (defs.caverns ?? []).map((c) => this._cavern(c, w));
     this.zones = (defs.zones ?? []).map((z) => ({ ...z, points: z.points.map(w) }));
     this.cols = (defs.cols ?? []).map((c) => {
@@ -114,7 +114,7 @@ export class TerrainFeatures {
       this.placedHoles.push({
         id: `bergschrund${k}${s > 0 ? 'b' : 'a'}`, name: b.name, kind: 'bergschrund',
         x: c.x + ux * off, z: c.z + uz * off, ux, uz, half: side, width: b.width_m / 2,
-        depth: b.depth_m, hidden: false, strength: 1,
+        depth: b.depth_m, hidden: false, strength: 1, bend: 0,
       });
     }
   }
@@ -128,7 +128,8 @@ export class TerrainFeatures {
     const [gx, gz] = hm.gradient((a.x + b.x) / 2, (a.z + b.z) / 2, 20);
     let nx = -uz, nz = ux;
     if (nx * gx + nz * gz < 0) { nx = -nx; nz = -nz; }
-    const n = Math.max(1, Math.round(len / 18));
+    // Its ice cliff is only built (drawn and solid) when serac_blocks is on.
+    const n = tuning.serac_blocks ? Math.max(1, Math.round(len / 18)) : 0;
     for (let i = 0; i < n; i++) {
       const t = (i + 0.5) / n;
       const r = hash(k, i, 11);
@@ -248,8 +249,8 @@ export class TerrainFeatures {
     const t = tuning;
     const hm = this.hm;
     const cell = t.crevasse_cell_m;
-    const x = (i + 0.2 + 0.6 * hash(i, j, 1)) * cell;
-    const z = (j + 0.2 + 0.6 * hash(i, j, 2)) * cell;
+    const x = (i + 0.35 + 0.3 * hash(i, j, 1)) * cell;
+    const z = (j + 0.35 + 0.3 * hash(i, j, 2)) * cell;
     if (Math.abs(x) > hm.size / 2 - 60 || Math.abs(z) > hm.size / 2 - 60) return [];
     const y = hm.heightAt(x, z);
     const slope = hm.slopeDeg(x, z);
@@ -271,27 +272,53 @@ export class TerrainFeatures {
     }
     const chance = snowfield ? t.snowfield_crevasse_share : t.crevasse_share * (0.3 + 0.7 * steep) * glacier;
     if (roll >= chance) return [];
+    // A field of parallel cracks across the flow, spaced down it, bowed the way
+    // the ice bends. The middle cracks run longest and gape widest. A field stays
+    // inside its own cell, so fields never cross.
     const bare = y < t.bare_glacier_below_m;
-    // Hidden: snow covers most crevasses above the bare lower glacier.
-    const hidden = hash(i, j, 7) < (bare ? t.hidden_share_bare : t.hidden_share_snow);
-    const pit = !snowfield && hash(i, j, 8) < t.pit_share;
-    const half = pit ? 1.2 + 2.5 * hash(i, j, 9) : 8 + 22 * hash(i, j, 9);
-    if (!this._clear(x, z, half)) return [];
-    const width = pit ? half : 0.4 + (hidden ? 0.8 : 1.6) * hash(i, j, 10);
-    const depth = t.hole_depth_m[0] + (t.hole_depth_m[1] - t.hole_depth_m[0]) * hash(i, j, 11);
-    return [{
-      type: 'hole', id: `${pit ? 'p' : 'c'}${i},${j}`, kind: pit ? (bare ? 'moulin' : 'pit') : 'crevasse',
-      name: pit ? (bare ? 'Moulin' : 'Pit') : 'Crevasse',
-      x, z, ux, uz, half, width, depth, hidden,
-      // Wide crevasses have thin, weak bridges.
-      strength: 0.35 + 0.65 * hash(i, j, 12) - (width > 1 ? 0.2 : 0),
-    }];
+    const fx = -gx / g, fz = -gz / g;
+    const count = snowfield ? 2 + Math.floor(2 * hash(i, j, 4)) : 3 + Math.floor(5 * hash(i, j, 4));
+    const spread = Math.min(30, (count - 1) * (t.crevasse_spacing_m[0] + (t.crevasse_spacing_m[1] - t.crevasse_spacing_m[0]) * hash(i, j, 5)) / 2);
+    const bow = (hash(i, j, 6) - 0.5) * 2 * t.crevasse_bow_m;
+    const out = [];
+    for (let k = 0; k < count; k++) {
+      const h = (s) => hash(i * 31 + k, j * 17 - k, s);
+      const off = count > 1 ? -spread + (2 * spread * k) / (count - 1) + (h(1) - 0.5) * 3 : 0;
+      const mid = 1 - Math.abs(off) / (spread + 1);
+      const slide = (h(2) - 0.5) * 12;
+      const cx = x + fx * off + ux * slide, cz = z + fz * off + uz * slide;
+      const half = 12 + 20 * (0.5 + 0.5 * mid) * (0.6 + 0.4 * h(4));
+      const hidden = h(5) < (bare ? t.hidden_share_bare : t.hidden_share_snow);
+      const width = 0.3 + (hidden ? 0.6 : 0.4 + 1.4 * mid) * h(6);
+      if ((!snowfield && hm.glacierAt(cx, cz) < 0.3) || !this._clear(cx, cz, half)) continue;
+      out.push({
+        type: 'hole', id: `c${i},${j},${k}`, kind: 'crevasse', name: 'Crevasse', bare,
+        x: cx, z: cz, ux, uz, half, width, bend: bow * (half / 30),
+        depth: t.hole_depth_m[0] + (t.hole_depth_m[1] - t.hole_depth_m[0]) * h(8), hidden,
+        // Wide crevasses have thin, weak bridges.
+        strength: 0.35 + 0.65 * h(9) - (width > 1 ? 0.2 : 0),
+      });
+    }
+    // Now and then a pit: a moulin on the bare ice, a snow-covered hole higher up.
+    if (!snowfield && hash(i, j, 8) < t.pit_share) {
+      const px = x + ux * 50, pz = z + uz * 50;
+      const r = 1.2 + 2.5 * hash(i, j, 9);
+      if (this._clear(px, pz, r) && hm.glacierAt(px, pz) > 0.3) {
+        out.push({
+          type: 'hole', id: `p${i},${j}`, kind: bare ? 'moulin' : 'pit', name: bare ? 'Moulin' : 'Pit', bare,
+          x: px, z: pz, ux: 1, uz: 0, half: r, width: r, bend: 0, hidden: !bare && hash(i, j, 10) < 0.6,
+          depth: t.hole_depth_m[0] + (t.hole_depth_m[1] - t.hole_depth_m[0]) * hash(i, j, 11), strength: 0.5,
+        });
+      }
+    }
+    return out;
   }
 
   /** Generated features in the cells around a point. */
   *_near(x, z, r = 0) {
     const cell = tuning.crevasse_cell_m;
-    const reach = Math.ceil((r + 32) / cell);
+    // A field reaches well beyond its own cell.
+    const reach = Math.ceil((r + tuning.crevasse_field_reach_m) / cell);
     const ci = Math.floor(x / cell), cj = Math.floor(z / cell);
     for (let i = ci - reach; i <= ci + reach; i++) {
       for (let j = cj - reach; j <= cj + reach; j++) yield* this._cell(i, j);
@@ -322,13 +349,30 @@ export class TerrainFeatures {
     return h.width * Math.sqrt(Math.max(0, 1 - (u / h.half) ** 4));
   }
 
+  /**
+   * Where (x, z) is relative to a hole: u along it, v across it from its
+   * centre line (which bows sideways by `bend` at its middle).
+   */
+  static local(h, x, z) {
+    const dx = x - h.x, dz = z - h.z;
+    const u = dx * h.ux + dz * h.uz;
+    const t = u / h.half;
+    return { u, v: -dx * h.uz + dz * h.ux - (h.bend ?? 0) * (1 - t * t) };
+  }
+
+  /** The world point at u along a hole and v across it from its centre line. */
+  static point(h, u, v) {
+    const t = u / h.half;
+    const w = v + (h.bend ?? 0) * (1 - t * t);
+    return { x: h.x + h.ux * u - h.uz * w, z: h.z + h.uz * u + h.ux * w };
+  }
+
   /** The hole at (x, z), if you're over one: {hole, u, v} (along it, across it). */
   holeAt(x, z) {
     const test = (h) => {
-      const dx = x - h.x, dz = z - h.z;
-      const u = dx * h.ux + dz * h.uz;
+      if (Math.hypot(x - h.x, z - h.z) > h.half + Math.abs(h.bend ?? 0) + h.width) return null;
+      const { u, v } = TerrainFeatures.local(h, x, z);
       if (Math.abs(u) >= h.half) return null;
-      const v = -dx * h.uz + dz * h.ux;
       return Math.abs(v) < TerrainFeatures.halfWidth(h, u) ? { hole: h, u, v } : null;
     };
     for (const h of this.placedHoles) {

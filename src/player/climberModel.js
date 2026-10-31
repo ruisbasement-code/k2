@@ -107,8 +107,8 @@ export class ClimberModel extends THREE.Group {
     const torso = part(spine, puffy(0.2, 0.17, 0.5, 5, 0.014), M.suit, 0, 0.5, 0);
     torso.scale.set(1.12, 1, 0.82);
     for (const s of [-1, 1]) part(spine, new THREE.BoxGeometry(0.02, 0.3, 0.16), M.panel, s * 0.215, 0.22, 0);
-    part(spine, new THREE.BoxGeometry(0.03, 0.44, 0.01), M.panel, 0, 0.26, -0.165); // front zip
-    for (const s of [-1, 1]) part(spine, new THREE.BoxGeometry(0.04, 0.42, 0.012), M.harness, s * 0.1, 0.27, -0.16, 0, 0, s * 0.08); // pack shoulder straps
+    part(spine, new THREE.BoxGeometry(0.03, 0.4, 0.01), M.panel, 0, 0.24, -0.165); // front zip
+    for (const s of [-1, 1]) part(spine, new THREE.BoxGeometry(0.04, 0.34, 0.012), M.harness, s * 0.1, 0.24, -0.16, 0, 0, s * 0.08); // pack shoulder straps
     part(spine, new THREE.BoxGeometry(0.26, 0.03, 0.012), M.harness, 0, 0.33, -0.165); // sternum strap
     // Rucksack: body, lid, foam pad under the lid, side straps, axe holster.
     const pack = new THREE.Group();
@@ -132,6 +132,10 @@ export class ClimberModel extends THREE.Group {
     part(head, new THREE.CylinderGeometry(0.117, 0.117, 0.06, 20, 1, true, Math.PI * 0.62, Math.PI * 0.76), M.lens, 0, 0.075, 0, 0, Math.PI, 0).scale.set(0.98, 1, 1.02);
     part(head, new THREE.TorusGeometry(0.115, 0.01, 4, 24), M.panel, 0, 0.075, 0.004, Math.PI / 2); // goggle strap
     part(head, new THREE.CylinderGeometry(0.04, 0.05, 0.045, 10), M.panel, 0, 0.0, -0.105, Math.PI / 2 + 0.25); // breathing mask
+    // Headlamp on the helmet front; its lens glows in the lamp's colour when lit.
+    part(head, new RoundedBoxGeometry(0.07, 0.04, 0.03, 2, 0.008), M.panel, 0, 0.15, -0.128, -0.35);
+    this.lampLens = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.2, emissive: 0x000000 });
+    part(head, new THREE.CylinderGeometry(0.014, 0.014, 0.008, 12), this.lampLens, 0, 0.147, -0.146, Math.PI / 2 - 0.35);
 
     // Arms: puffy sleeves, dark elbow patches, gauntlet mitts.
     for (const [side, s] of [['L', -1], ['R', 1]]) {
@@ -193,6 +197,11 @@ export class ClimberModel extends THREE.Group {
       ankle.add(c);
     }
 
+    // Hidden in first person: the head and collar (the camera is in them) and the
+    // chest and pack, which would otherwise fill the view looking down. Arms and
+    // legs stay, so you see your own mitts and boots.
+    this.fpHidden = [this.joints.neck, ...this.joints.spine.children.filter((c) => c.isMesh), pack];
+
     this.bones = [
       ['pelvis', null, 0.1], ['spine', 'pelvis', BONES.spine], ['neck', 'spine', BONES.neck], ['head', 'neck', 0.24],
       ['shoulderL', 'spine', BONES.upperArm], ['elbowL', 'shoulderL', BONES.forearm], ['wristL', 'elbowL', 0.12],
@@ -206,6 +215,17 @@ export class ClimberModel extends THREE.Group {
   get limbs() {
     const j = this.joints;
     return [j.hipL, j.hipR, j.shoulderL, j.shoulderR];
+  }
+
+  /** Lights the headlamp lens in a colour, or darkens it with null. */
+  setLamp(color) {
+    this.lampLens.emissive.setHex(color ?? 0x000000);
+    this.lampLens.emissiveIntensity = color == null ? 0 : 4;
+  }
+
+  /** In first person the camera sits in the head: hide it (and the chest) so you see your own limbs. */
+  set firstPerson(on) {
+    for (const o of this.fpHidden) o.visible = !on;
   }
 
   /** Puts every joint back to standing straight. */

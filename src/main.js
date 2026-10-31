@@ -9,7 +9,8 @@ import * as THREE from 'three';
 import './style.css';
 import route from './data/route.json';
 import { Heightmap } from './world/heightmap.js';
-import { createTerrain } from './world/terrain.js';
+import { createTerrain, createDetailPatch } from './world/terrain.js';
+import { TerrainDetail, campFlats } from './world/terrainDetail.js';
 import { FixedRopes } from './world/fixedRopes.js';
 import { createCamps } from './world/camps.js';
 import { Climber, Mode, CLIP_RANGE } from './player/climber.js';
@@ -18,6 +19,7 @@ import { ClimberModel } from './player/climberModel.js';
 import { BreathAudio } from './player/breathAudio.js';
 import { Input } from './player/input.js';
 import { Ragdoll } from './player/ragdoll.js';
+import { Headlamp } from './player/headlamp.js';
 import { Hud } from './ui/hud.js';
 import { Sky } from './world/sky.js';
 import { RockfallMesh, FootprintMesh } from './world/hazardMeshes.js';
@@ -46,7 +48,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 150000);
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 150000);
 const sky = new Sky(scene);
 
 const params = new URLSearchParams(location.search);
@@ -55,6 +57,11 @@ const hm = await Heightmap.load();
 const terrain = createTerrain(hm);
 scene.add(terrain);
 const ropes = new FixedRopes(hm, route.fixed_ropes);
+// The rocks, boulders and sastrugi you stand on, smooth at camps and along the ropes.
+hm.detail = new TerrainDetail(hm, campFlats(hm, route.places));
+for (const line of ropes.ropes) hm.detail.addCorridor(line);
+const detailPatch = createDetailPatch(hm);
+scene.add(detailPatch);
 const features = new TerrainFeatures(hm, featureDefs, { ropes, places: route.places });
 const featureMeshes = new FeatureMeshes(hm, features, terrain, ropes);
 scene.add(featureMeshes);
@@ -78,6 +85,7 @@ scene.add(avalancheMesh);
 const model = new ClimberModel();
 scene.add(model);
 const ragdoll = new Ragdoll(model);
+const headlamp = new Headlamp(scene);
 const summitPlace = route.places.find((p) => p.name === 'Summit');
 const [summitX, summitZ] = summitPlace ? hm.gridToWorld(summitPlace.r, summitPlace.c) : [0, 0];
 const expedition = new Expedition(climber, {
@@ -127,6 +135,11 @@ input.on('KeyX', () => {
   if (!hasGear(climber.pack, 'probe') && !climber.axe.have) hud.showMessage('Nothing to probe with');
   else climber.probe();
 });
+// Left click swings the axe on a steep wall (once the mouse is captured for looking).
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 0 && document.pointerLockElement === canvas) climber.swingAxe();
+});
+input.on('KeyL', () => hud.showMessage(`Headlamp: ${headlamp.cycle()}`));
 input.on('KeyI', () => climber.toggleAxe());
 input.on('KeyE', () => protect());
 input.on('KeyJ', () => holdDevice('gps'));
@@ -302,6 +315,7 @@ if (params.has('pitch')) view.pitch = (+params.get('pitch') * Math.PI) / 180;
 if (params.has('dist')) view.distance = +params.get('dist');
 if (params.has('fp')) view.firstPerson = true;
 if (params.has('fly')) { climber.toggleFly(); climber.position.y += +params.get('fly'); }
+if (params.has('lamp')) headlamp.set(+params.get('lamp'));
 if (params.has('hour')) climber.mountainSeconds = +params.get('hour') * 3600;
 climber.weather = new Weather(params.has('seed') ? +params.get('seed') : Math.floor(Math.random() * 1e9), climber.mountainSeconds);
 if (params.has('weather')) climber.weather.force(params.get('weather'), 48);
@@ -327,19 +341,41 @@ function updateCamera() {
   view.pitch = Math.min(Math.max(view.pitch - look.dy * 0.0025, -1.45), 1.2);
   if (look.zoom) view.distance = Math.min(Math.max(view.distance * (1 + look.zoom * 0.12), 2), 80);
   const p = climber.position;
-  _eye.set(p.x, p.y + EYE_HEIGHT, p.z);
+  _eye.set(p.x, view.groundY + EYE_HEIGHT, p.z);
   _dir.set(-Math.sin(climber.yaw) * Math.cos(view.pitch), Math.sin(view.pitch), -Math.cos(climber.yaw) * Math.cos(view.pitch));
   if (view.firstPerson) {
+    // Eyes in the posed head, so your own arms and legs sit right below you.
+    model.updateMatrixWorld(true);
+    // A little forward of the face, so the puffy chest doesn't fill the view looking down.
+    if (climber.mode !== Mode.FLY) model.joints.head.localToWorld(_eye.set(0, 0.08, -0.14));
     camera.position.copy(_eye);
     camera.lookAt(_eye.x + _dir.x, _eye.y + _dir.y, _eye.z + _dir.z);
   } else {
     const d = climber.mode === Mode.FLY ? Math.max(view.distance, 25) : view.distance;
     camera.position.copy(_eye).addScaledVector(_dir, -d);
-    camera.position.y = Math.max(camera.position.y, hm.heightAt(camera.position.x, camera.position.z) + 0.6);
+    camera.position.y = Math.max(camera.position.y, hm.groundAt(camera.position.x, camera.position.z) + 0.6);
     camera.lookAt(_eye);
   }
   sway(camera);
   sky.update(climber.hour, p, camera.position, climber.conditions);
+  updateHeadlamp();
+}
+
+const _lampPos = new THREE.Vector3();
+const _lampDir = new THREE.Vector3();
+
+/** The headlamp shines where you look in first person, and where the head points otherwise. */
+function updateHeadlamp() {
+  if (view.firstPerson) {
+    _lampPos.copy(camera.position).y += 0.08;
+    camera.getWorldDirection(_lampDir);
+  } else {
+    model.updateMatrixWorld(true);
+    const head = model.joints.head;
+    head.localToWorld(_lampPos.set(0, 0.15, -0.15));
+    head.localToWorld(_lampDir.set(0, -0.25, -1)).sub(head.localToWorld(new THREE.Vector3(0, 0, 0))).normalize();
+  }
+  model.setLamp(headlamp.update(view.time, _lampPos, _lampDir));
 }
 
 /**
@@ -398,13 +434,17 @@ function showAxe() {
 
 function animateModel(dt) {
   const c = climber;
-  model.visible = !view.firstPerson;
+  // In first person you see your own body (the head is hidden), unless scouting.
+  model.visible = !(view.firstPerson && c.mode === Mode.FLY);
+  model.firstPerson = view.firstPerson;
   if (c.tumbling || c.dead) {
     ragdoll.update(dt, c.position, c.velocity, c.dead);
     return;
   }
   ragdoll.stop();
   model.position.copy(c.position);
+  // Stepping over rocks: ease the body up and down rather than popping.
+  model.position.y = view.groundY;
   if (c.falling) {
     // Sliding flat on the slope, the way the fall left you, digging in.
     slideOrientation(c);
@@ -426,7 +466,9 @@ function animateModel(dt) {
   const steep = pose === 'climb' || pose === 'rope';
   const faceIn = steep && riseAlong(c.heading) < 0.7 * Math.hypot(gx, gz);
   const backing = steep && riseAlong(c.heading) < -0.25;
-  let diff = (faceIn ? Math.atan2(-gx, -gz) : c.heading) - model.rotation.y;
+  // In first person the body turns with your view, so you see your own arms and legs.
+  const faceYaw = faceIn ? Math.atan2(-gx, -gz) : view.firstPerson ? c.yaw : c.heading;
+  let diff = faceYaw - model.rotation.y;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   model.rotation.y += diff * (1 - Math.exp(-dt * 10));
   // Cadence is shown at a believable rate no matter how fast mountain time runs.
@@ -473,6 +515,10 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   view.time += dt;
+  // Smoothed height for the body and camera over the small rocks; exact in a fall.
+  const cy = climber.position.y;
+  view.groundY = climber.falling || Math.abs(cy - view.groundY) > 3 || !Number.isFinite(view.groundY)
+    ? cy : view.groundY + (cy - view.groundY) * (1 - Math.exp(-dt * 14));
   // Paused in the menu; standing still while busy with your hands or your pack.
   if (!menu.open) {
     const still = minigame.busy || inventory.open;
@@ -484,6 +530,7 @@ function frame(now) {
   featureMeshes.update(climber.position);
   animateModel(dt);
   updateTether(dt);
+  detailPatch.userData.update(climber.position);
   updateCamera();
   audio.update();
   wind.update(climber.conditions);

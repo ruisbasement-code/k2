@@ -64,7 +64,7 @@ export class FootprintMesh extends THREE.InstancedMesh {
   }
 
   add({ x, z, yaw }) {
-    const y = this.hm.heightAt(x, z) + 0.03;
+    const y = this.hm.groundAt(x, z) + 0.03;
     this.hm.normalAt(x, z, _n);
     _yaw.setFromAxisAngle(_up, yaw);
     _q.setFromUnitVectors(_up, _n).multiply(_yaw);

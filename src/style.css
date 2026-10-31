@@ -17,11 +17,12 @@ canvas#c { display: block; width: 100vw; height: 100vh; }
   background: radial-gradient(ellipse at center, transparent var(--inner), rgba(3, 5, 10, 0.95) 100%); }
 /* Injury: a red flash on each hit, and a red, blurred, narrowing edge as health drops. */
 #hurt { position: fixed; inset: 0; pointer-events: none; --inner: 70%; --red: 0; opacity: 0;
-  background: radial-gradient(ellipse at center, transparent var(--inner), rgba(150, 0, 0, var(--red)) 100%), rgba(170, 0, 0, var(--flash, 0)); }
+  background: radial-gradient(ellipse at center, transparent var(--inner), rgba(0, 0, 0, var(--dark, 0)) calc(var(--inner) + 30%)),
+    radial-gradient(ellipse at center, transparent calc(var(--inner) * 0.6), rgba(150, 0, 0, var(--red)) calc(var(--inner) + 20%)), rgba(170, 0, 0, var(--flash, 0)); }
 #hurt-blur { position: fixed; inset: 0; pointer-events: none; --inner: 70%; --blur: 0px; opacity: 0;
   backdrop-filter: blur(var(--blur)) saturate(0.6); -webkit-backdrop-filter: blur(var(--blur)) saturate(0.6);
-  mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 25%));
-  -webkit-mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 25%)); }
+  mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 15%));
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 15%)); }
 kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font: 11px ui-monospace, monospace; color: var(--text); }
 #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; background: #0d1117; }
 
@@ -34,6 +35,9 @@ kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); bord
 #health-fill { height: 100%; background: #e2575b; border-radius: 3px; transition: width .3s; }
 #stamina-fill { height: 100%; background: #e9eef5; border-radius: 3px; }
 #stamina-fill.low { background: var(--low); }
+#grip-fill { height: 100%; background: #8fd0ff; border-radius: 3px; }
+#grip-fill.low { background: var(--low); }
+.vital[hidden] { display: none; }
 #health-cap, #stamina-cap { position: absolute; top: 0; width: 2px; height: 100%; margin-left: -1px; background: rgba(0, 0, 0, .55); }
 #health-cap[hidden] { display: none; }
 #vital-chips { display: flex; flex-wrap: wrap; gap: 4px; }

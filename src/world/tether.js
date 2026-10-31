@@ -116,7 +116,7 @@ export class Tether extends THREE.Group {
       // Lie on the snow rather than through it.
       for (let i = 1; i < SEGMENTS; i++) {
         const p = pts[i];
-        const ground = this.hm.heightAt(p.x, p.z) + RADIUS + 0.02;
+        const ground = this.hm.groundAt(p.x, p.z) + RADIUS + 0.02;
         if (p.y < ground) {
           p.y = ground;
           // Friction: a rope on snow stays put.

@@ -51,7 +51,7 @@ export class Physiology {
   hydration = 90;
   /** Core body temperature, °C. */
   core = tuning.core_normal_c;
-  /** Frostbite in hands and feet, 0..1 (0.9 is deep and permanent). */
+  /** Frostbite in hands and feet, 0..1 (0.8 is deep and permanent). */
   frostbite = 0;
   /** Gear: a down suit multiplies insulation; mitts, goggles and warmers slow frostbite. */
   insulationMult = 1;
@@ -142,7 +142,7 @@ export class Physiology {
     } else if (sheltered || air.feelsLikeC > -10) {
       this.frostbite = Math.max(0, this.frostbite - t.frostbite_heal_per_h * dtH);
     }
-    if (this.frostbite >= 0.9) {
+    if (this.frostbite >= 0.8) {
       this.frostbite = 0.6;
       this.onPermanentInjury('Frostbitten fingers and toes', t.frostbite_permanent_health);
       this.onMessage('Deep frostbite. Some of your fingers and toes will not recover.');
@@ -172,13 +172,13 @@ export class Physiology {
       this.ams += t.ams_rate_per_h * ((gap - t.ams_safe_gap_m) / 1000) * (sleeping ? 1.5 : 1)
         * (this.hydration < 50 ? 1.3 : 1) * (dex ? 0.4 : 1) * dtH;
     } else {
-      this.ams -= t.ams_recover_per_h * (gap < -300 ? 2 : 1) * dtH;
+      this.ams -= t.ams_recover_per_h * (gap < 0 ? 2 : 1) * dtH;
     }
     this.ams = clamp(this.ams, 0, 1);
     const extra = this.deterioration * 0.03;
-    if (this.ams > 0.7 && gap > 800) this.hace += (t.hace_rate_per_h * (gap / 1000) * (dex ? 0.3 : 1) + extra) * dtH;
+    if (this.ams > 0.6 && gap > 800) this.hace += (t.hace_rate_per_h * ((gap - 600) / 1000) * (dex ? 0.3 : 1) + extra) * dtH;
     else this.hace -= (dex ? 0.2 : t.edema_recover_per_h) * (gap < 0 ? 2 : 1) * dtH;
-    if (gap > 800) this.hape += (t.hape_rate_per_h * (gap / 1000) * (1 + effort) * (air.feelsLikeC < -25 ? 1.2 : 1) + extra) * dtH;
+    if (gap > 700) this.hape += (t.hape_rate_per_h * ((gap - 600) / 1000) * (1 + effort) * (air.feelsLikeC < -25 ? 1.5 : 1) + extra) * dtH;
     else this.hape -= t.edema_recover_per_h * (gap < 0 ? 2 : 1) * dtH;
     this.hace = clamp(this.hace, 0, 1);
     this.hape = clamp(this.hape, 0, 1);
@@ -201,11 +201,16 @@ export class Physiology {
       if (amount > damage) cause = why;
       damage += amount;
     };
-    if (this.hace > 0.6) add(t.illness_health_per_h * dtH, 'HACE killed you.');
-    if (this.hape > 0.6) add(t.illness_health_per_h * dtH, 'HAPE killed you.');
-    if (this.food <= 0) add(0.5 * dtH, 'You starved.');
-    if (this.hydration <= 0) add(10 * dtH, 'You died of dehydration.');
-    else if (this.hydration < 10) add(2 * dtH, 'You died of dehydration.');
+    // Illness wears your health down well before it kills you outright.
+    if (this.hace > 0.4) add(t.illness_health_per_h * (this.hace / 0.4) * dtH, 'HACE killed you.');
+    if (this.hape > 0.4) add(t.illness_health_per_h * (this.hape / 0.4) * dtH, 'HAPE killed you.');
+    if (this.ams > 0.8) add(2 * dtH, 'Altitude sickness wore you down until you could not go on.');
+    if (this.core < t.hypothermia_moderate_c) add(5 * dtH, 'You froze to death.');
+    if (this.frostbite > 0.6) add(1 * dtH, 'Frostbite and the cold finished you.');
+    if (this.deterioration > 0.5) add(2 * dtH, 'The death zone wore you out.');
+    if (this.food <= 0) add(1 * dtH, 'You starved.');
+    if (this.hydration <= 0) add(15 * dtH, 'You died of dehydration.');
+    else if (this.hydration < 10) add(5 * dtH, 'You died of dehydration.');
     return { damage, cause };
   }
 

@@ -46,10 +46,12 @@ lists every control (`src/ui/controls.js`), with the sound switch.
 | C | Clip into / unclip from a fixed rope (within 5 m) |
 | E | Place an ice screw or snow picket on steep ground (needs the rope) |
 | I | Draw / stow the ice axe |
+| Click | Swing the axe on a steep wall (S + click to climb down) |
 | X | Probe ahead for hidden crevasses (needs a probe or an axe) |
 | Tab | Inventory: click a device to hold it, a supply to use it |
 | G | Gear up at Base Camp · restock at a camp · strike your own tent |
 | J / U / M | Hold the Wympr GPS / the vitals monitor / the map |
+| L | Headlamp: off, on, high beam, red |
 | Z | Sleep in a tent; away from camp, pitch your tent, dig a snow cave or bivouac |
 | K | Cook in a tent (your own needs your stove) |
 | B / H / O / P | Eat / drink / oxygen flow / dexamethasone |
@@ -132,9 +134,19 @@ real face, so steep ground is dotted with small ledges, drawn into the terrain a
 narrow snowy steps with a shadow under the lip. You can stand on one where the slope around it is too steep, and a slide
 across one loses a lot of speed.
 
+**Close-up ground.** Around you the terrain is drawn in fine detail from the same
+relief you stand on (`src/world/terrainDetail.js`): jointed rock blocks on the faces,
+boulders on scree, moraine rubble stripes and ice hummocks on the glaciers, and
+wind-carved sastrugi on snow. It's solid: you walk over the boulders and a fall
+bounces off them. Camps and the fixed-rope lines are kept smooth.
+
 **Ice axe.** Press **I** to draw it from your pack (it takes a second, even mid-slide)
-or stow it. In hand it lets you climb snow and ice up to 50° unroped (rock is no
-easier), slower and harder, with fewer slips. Holding Space in a slide, the pick
+or stow it. In hand it lets you walk up snow and ice to 40° unroped (rock is no easier),
+slower and harder, with fewer slips. Steeper snow and ice, up to about 68°, you climb
+swing by swing: each left click plants the axe and pulls you half a metre up (S +
+click to climb down), costing stamina. Between swings you hang on the axe and your
+grip drains, faster on steeper ground and when you're spent; let it run out and you
+come off. Ledges, easier ground and the fixed ropes let it recover. Holding Space in a slide, the pick
 bites over half a second and stops you from up to 14 m/s on snow, but it mostly
 skates on hard ice. Arresting very fast can wrench it from your grip, and in a tumble
 you often lose it: it hangs on its leash until you grab it again, unless the leash
@@ -330,7 +342,9 @@ The 31 m elevation grid can't show what makes K2 dangerous up close, so these ar
 added on top of it (`src/sim/terrainFeatures.js`, placed in
 [`src/data/features.json`](src/data/features.json), numbers in `tuning.json`):
 
-- **Crevasses.** The glaciers crack across their flow where the ice steepens.
+- **Crevasses.** The glaciers crack across their flow where the ice steepens, in fields
+  of parallel cracks bowed the way the ice bends. Their walls are layered blue glacier ice
+  that fades to black with depth, with snow lips curling over the edge where there's snow.
   On the lower Godwin-Austen Glacier most are open and easy to see; higher up, most
   are **hidden under snow bridges**. Each step on a bridge can break it, much more
   likely in the warm afternoon than in the frozen night and early morning, so cross
@@ -342,20 +356,24 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
   crampons will plug in). You come out on the side you face.
 - **Probing (X).** Probe the snow in front of you to find hidden crevasses. Found ones
   show as a dark line in the snow; the bridge can still give way.
-- **The wanded trail.** Bamboo wands with red flags mark a crevasse-free line from
-  Base Camp to the foot of the Abruzzi Spur, as expeditions do. Off it, you're on your own.
+- **The path lights.** Lamp posts mark a crevasse-free line from Base Camp across the
+  glacier to the foot of the Abruzzi Spur, and on up beside the fixed rope to Camp 1. They
+  glow at night and through storms. Off the path, you're on your own.
 - **Pits and moulins.** Round holes: meltwater moulins on the bare lower glacier,
   snow-covered pits higher up. They work like crevasses.
 - **The bergschrund.** The big crevasse where the glacier pulls away from the foot of
   the Abruzzi Spur, bridged where the trail crosses it. An ice cavern sits in it.
 - **Seracs.** The **Bottleneck serac**, a hanging ice cliff at about 8,400 m, hangs over
   the couloir and the Traverse. Ice breaks off it at any hour (more in the afternoon)
-  and bounces down the fall line, which runs through the Bottleneck. Smaller ice towers
-  stand where the glaciers break over steep steps. You can't walk through either.
+  and bounces down the fall line, which runs through the Bottleneck: the less time you
+  spend under it, the better. It's drawn as one continuous ice cliff and you can't walk
+  through it. Ice towers on the glaciers are built but switched off for now
+  (`serac_tower_share`): they looked out of place.
   Serac icefall is separate from rockfall, which stays off.
 
   ![The Bottleneck serac](docs/screenshots/bottleneck-serac.png)
-- **Cornices and snow overhangs** grow out over the drop on ridge crests: on the
+- **Cornices and snow overhangs** (switched off for now with `cornices_enabled`: from a
+  distance their lips looked like stray white lines) grow out over the drop on ridge crests: on the
   summit ridge, the edge of the Shoulder, and above the Black Pyramid and House's
   Chimney. The snow stands out past the rock; walk out onto it and it can break off
   and throw you down the far side. The further out, the likelier.
@@ -364,6 +382,7 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
 - **Technical sections.** **House's Chimney** (a 30 m crack of steep rock below Camp 2),
   the **Black Pyramid** (broken dark rock and ice from Camp 2 to Camp 3), the
   **Bottleneck** and the **Traverse** slow you and make unroped slips much more likely.
+  They aren't drawn as extra rock (the scattered boulders looked out of place).
 - **Cols.** The Negrotto Col (6,250 m), Savoia Saddle (6,666 m) and Windy Gap (6,233 m)
   are named where the saddles in the elevation data match their heights. The HUD's
   Place line shows where you are.
@@ -384,6 +403,15 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
   The body is a joint hierarchy (`ClimberModel.joints` and `.bones`), ready for ragdoll.
 
 ![The climber](docs/screenshots/climber.png)
+
+**First person** (V) puts the camera in the climber's head: look down to see your own
+mitts, legs and boots, and on steep ground your hands reaching up the slope.
+
+**Headlamp** (L) cycles through off, regular, high beam, red (keeps your night vision)
+and flashing. It lights where you look in first person and where your head points in
+third person, and the lens on the helmet glows in the lamp's colour.
+
+![Headlamp at night](docs/screenshots/headlamp-night.png)
 
 ## Project layout
 

@@ -9,6 +9,7 @@ export const CONTROLS = [
     [['C'], 'Clip into / unclip from a fixed rope'],
     [['E'], 'Place an ice screw or snow picket (rope needed)'],
     [['I'], 'Draw / stow the ice axe'],
+    [['Click'], 'Swing the axe on a steep wall (S + click to climb down)'],
     [['X'], 'Probe for hidden crevasses'],
   ]],
   ['Gear', [
@@ -17,6 +18,7 @@ export const CONTROLS = [
     [['J'], 'Hold the Wympr GPS'],
     [['U'], 'Hold the vitals monitor'],
     [['M'], 'Hold the map'],
+    [['L'], 'Headlamp: off, on, high beam, red'],
   ]],
   ['Survive', [
     [['Z'], 'Sleep in a tent · pitch a tent, dig a cave or bivouac'],

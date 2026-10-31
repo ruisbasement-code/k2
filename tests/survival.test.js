@@ -137,8 +137,8 @@ describe('altitude', () => {
 
   it('acclimatizes with time spent high, up to a limit', () => {
     const ph = new Physiology();
-    live(ph, 48, { altitude: 6000, effort: 0, sheltered: true, pack: new Pack() });
-    expect(ph.acclimatized).toBeGreaterThan(5600);
+    live(ph, 48, { altitude: 5600, effort: 0, sheltered: true, pack: new Pack() });
+    expect(ph.acclimatized).toBeGreaterThan(5400);
     live(ph, 300, { altitude: 8000, effort: 0, sheltered: true, pack: new Pack() });
     expect(ph.acclimatized).toBeLessThanOrEqual(tuning.acclimatize_max_m);
   });

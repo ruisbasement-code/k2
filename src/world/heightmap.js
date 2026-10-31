@@ -67,6 +67,23 @@ export class Heightmap {
     ];
   }
 
+  /**
+   * The ground you actually stand on: the base surface plus the small-scale relief
+   * (rocks, boulders, sastrugi) when a TerrainDetail is attached as `detail`.
+   */
+  groundAt(x, z) {
+    return this.heightAt(x, z) + (this.detail ? this.detail.at(x, z) : 0);
+  }
+
+  /** Unit normal of the ground you stand on, at the scale of a boot (35 cm). */
+  groundNormalAt(x, z, out) {
+    if (!this.detail) return this.normalAt(x, z, out);
+    const d = 0.35;
+    const gx = (this.groundAt(x + d, z) - this.groundAt(x - d, z)) / (2 * d);
+    const gz = (this.groundAt(x, z + d) - this.groundAt(x, z - d)) / (2 * d);
+    return out.set(-gx, 1, -gz).normalize();
+  }
+
   /** Unit surface normal at world (x, z). */
   normalAt(x, z, out) {
     const [gx, gz] = this.gradient(x, z, 3);
