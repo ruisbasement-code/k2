@@ -259,7 +259,7 @@ export class Hud {
     blur.style.opacity = hurt > 0.05 || this.flash > 0.05 ? 1 : 0;
     // The whole view dims, loses colour and goes soft as well.
     if (hurt < 0.02) return '';
-    return `blur(${(1.2 * hurt + 3.5 * deep + 1.5 * this.flash).toFixed(2)}px) brightness(${(1 - 0.55 * deep).toFixed(2)}) saturate(${(1 - 0.8 * hurt).toFixed(2)}) contrast(${(1 - 0.25 * deep).toFixed(2)})`;
+    return `blur(${(1.5 * hurt + 5 * deep).toFixed(2)}px) brightness(${(1 - 0.55 * deep).toFixed(2)}) saturate(${(1 - 0.8 * hurt).toFixed(2)}) contrast(${(1 - 0.25 * deep).toFixed(2)})`;
   }
 
   // ---- Devices ----
