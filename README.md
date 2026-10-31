@@ -200,12 +200,15 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
   the Abruzzi Spur, bridged where the trail crosses it. An ice cavern sits in it.
 - **Seracs.** The **Bottleneck serac**, a hanging ice cliff at about 8,400 m, hangs over
   the couloir and the Traverse. Ice breaks off it at any hour (more in the afternoon)
-  and bounces down the fall line, which runs through the Bottleneck. Smaller ice towers
-  stand where the glaciers break over steep steps. You can't walk through either.
+  and bounces down the fall line, which runs through the Bottleneck: the less time you
+  spend under it, the better. It's drawn as one continuous ice cliff and you can't walk
+  through it. Ice towers on the glaciers are built but switched off for now
+  (`serac_tower_share`): they looked out of place.
   Serac icefall is separate from rockfall, which stays off.
 
   ![The Bottleneck serac](docs/screenshots/bottleneck-serac.png)
-- **Cornices and snow overhangs** grow out over the drop on ridge crests: on the
+- **Cornices and snow overhangs** (switched off for now with `cornices_enabled`: from a
+  distance their lips looked like stray white lines) grow out over the drop on ridge crests: on the
   summit ridge, the edge of the Shoulder, and above the Black Pyramid and House's
   Chimney. The snow stands out past the rock; walk out onto it and it can break off
   and throw you down the far side. The further out, the likelier.
@@ -214,6 +217,7 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
 - **Technical sections.** **House's Chimney** (a 30 m crack of steep rock below Camp 2),
   the **Black Pyramid** (broken dark rock and ice from Camp 2 to Camp 3), the
   **Bottleneck** and the **Traverse** slow you and make unroped slips much more likely.
+  They aren't drawn as extra rock (the scattered boulders looked out of place).
 - **Cols.** The Negrotto Col (6,250 m), Savoia Saddle (6,666 m) and Windy Gap (6,233 m)
   are named where the saddles in the elevation data match their heights. The HUD's
   Place line shows where you are.

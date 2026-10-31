@@ -174,7 +174,7 @@
   "hidden_share_bare": 0.15,
   "hidden_share_snow": 0.65,
   "pit_share": 0.15,
-  "serac_tower_share": 0.3,
+  "serac_tower_share": 0,
   "hole_depth_m": [8, 30],
 
   "_bridges": "Each step on a hidden snow bridge can break it: bridge_collapse_per_step times (1.2 - its strength), times bridge_warm_mult in the warm afternoon (bridge_cold_mult in the frozen night and early morning; cross glaciers early). Pushing the pace stamps harder. A slide over one breaks it slide_bridge_break of the time. Probing (X) finds hidden crevasses within probe_reach_m in front of you and takes probe_seconds of mountain time.",
@@ -193,13 +193,16 @@
   "hole_climb_effort": 2.2,
   "hole_climb_slip_per_min": 0.12,
 
-  "_cornices": "Stepping out onto a cornice can break it: cornice_break_per_step times how far out you are (0 at the crest, 1 at the lip) squared, times overhang_mult for snow overhangs, more in the warm afternoon. A section is cornice_section_points crest points (about 6 m each) long; cornice_top_m is how far the snow stands above the crest.",
+  "_cornices": "Off for now (cornices_enabled): the lips looked like stray white lines from a distance. Stepping out onto a cornice can break it: cornice_break_per_step times how far out you are (0 at the crest, 1 at the lip) squared, times overhang_mult for snow overhangs, more in the warm afternoon. A section is cornice_section_points crest points (about 6 m each) long; cornice_top_m is how far the snow stands above the crest.",
+  "cornices_enabled": false,
   "cornice_break_per_step": 0.08,
   "overhang_mult": 1.5,
   "cornice_section_points": 3,
   "cornice_top_m": 0.4,
 
   "_seracs": "Serac icefall comes off a hanging serac serac_fall_per_hour times per mountain hour on average (more in the afternoon), as ice blocks that bounce down the fall line. It is separate from rockfall (rockfall_enabled), which stays off.",
+  "_serac_blocks": "Whether the hanging seracs are solid ice cliffs (drawn as one cliff each). Glacier ice towers are off for now (serac_tower_share 0): they looked out of place.",
+  "serac_blocks": true,
   "serac_fall_enabled": true,
   "serac_fall_per_hour": 0.1,
   "icefall_warn_m": 400,

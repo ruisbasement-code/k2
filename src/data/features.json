@@ -31,8 +31,8 @@
 
   "_zones": "Technical sections. speed multiplies your pace, slip your chance of slipping unroped.",
   "zones": [
-    {"name": "House's Chimney", "note": "a 30 m crack of steep rock, the crux below Camp 2", "points": [[369.9, 356.0], [368.8, 354.8]], "radius_m": 8, "speed": 0.45, "slip": 2.5, "walls": true},
-    {"name": "Black Pyramid", "note": "steep, broken rock and ice from Camp 2 to Camp 3", "points": [[367.4, 354.2], [361, 355.8], [352.4, 357.7]], "radius_m": 70, "speed": 0.7, "slip": 1.8, "rocks": true},
+    {"name": "House's Chimney", "note": "a 30 m crack of steep rock, the crux below Camp 2", "points": [[369.9, 356.0], [368.8, 354.8]], "radius_m": 8, "speed": 0.45, "slip": 2.5},
+    {"name": "Black Pyramid", "note": "steep, broken rock and ice from Camp 2 to Camp 3", "points": [[367.4, 354.2], [361, 355.8], [352.4, 357.7]], "radius_m": 70, "speed": 0.7, "slip": 1.8},
     {"name": "The Bottleneck", "note": "a steep ice couloir under the serac", "points": [[333, 336], [329, 331]], "radius_m": 35, "speed": 0.8, "slip": 1.6},
     {"name": "The Traverse", "note": "steep ice under the serac, exposed all the way", "points": [[329, 331], [326, 327], [324, 325]], "radius_m": 30, "speed": 0.8, "slip": 1.8}
   ],

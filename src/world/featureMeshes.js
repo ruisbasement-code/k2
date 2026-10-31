@@ -95,6 +95,7 @@ export class FeatureMeshes extends THREE.Group {
     this.sagMat.opacity = 0.1;
     this.iceMat = new THREE.MeshStandardMaterial({ color: 0xd7ecf6, roughness: 0.3, metalness: 0.05, flatShading: true });
     this.snowMat = new THREE.MeshStandardMaterial({ color: 0xeef3f8, roughness: 0.85, side: THREE.DoubleSide });
+    this.cliffMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.02, side: THREE.DoubleSide });
     this.rockMat = new THREE.MeshStandardMaterial({ color: 0x2a2725, roughness: 0.95, flatShading: true });
     this.iceBoxes = [0, 1, 2].map((k) => jaggedBox(k + 1));
 
@@ -128,14 +129,13 @@ export class FeatureMeshes extends THREE.Group {
   _static() {
     const f = this.features;
     const hm = this.hm;
-    // The big seracs, drawn as ice blocks.
-    const seracs = f.placedSeracs;
-    if (seracs.length) {
-      const m = new THREE.InstancedMesh(this.iceBoxes[0], this.iceMat, seracs.length);
-      seracs.forEach((s, i) => m.setMatrixAt(i, this._blockMatrix(s)));
-      m.computeBoundingSphere();
-      m.castShadow = m.receiveShadow = true;
-      this.add(m);
+    // The hanging seracs, drawn as one continuous ice cliff each.
+    if (f.placedSeracs.length) {
+      for (const ice of f.icefalls) {
+        const cliff = new THREE.Mesh(this._iceCliff(ice), this.cliffMat);
+        cliff.castShadow = cliff.receiveShadow = true;
+        this.add(cliff);
+      }
     }
     // Snow caves: a drift with a dark hole facing down the slope.
     for (const c of f.caverns) {
@@ -223,6 +223,50 @@ export class FeatureMeshes extends THREE.Group {
       flag.computeBoundingSphere();
       this.add(pole, flag);
     }
+  }
+
+  /**
+   * A hanging serac as a single ice cliff: a face of blue-white ice, slightly
+   * overhanging at its lip, with a snow-covered top running back into the slope.
+   */
+  _iceCliff(ice) {
+    const hm = this.hm;
+    const tris = new Tris();
+    const n = Math.max(2, Math.round(ice.length / 4));
+    const back = { x: -ice.face.x, z: -ice.face.z };
+    const faceCol = new THREE.Color(0xbcdcec), deepCol = new THREE.Color(0x7fb2cf), snow = new THREE.Color(0xf1f5f9);
+    const rows = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const bx = ice.x + ice.along.x * t, bz = ice.z + ice.along.z * t;
+      // Height swells in the middle and wanders, so the lip isn't a ruler line.
+      const h = (24 + 18 * Math.sin(Math.PI * t)) * (0.85 + 0.15 * Math.sin(i * 1.7) * Math.cos(i * 0.6));
+      const base = hm.heightAt(bx, bz) - 3;
+      const lipX = bx + ice.face.x * 2.5, lipZ = bz + ice.face.z * 2.5;
+      const depth = 28 + 6 * Math.sin(i * 0.9);
+      const rx = bx + back.x * depth, rz = bz + back.z * depth;
+      rows.push({
+        base: new THREE.Vector3(bx, base, bz),
+        mid: new THREE.Vector3(bx + ice.face.x * 1.2, base + h * 0.55, bz + ice.face.z * 1.2),
+        lip: new THREE.Vector3(lipX, base + h, lipZ),
+        top: new THREE.Vector3(bx + back.x * 4, base + h + 1.2, bz + back.z * 4),
+        rear: new THREE.Vector3(rx, Math.max(hm.heightAt(rx, rz), base + h * 0.5) - 1, rz),
+        shade: i % 3 === 0 ? deepCol : faceCol,
+      });
+    }
+    for (let i = 0; i < n; i++) {
+      const a = rows[i], b = rows[i + 1];
+      tris.quad(a.base, b.base, b.mid, a.mid, deepCol, deepCol, b.shade, a.shade);
+      tris.quad(a.mid, b.mid, b.lip, a.lip, a.shade, b.shade, faceCol, faceCol);
+      tris.quad(a.lip, b.lip, b.top, a.top, snow);
+      tris.quad(a.top, b.top, b.rear, a.rear, snow);
+    }
+    // Close off the two ends.
+    for (const r of [rows[0], rows[n]]) {
+      tris.quad(r.base, r.mid, r.lip, r.top, deepCol, faceCol, faceCol, snow);
+      tris.tri(r.base, r.top, r.rear, deepCol, snow, snow);
+    }
+    return tris.geometry();
   }
 
   /** Place a unit block on the ground, along the feature's axis. */

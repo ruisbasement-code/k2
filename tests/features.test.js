@@ -23,6 +23,15 @@ const at = (name) => {
   return hm.gridToWorld(p.r, p.c);
 };
 
+/** A world with the cornices built, which are switched off in the game for now. */
+function withCornices() {
+  const on = tuning.cornices_enabled;
+  tuning.cornices_enabled = true;
+  const f = world();
+  tuning.cornices_enabled = on;
+  return f;
+}
+
 function world() {
   return new TerrainFeatures(hm, defs, { ropes, places: route.places });
 }
@@ -113,7 +122,12 @@ describe('where the features are', () => {
   });
 
   it('hangs the Bottleneck serac above the couloir at about 8,400 m, beside the rope', () => {
-    const blocks = f.placedSeracs.filter((s) => s.name === 'Bottleneck serac');
+    const solid = tuning.serac_blocks;
+    tuning.serac_blocks = true;
+    const blocks = world().placedSeracs.filter((s) => s.name === 'Bottleneck serac');
+    tuning.serac_blocks = solid;
+    // Glacier ice towers are off.
+    expect(f.seracsNear(...at('Base Camp'), 3000).filter((s) => s.name === 'Ice tower')).toHaveLength(0);
     expect(blocks.length).toBeGreaterThan(3);
     for (const b of blocks) {
       expect(b.y).toBeGreaterThan(8250);
@@ -128,7 +142,7 @@ describe('where the features are', () => {
   });
 
   it('finds the summit ridge crest for its cornice, high on the mountain', () => {
-    const c = f.cornices.find((q) => q.name === 'Summit ridge cornice');
+    const c = withCornices().cornices.find((q) => q.name === 'Summit ridge cornice');
     for (const p of c.points) expect(p.y).toBeGreaterThan(8350);
     // The crest is higher than the ground just out on the lee side.
     const mid = c.points[Math.floor(c.points.length / 2)];
@@ -245,7 +259,7 @@ describe('crevasses and pits', () => {
 
 describe('cornices, seracs, caves and hard ground', () => {
   it('a cornice can break off under you and throw you down the lee side', () => {
-    const f = world();
+    const f = withCornices();
     const c = climberWith(f);
     const cor = f.cornices.find((q) => q.name === 'Shoulder cornice');
     const p = cor.points[Math.floor(cor.points.length / 2)];
@@ -261,7 +275,10 @@ describe('cornices, seracs, caves and hard ground', () => {
   });
 
   it('stops you walking into a serac', () => {
+    const solid = tuning.serac_blocks;
+    tuning.serac_blocks = true;
     const f = world();
+    tuning.serac_blocks = solid;
     const c = climberWith(f);
     const b = f.placedSeracs[2];
     // Just below its downhill face, walking into it.
@@ -318,5 +335,11 @@ describe('cornices, seracs, caves and hard ground', () => {
     run(c, 0.1, STILL);
     expect(c.zone?.name).toBe("House's Chimney");
     expect(c.placeName).toBe("House's Chimney");
+  });
+});
+
+describe('switched off for now', () => {
+  it('has no cornices unless cornices_enabled', () => {
+    expect(world().cornices).toHaveLength(tuning.cornices_enabled ? defs.cornices.length : 0);
   });
 });

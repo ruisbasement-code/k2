@@ -75,7 +75,7 @@ export class TerrainFeatures {
     /** Where serac ice breaks off: {x, y, z, along: {x, z}, length, name}. */
     this.icefalls = [];
     for (const [k, s] of (defs.seracs ?? []).entries()) this._serac(s, k, w);
-    this.cornices = (defs.cornices ?? []).map((c, k) => this._cornice(c, k, w));
+    this.cornices = tuning.cornices_enabled ? (defs.cornices ?? []).map((c, k) => this._cornice(c, k, w)) : [];
     this.caverns = (defs.caverns ?? []).map((c) => this._cavern(c, w));
     this.zones = (defs.zones ?? []).map((z) => ({ ...z, points: z.points.map(w) }));
     this.cols = (defs.cols ?? []).map((c) => {
@@ -128,7 +128,8 @@ export class TerrainFeatures {
     const [gx, gz] = hm.gradient((a.x + b.x) / 2, (a.z + b.z) / 2, 20);
     let nx = -uz, nz = ux;
     if (nx * gx + nz * gz < 0) { nx = -nx; nz = -nz; }
-    const n = Math.max(1, Math.round(len / 18));
+    // Its ice cliff is only built (drawn and solid) when serac_blocks is on.
+    const n = tuning.serac_blocks ? Math.max(1, Math.round(len / 18)) : 0;
     for (let i = 0; i < n; i++) {
       const t = (i + 0.5) / n;
       const r = hash(k, i, 11);
