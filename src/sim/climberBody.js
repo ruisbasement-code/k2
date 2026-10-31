@@ -17,6 +17,9 @@ export class ClimberBody {
   breathRate = 14;
   /** Position in the current breath, 0 to 1 (inhale first). */
   breathPhase = 0;
+  /** Set by the climber's physiology: illness, hunger and the death zone lower these. */
+  capMult = 1;
+  recoverMult = 1;
 
   step(dtHours, effort, altitude, dtReal) {
     const t = tuning;
@@ -25,7 +28,7 @@ export class ClimberBody {
     if (effort > sustain) {
       this.stamina -= (t.drain_per_hour * (effort - sustain)) / Math.pow(o2, t.drain_o2_exponent) * dtHours;
     } else {
-      this.stamina += t.recover_per_hour * Math.pow(o2, t.recover_o2_exponent) * ((sustain - effort) / sustain) * dtHours;
+      this.stamina += t.recover_per_hour * this.recoverMult * Math.pow(o2, t.recover_o2_exponent) * ((sustain - effort) / sustain) * dtHours;
     }
     const cap = this.staminaCap(altitude);
     if (this.stamina > cap) {
@@ -47,7 +50,7 @@ export class ClimberBody {
   /** The most stamina the air at this altitude lets you recover to. */
   staminaCap(altitude) {
     const k = clamp((altitude - tuning.cap_start_altitude) / (8611 - tuning.cap_start_altitude), 0, 1);
-    return lerp(100, tuning.summit_stamina_cap, k);
+    return lerp(100, tuning.summit_stamina_cap, k) * this.capMult;
   }
 
   /** Speed multiplier from how tired the climber is. 0 when exhausted. */

@@ -50,12 +50,17 @@ export class Hud {
     v.style.setProperty('--inner', `${(55 - 35 * strain - 3 * fill * strain).toFixed(1)}%`);
     v.style.opacity = (0.25 + 0.7 * strain).toFixed(3);
 
+    const blur = c.mods.blur;
+    this.canvas ??= document.getElementById('c');
+    this.canvas.style.filter = blur > 0.05 ? `blur(${(blur * 2.5).toFixed(2)}px) saturate(${(1 - blur * 0.5).toFixed(2)})` : '';
     $('health-fill').style.width = `${c.health}%`;
     $('health-cap').style.left = `${c.maxHealth}%`;
     $('health-cap').hidden = c.maxHealth >= 100;
     $('stamina-fill').style.width = `${body.stamina}%`;
     $('stamina-fill').classList.toggle('low', body.exhausted || body.stamina < 25);
-    $('stamina-cap').style.left = `${body.staminaCap(c.position.y)}%`;
+    $('stamina-cap').style.left = `${body.staminaCap(c.breathAltitude)}%`;
+    $('food-fill').style.width = `${c.phys.food}%`;
+    $('water-fill').style.width = `${c.phys.hydration}%`;
     this._drawMap();
 
     this.slowTimer -= dt;
@@ -72,6 +77,9 @@ export class Hud {
     $('day-time').textContent = c.clockText();
     $('day-part').textContent = partOfDay(c.hour);
     $('day-speed').textContent = `×${c.timeScale}`;
+    $('day-turn').textContent = `Turn ${String(c.turnaroundHour).padStart(2, '0')}:00`;
+    $('day-turn').classList.toggle('late', c.pastTurnaround);
+    this._body();
     $('death').hidden = !c.dead;
     if (c.dead) {
       $('death-cause').textContent = c.deathCause;
@@ -82,6 +90,28 @@ export class Hud {
     const word = body.breathRate < 22 ? 'calm' : body.breathRate < 38 ? 'heavy' : 'gasping';
     $('breath-text').textContent = `Breathing ${Math.round(body.breathRate)}/min, ${word}`;
     $('prompt').textContent = this._prompt();
+  }
+
+  _body() {
+    const c = this.climber;
+    const ph = c.phys;
+    const pack = c.pack;
+    const air = ph.air;
+    $('core').textContent = `${ph.core.toFixed(1)} °C${ph.shivering ? ', shivering' : ''}`;
+    $('air').textContent = `${Math.round(air.airTempC)} °C, ${Math.round(air.feelsLikeC)} °C`;
+    const left = pack.bottles.length ? Math.round((pack.bottles[0] / tuning.pack.oxygen.litres) * 100) : 0;
+    $('o2').textContent = pack.bottles.length
+      ? `${ph.flow ? `${ph.flow} L/min` : 'off'} · ${left}% · ${pack.bottles.length} btl`
+      : 'none';
+    $('effalt').textContent = `${Math.round(ph.effectiveAltitude).toLocaleString('en-US')} m`;
+    $('acclim').textContent = `${Math.round(ph.acclimatized).toLocaleString('en-US')} m`;
+    $('packkg').textContent = `${pack.kg.toFixed(1)} kg`;
+    $('inventory').textContent = `Snacks ${pack.snack} · Meals ${pack.meal} · Gas ${pack.count('gas')} · Water ${pack.water.toFixed(1)} L · Dex ${pack.dex}`;
+    const list = ph.conditions();
+    for (const e of c.effects.values()) list.push({ label: e.label, severity: 0.5 });
+    if (c.permanentInjuries.length) for (const i of c.permanentInjuries) list.push({ label: i.label, severity: 1 });
+    const html = list.map((x) => `<span class="${x.severity >= 0.66 ? 'bad' : ''}">${x.label}</span>`).join('');
+    if (html !== this._condHtml) $('conditions').innerHTML = this._condHtml = html;
   }
 
   _prompt() {
@@ -102,14 +132,20 @@ export class Hud {
     if (c.gasping) return 'Gasping. Stand and breathe until it settles. Shift rushes your breaths.';
     if (c.rockfall.rocks.some((r) => r.velocity.length() > 2 && r.position.distanceTo(c.position) < tuning.rock_warn_m && r.position.y > c.position.y))
       return 'Rocks coming down! Get out of the fall line.';
+    if (c.phys.hace >= 0.3 || c.phys.hape >= 0.3) return 'Altitude illness! Go down now. Oxygen (O) and dex (P) buy time.';
     if (c.blocked) return 'Too steep to climb without a fixed rope';
     if (c.clipped) return 'Clipped in: move freely. The rope speeds you along it and catches slips. C unclips.';
     if (c.ropeDistance() < CLIP_RANGE) return 'Fixed rope here. Press C to clip in.';
     if (c.canSleep()) {
       const plan = c.sleepPlan();
-      return plan.night ? 'Tent here. Press Z to sleep until morning.' : `Tent here. Press Z for a ${plan.hours} h nap.`;
+      return plan.night ? 'Tent here. Z to sleep until morning, K to cook.' : `Tent here. Z for a ${plan.hours} h nap, K to cook.`;
     }
     if (c.slope > tuning.climb_start_deg) return `Steep ${c.surface.label.toLowerCase()} and unroped: one slip and you slide.`;
+    const ph = c.phys;
+    if (c.pastTurnaround) return `Past your ${c.turnaroundHour}:00 turnaround. Head down.`;
+    if (ph.core < tuning.hypothermia_mild_c) return 'Hypothermic. Keep moving, or get into a tent and sleep.';
+    if (ph.hydration < 30) return 'Dehydrated. Drink (H), or melt snow in a tent (K).';
+    if (ph.food < tuning.low_sugar_below) return 'Low on energy. Eat a snack (B).';
     if (c.health < 50) return 'Injured. Rest to heal, faster in a camp, or sleep in a tent.';
     if (body.stamina < 25) return 'Nearly spent. Stop and rest.';
     return '';

@@ -84,6 +84,13 @@ input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
 input.on('KeyR', () => climber.rescue());
 input.on('KeyZ', () => { if (climber.sleep()) hud.showSleep(); });
+input.on('KeyK', () => { if (climber.cook()) hud.showSleep(); });
+input.on('KeyB', () => climber.eat());
+input.on('KeyH', () => climber.drink());
+input.on('KeyO', () => climber.cycleOxygen());
+input.on('KeyP', () => climber.takeDex());
+input.on('KeyG', () => climber.resupply());
+input.on('KeyY', () => climber.cycleTurnaround());
 input.on('KeyM', () => { audio.muted = !audio.muted; hud.showMessage(audio.muted ? 'Breathing muted' : 'Breathing on'); });
 
 teleport(0);
@@ -140,7 +147,9 @@ function sway(cam) {
   const t = view.time;
   const exposure = Math.min(Math.max((c.slope - 25) / 30, 0), 1) * (c.falling ? 0 : 1);
   const breath = Math.sin(c.body.breathPhase * Math.PI * 2);
-  const roll = exposure * (0.012 * Math.sin(t * 0.7) + 0.006 * breath)
+  // Nausea and dizziness make the world swim.
+  const queasy = c.phys.nausea * 0.5 + c.phys.rebound * 0.5 + c.mods.wobble * 0.5;
+  const roll = exposure * (0.012 * Math.sin(t * 0.7) + 0.006 * breath) + queasy * 0.03 * Math.sin(t * 0.45)
     + c.shake * 0.05 * Math.sin(t * 37) * Math.sin(t * 23);
   cam.rotateZ(roll);
   cam.rotateX(c.shake * 0.03 * Math.sin(t * 41) + exposure * 0.004 * breath);
@@ -194,7 +203,7 @@ function animateModel(dt) {
   const exposure = Math.min(Math.max((c.slope - 25) / 30, 0), 1);
   model.rotation.set(0, model.rotation.y, exposure * 0.03 * Math.sin(view.time * 0.9) + c.shake * 0.12 * Math.sin(view.time * 29));
   let pose = { climb: 'climb', steep: 'climb', rope: 'rope', fly: 'fly' }[c.mode] ?? 'walk';
-  const winded = c.body.stamina < c.body.staminaCap(c.position.y) - 5 || c.body.exhausted;
+  const winded = c.body.stamina < c.body.staminaCap(c.breathAltitude) - 5 || c.body.exhausted;
   if (!c.moving && c.mode !== Mode.FLY && winded) pose = 'rest';
   // On steep ground (or a rope) you always face into the slope: backing down it
   // or side-stepping across it. On gentler ground you face out and plunge-step down.

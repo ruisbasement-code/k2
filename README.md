@@ -41,6 +41,14 @@ https://ruisbasement-code.github.io/k2/.
 | Shift | Push the pace: faster, but stamina drains much quicker (and it helps little up high) |
 | C | Clip into / unclip from a fixed rope (within 5 m) |
 | Space (hold) | Self-arrest when you start sliding |
+| Z | Sleep in a camp tent (stand next to one): until morning at night, a 2 h nap in the day |
+| K | Cook in a camp tent: melt snow to fill your bottles, drink, and eat a hot meal (1.5 h) |
+| B | Eat a snack bar |
+| H | Drink from your water bottle |
+| O | Oxygen flow: off, 0.5, 1, 2, 3, 4 L/min |
+| P | Take dexamethasone (holds off AMS and HACE for 12 h) |
+| G | Restock your pack from the camp you're in |
+| Y | Turnaround time: 12:00 to 16:00 |
 | R | After dying: be rescued to the highest camp you reached |
 | Mouse (click to capture), wheel | Look around, zoom |
 | V | First / third person |
@@ -124,6 +132,16 @@ not from how far you fell, so a long slide on snow can hurt less than a short dr
 onto rock. Health heals slowly at rest and faster in a camp. At 0 you die, and **R**
 gets you rescued to the highest camp you reached, hours later and still hurt.
 
+**Sleeping.** Stand next to any tent in a camp and press **Z** to crawl in. From 18:00
+you sleep through to 06:00 the next morning. During the day you take a 2 hour nap
+instead. The clock jumps ahead, and the screen fades to black and back. A full night
+(7 hours or more) tops stamina up to what the altitude allows and clears exhaustion.
+A nap only partly rests you. Every hour asleep heals 30 health, but never permanent
+injuries. Those lower your maximum health, shown as a white mark on the health bar,
+and nothing heals past it. Deep frostbite is the first permanent injury; bone damage
+is planned. Your body keeps running while you sleep, so sleeping too high can make
+you ill (see Survival below).
+
 **Day counter.** The top of the screen shows the expedition day, time and part of the
 day. The sun rises around 05:30, passes high in the south and sets around 19:00, and
 nights are dark. You start at 06:00 on day 1.
@@ -162,6 +180,57 @@ last mountain hour, the mountain clock, and distance to the summit.
 
 All of these numbers live in [`src/data/tuning.json`](src/data/tuning.json), so
 tuning is editing numbers, not code.
+
+## Survival
+
+Your body runs on mountain hours. The panel at the bottom left shows food, water,
+body temperature, the air, oxygen, the altitude your lungs feel, what you're
+acclimatized to, your pack and any conditions you have. All the numbers are in
+`src/data/tuning.json`, and the rules are in `src/sim/physiology.js`.
+
+**Pack.** You start with about 12 kg from Base Camp: clothes, sleeping bag, harness
+and stove (8.5 kg), plus snack bars, meals, gas, water and dexamethasone. Every
+kilogram over 12 slows you about 1% and makes you work harder. An oxygen bottle
+weighs about 4.4 kg full. Press **G** in a camp to restock. Base Camp has everything.
+Camps higher up have only a few of each, and only Camps 2 to 4 have oxygen.
+
+**Food and water.** Climbing burns about 500 kcal an hour, and shivering burns more.
+Run low and you get low blood sugar: you're slower and clumsier, and your stamina
+recovers more slowly. Effort and dry, thin air cost water. Thirst saps stamina, and
+dehydration makes altitude sickness and frostbite more likely and can kill you. Eat
+with **B** and drink with **H**. Your bottles hold 2 L. **K** in a tent melts snow to
+refill them and cooks a meal, and sleeping does this for you at dinner and breakfast
+if you carry gas.
+
+**Cold.** The air gets colder with height and at night (about −35 °C on a summit
+night, with wind chill to −55 °C). Moving keeps you warm. Standing still in the open
+cools you, and so does running out of food, because then you stop shivering. Below
+35 °C you have hypothermia and get clumsy. Below 32 °C you're confused and slow. At
+28 °C you die. A tent and sleeping bag warm you up. Frostbite builds in hard wind
+chill, faster when you're cold, dehydrated, short of oxygen or standing still. It heals
+while it's shallow, but deep frostbite takes 15 off your maximum health for good.
+
+**Altitude.** You arrive acclimatized to 5,000 m. Time spent higher raises that by
+about 400 m a day, up to 7,000 m. Above what you're used to, you get altitude
+sickness (AMS: headache, then nausea and vomiting, which can bring your food back
+up), worse if you sleep high. So climb high and sleep low. Severe AMS far too high
+becomes cerebral oedema (HACE: you stumble, your steering wanders and your vision
+blurs). Hard work high up brings pulmonary oedema (HAPE: you're breathless and
+weak). Both kill. Going down cures them, and oxygen and dexamethasone (**P**) buy
+time. Above 7,600 m, in the death zone, your body slowly wears out whatever you do.
+
+**Oxygen.** **O** steps the regulator through 0.5 to 4 L/min. At 2 L/min, 8,000 m
+feels like about 6,300 m, and a 1,000 L bottle lasts a little over 8 hours. If a
+bottle runs dry at a high flow up high, the thin air hits hard: dizziness, nausea and
+a dimmed view for a couple of hours.
+
+**Turnaround.** Pick a turnaround time with **Y** (14:00 by default). Above 7,900 m
+after that time, the game tells you to go down, summit or not.
+
+**Hooks for weather and terrain.** Set `climber.environment.airTempC`, `windMs` or
+`wet` (0 to 1, which cuts how well your clothes insulate) to replace the fair-weather
+air. Add effects with `climber.effects.set(id, {label, speed, effort, slip, staminaCap})`.
+They show up on the conditions list and multiply into movement.
 
 ## Terrain
 
@@ -202,7 +271,7 @@ src/world/            heightmap.js, terrain.js (mesh + shader), fixedRopes.js, s
 src/player/           climber.js (movement, ropes, falls, health), climberModel.js, ragdoll.js, breathAudio.js, input.js
 src/ui/hud.js         HUD, minimap, breath ring, vision vignette
 public/data/          the heightmap (float32) and its metadata
-tests/                Vitest: pace and stamina, simulated climbs, ropes, slopes, falls, death and rescue, hazards
+tests/                Vitest: pace and stamina, simulated climbs, ropes, slopes, falls, death and rescue, hazards, sleep, survival
 ```
 
 URL parameters set up a view for screenshots and testing, for example
