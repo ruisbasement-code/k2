@@ -106,6 +106,8 @@ export class Hud {
     const w = c.conditions;
     if (!w) return;
     $('wx').textContent = w.inCloud > 0.5 && w.key === 'cloudy' ? 'In the cloud' : w.label;
+    // The survival panel already shows the air and wind chill; don't repeat them.
+    $('wx-temp').parentElement.hidden = $('wx-chill').parentElement.hidden = !!c.phys;
     $('wx-temp').textContent = `${Math.round(w.airC)} °C`;
     $('wx-chill').textContent = `${Math.round(w.windChillC)} °C`;
     $('wx-wind').textContent = `${Math.round(w.gust * 3.6)} km/h ${compass(w.windFromDeg)}`;
