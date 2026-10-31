@@ -290,7 +290,8 @@ export class Weather {
     for (const s of this.spells) {
       if (s.end <= seconds || s.start > seconds + hours * 3600) continue;
       const err = noise1(s.start / 3600, this.seed + 11) * W.forecast_error_hours * 3600;
-      out.push({ key: s.key, label: W.conditions[s.key].label, from: Math.max(seconds, s.start + err), to: s.end + err });
+      const from = s.start <= seconds ? seconds : Math.max(seconds, s.start + err);
+      out.push({ key: s.key, label: W.conditions[s.key].label, from, to: s.end + err });
     }
     return out;
   }

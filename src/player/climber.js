@@ -768,9 +768,9 @@ export class Climber {
       w.update(this.mountainSeconds, dt);
       this.conditions = w.conditionsAt(this.hm, this.position, this.hour);
     }
-    if (this.mode === Mode.FLY) return;
+    const fly = this.mode === Mode.FLY;
     const c = this.conditions;
-    if (w && !this.dead) {
+    if (w && !this.dead && !fly) {
       if (!this.falling) this._wind(dt, c);
       const natural = W.natural_per_hour * c.avalancheDanger ** 2;
       if (Math.random() < (natural * dtM) / 3600) {
@@ -782,7 +782,7 @@ export class Climber {
     if (this.avalanches.active) {
       const body = this.position.clone();
       body.y += 0.9;
-      const hit = this.avalanches.step(dt, this.dead ? null : body);
+      const hit = this.avalanches.step(dt, this.dead || fly ? null : body);
       if (hit) this._caughtInAvalanche(hit);
       // Debris carries you along with it.
       if (this.falling && this.fall.avalanche) {

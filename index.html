@@ -20,6 +20,13 @@
   <div class="row">Avg (1 h) <b id="vavg">—</b></div>
   <div class="row">To summit <b id="dist">—</b></div>
   <hr>
+  <div class="row">Weather <b id="wx">—</b></div>
+  <div class="row">Air <b id="wx-temp">—</b></div>
+  <div class="row">Feels like <b id="wx-chill">—</b></div>
+  <div class="row">Wind <b id="wx-wind">—</b></div>
+  <div class="row">Visibility <b id="wx-vis">—</b></div>
+  <div class="row">Avalanche <b id="wx-aval">—</b></div>
+  <hr>
   <div class="label">Health</div>
   <div id="health" class="bar"><div id="health-fill"></div></div>
   <div class="label">Stamina</div>
@@ -29,13 +36,14 @@
 
 <div id="day" class="panel"><b id="day-num">Day 1</b><span id="day-time">05:00</span><span id="day-part">Dawn</span><span id="day-speed">×10</span></div>
 
+<div id="forecast" class="panel" hidden></div>
 <div id="map-panel" class="panel"><canvas id="map" width="340" height="340"></canvas></div>
 
 <div id="prompt"></div>
 <div id="message"></div>
 <div id="keys">
   <kbd>WASD</kbd> move · <kbd>Shift</kbd> push pace · <kbd>Space</kbd> self-arrest · <kbd>C</kbd> clip/unclip rope · mouse look (click) · wheel zoom ·
-  <kbd>V</kbd> view · <kbd>T</kbd> time speed · <kbd>1</kbd>–<kbd>9</kbd> jump to camp · <kbd>F</kbd> scout fly · <kbd>R</kbd> rescue · <kbd>M</kbd> mute
+  <kbd>V</kbd> view · <kbd>T</kbd> time speed · <kbd>1</kbd>–<kbd>9</kbd> jump to camp · <kbd>F</kbd> scout fly · <kbd>R</kbd> rescue · <kbd>G</kbd> change weather · <kbd>M</kbd> mute
 </div>
 
 <div id="death" hidden>
@@ -53,6 +61,7 @@
     <p>You're at Base Camp on the Godwin-Austen Glacier, 5,000 m. The real mountain, from satellite elevation data.</p>
     <p>Unroped, you can't go up anything steeper than 30°, and from 22° a slip becomes a real fall, worst on ice. Clip into the fixed ropes with <kbd>C</kbd>: you can still move around, and the rope gets you up steep ground, speeds you along it and catches you if you slip.</p>
     <p>The air thins as you go: pace drops to under 100 m an hour near the summit, and your stamina drains faster and refills slower. Hard falls cost health; lose it all and you die.</p>
+    <p>The weather changes: clear days, cloud, high winds, fog, afternoon snowstorms and whiteouts. Fresh snow loads the slopes and avalanches come down; in a camp you hear the forecast on the radio.</p>
     <p>The mountain clock runs 10× real time (<kbd>T</kbd> to change). Press <kbd>2</kbd> to jump to the foot of the ropes.</p>
     <button id="go">Start climbing</button>
   </div>

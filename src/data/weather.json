@@ -37,7 +37,7 @@
   "clear_night_extra_c": -4,
 
   "_wind": "Calm low down, rising toward the jet stream near the summit. Ridges and high shoulders catch it all; hollows and couloirs are sheltered. Gusts come every few seconds of real time. Direction drifts around the prevailing westerly.",
-  "wind_low_m_s": 3,
+  "wind_low_m_s": 4,
   "wind_high_m_s": 13,
   "wind_low_alt": 5000,
   "wind_high_alt": 8600,
@@ -45,7 +45,7 @@
   "direction_wander_deg": 50,
   "ridge_sample_m": 160,
   "ridge_full_m": 45,
-  "sheltered_mult": 0.35,
+  "sheltered_mult": 0.5,
   "gust_strength": 0.6,
 
   "_wind_on_climber": "Wind above push_from_m_s pushes you downwind (push_m_s per m/s, real time, more when standing on steep ground) and headwind slows you. Gusts over knockdown_m_s can throw you off balance on steep unroped ground. On the rope the push is a third.",
