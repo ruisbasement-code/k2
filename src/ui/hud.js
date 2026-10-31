@@ -4,6 +4,7 @@
 import { Mode, CLIP_RANGE } from '../player/climber.js';
 import { partOfDay } from '../world/sky.js';
 import { tuning } from '../sim/paceModel.js';
+import { compass, dangerLabel } from '../sim/weather.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -94,6 +95,30 @@ export class Hud {
     const word = body.breathRate < 22 ? 'calm' : body.breathRate < 38 ? 'heavy' : 'gasping';
     $('breath-text').textContent = `Breathing ${Math.round(body.breathRate)}/min, ${word}`;
     $('prompt').textContent = this._prompt();
+    this._weather();
+  }
+
+  /** Weather where you are, and the radio forecast while you are in a camp. */
+  _weather() {
+    const c = this.climber;
+    const w = c.conditions;
+    if (!w) return;
+    $('wx').textContent = w.inCloud > 0.5 && w.key === 'cloudy' ? 'In the cloud' : w.label;
+    $('wx-temp').textContent = `${Math.round(w.airC)} °C`;
+    $('wx-chill').textContent = `${Math.round(w.windChillC)} °C`;
+    $('wx-wind').textContent = `${Math.round(w.gust * 3.6)} km/h ${compass(w.windFromDeg)}`;
+    const v = w.visibility;
+    $('wx-vis').textContent = v >= 10000 ? `${Math.round(v / 1000)} km` : v >= 1000 ? `${(v / 1000).toFixed(1)} km` : `${Math.round(v / 10) * 10 || 5} m`;
+    const aval = $('wx-aval');
+    aval.textContent = dangerLabel(w.avalancheDanger);
+    aval.className = `danger-${Math.min(5, Math.floor(w.avalancheDanger * 5) + 1)}`;
+    const camp = c._campNearby();
+    const box = $('forecast');
+    box.hidden = !camp || !c.weather;
+    if (!box.hidden && (this._forecastAt ?? -1e9) < c.mountainSeconds - 1800) {
+      this._forecastAt = c.mountainSeconds;
+      box.innerHTML = `<b>Radio forecast</b> · ${c.weather.forecastText(c.mountainSeconds)}`;
+    }
   }
 
   _body() {
@@ -150,6 +175,9 @@ export class Hud {
     if (ph.core < tuning.hypothermia_mild_c) return 'Hypothermic. Keep moving, or get into a tent and sleep.';
     if (ph.hydration < 30) return 'Dehydrated. Drink (H), or melt snow in a tent (K).';
     if (ph.food < tuning.low_sugar_below) return 'Low on energy. Eat a snack (B).';
+    const w = c.conditions;
+    if (w && w.visibility < 40) return 'Whiteout: you can barely see your feet. Stay on the rope or wait it out.';
+    if (w && w.gust > 22 && c.slope > tuning.climb_start_deg && !c.clipped) return 'Violent gusts on steep ground: clip in or get off the ridge.';
     if (c.health < 50) return 'Injured. Rest to heal, faster in a camp, or sleep in a tent.';
     if (body.stamina < 25) return 'Nearly spent. Stop and rest.';
     return '';

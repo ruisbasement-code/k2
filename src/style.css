@@ -49,6 +49,11 @@ canvas#c { display: block; width: 100vw; height: 100vh; }
 #breath-dial { width: 30px; height: 30px; display: grid; place-items: center; }
 #breath-ring { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.7); }
 #map-panel { top: 12px; right: 12px; padding: 6px; }
+#forecast { top: 58px; left: 50%; transform: translateX(-50%); max-width: 520px; text-align: center; color: var(--muted); }
+#forecast[hidden] { display: none; }
+#forecast b { color: var(--text); }
+.danger-3 { color: #ffb347 !important; }
+.danger-4, .danger-5 { color: var(--low) !important; }
 #map { display: block; width: 180px; height: 180px; border-radius: 6px; }
 #vignette { position: fixed; inset: 0; pointer-events: none; --inner: 55%; opacity: 0.25;
   background: radial-gradient(ellipse at center, transparent var(--inner), rgba(3, 5, 10, 0.95) 100%); }

@@ -3,6 +3,7 @@
 //
 // For screenshots and testing, URL parameters set up a view, e.g.
 // ?place=3&rope&yaw=200&pitch=10&dist=8&fp&fly=600&hour=18&start
+// and for the weather ?weather=storm&seed=4&avalanche
 
 import * as THREE from 'three';
 import './style.css';
@@ -21,6 +22,9 @@ import { Hud } from './ui/hud.js';
 import { Sky } from './world/sky.js';
 import { RockfallMesh, FootprintMesh, LedgeMesh } from './world/hazardMeshes.js';
 import { Tether } from './world/tether.js';
+import { Weather, weatherTuning } from './sim/weather.js';
+import { Precipitation, AvalancheMesh } from './world/weatherView.js';
+import { WindAudio } from './player/windAudio.js';
 
 const EYE_HEIGHT = 1.65;
 
@@ -57,12 +61,17 @@ const ledges = new LedgeMesh(hm);
 scene.add(ledges);
 const tether = new Tether(hm);
 scene.add(tether);
+const precipitation = new Precipitation();
+scene.add(precipitation);
+const avalancheMesh = new AvalancheMesh(climber.avalanches);
+scene.add(avalancheMesh);
 const model = new ClimberModel();
 scene.add(model);
 const ragdoll = new Ragdoll(model);
 const hud = new Hud(hm, climber, route.places);
 climber.onMessage = (t) => hud.showMessage(t);
 const audio = new BreathAudio(climber.body);
+const wind = new WindAudio();
 const input = new Input(canvas);
 const view = { pitch: -0.2, distance: 7, firstPerson: false, gait: 0, time: 0 };
 
@@ -91,7 +100,17 @@ input.on('KeyO', () => climber.cycleOxygen());
 input.on('KeyP', () => climber.takeDex());
 input.on('KeyG', () => climber.resupply());
 input.on('KeyY', () => climber.cycleTurnaround());
-input.on('KeyM', () => { audio.muted = !audio.muted; hud.showMessage(audio.muted ? 'Breathing muted' : 'Breathing on'); });
+input.on('KeyM', () => {
+  audio.muted = wind.muted = !audio.muted;
+  hud.showMessage(audio.muted ? 'Sound muted' : 'Sound on');
+});
+// Dev tool: step through the kinds of weather.
+input.on('KeyN', () => {
+  const keys = Object.keys(weatherTuning.conditions);
+  const next = keys[(keys.indexOf(climber.weather.current.key) + 1) % keys.length];
+  climber.weather.force(next, 12);
+  hud.showMessage(`Weather: ${weatherTuning.conditions[next].label}`);
+});
 
 teleport(0);
 hud.showMessage('K2 Base Camp, 5,000 m. The fixed ropes start at Advanced Base Camp (2).');
@@ -103,12 +122,16 @@ if (params.has('dist')) view.distance = +params.get('dist');
 if (params.has('fp')) view.firstPerson = true;
 if (params.has('fly')) { climber.toggleFly(); climber.position.y += +params.get('fly'); }
 if (params.has('hour')) climber.mountainSeconds = +params.get('hour') * 3600;
+climber.weather = new Weather(params.has('seed') ? +params.get('seed') : Math.floor(Math.random() * 1e9), climber.mountainSeconds);
+if (params.has('weather')) climber.weather.force(params.get('weather'), 48);
+if (params.has('avalanche')) climber.avalanches.releaseAbove(climber.position.x, climber.position.z);
 
 loading.remove();
 const start = document.getElementById('start');
 document.getElementById('go').onclick = () => {
   start.remove();
   audio.start();
+  wind.start();
   canvas.requestPointerLock?.();
 };
 if (params.has('start')) start.remove();
@@ -134,7 +157,7 @@ function updateCamera() {
     camera.lookAt(_eye);
   }
   sway(camera);
-  sky.update(climber.hour, p, camera.position);
+  sky.update(climber.hour, p, camera.position, climber.conditions);
 }
 
 /**
@@ -265,6 +288,9 @@ function frame(now) {
   updateTether(dt);
   updateCamera();
   audio.update();
+  wind.update(climber.conditions);
+  precipitation.update(dt, camera.position, climber.conditions);
+  avalancheMesh.update();
   camps.userData.update(now / 1000);
   hud.update(dt);
   renderer.render(scene, camera);
@@ -278,4 +304,4 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__k2 = { climber, hm, ropes, teleport, view, tether };
+window.__k2 = { climber, hm, ropes, teleport, view, tether, weather: climber.weather };

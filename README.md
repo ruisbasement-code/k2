@@ -55,7 +55,8 @@ https://ruisbasement-code.github.io/k2/.
 | T | Time speed: 1×, 5×, 10× (default), 20×, 60× |
 | 1 – 9 | Jump to Base Camp, ABC, Camps 1–4, Bottleneck, Summit, Broad Peak |
 | F | Scout fly (dev tool; E/Space up, Q down) |
-| M | Mute breathing |
+| N | Next weather (dev tool): clear, cloudy, high winds, fog, snow, storm, whiteout |
+| M | Mute breathing and wind |
 | Esc | Release the mouse |
 
 ## How movement works
@@ -232,6 +233,52 @@ after that time, the game tells you to go down, summit or not.
 air. Add effects with `climber.effects.set(id, {label, speed, effort, slip, staminaCap})`.
 They show up on the conditions list and multiply into movement.
 
+## Weather
+
+![A snowstorm on the Abruzzi Spur](docs/screenshots/snowstorm.png)
+
+The weather comes in spells: **clear**, **cloudy**, **high winds**, **fog**, **snowing**,
+**snowstorm** and **whiteout**. Each lasts from under an hour (a whiteout) to more than a day
+(a long clear window or a big storm), and the next one is picked from what usually follows,
+with snow and storms much more likely to build in the afternoon. Most spells fade in over
+half an hour or more; a whiteout closes in within minutes. The weather is a seeded timeline,
+so the same `?seed=` gives the same season.
+
+- **Temperature** swings from about −7 °C before dawn to +5 °C mid-afternoon at Base Camp
+  and drops 6.5 °C per kilometre of height: about −25 °C or colder on the summit at night.
+  Clear nights are colder, cloud keeps the warmth in, storms are 8 °C colder.
+- **Wind** is light low down and rises toward the jet stream near the summit. Ridges and
+  crests catch all of it, hollows and couloirs are sheltered, and it gusts every few
+  seconds. It mostly blows from the west. Over about 40 km/h it pushes you downwind (a
+  third as much on the rope), walking into it slows you, and gusts over about 85 km/h can
+  throw you off steep unroped ground. **Feels like** is the wind chill.
+- **Visibility** follows the weather: 60 km on a clear day, under 200 m in a storm, tens of
+  metres in fog and about 10 m in a whiteout, where sky and snow merge into one grey.
+  On cloudy days a cloud band sits between about 6,300 and 7,600 m, so you climb up into it
+  and out above it. Fog and cloud drift through, so visibility comes and goes over minutes,
+  and strong wind lifts spindrift off the ridges. Falling and blowing snow streams past with
+  the wind, and you hear the wind rise and fall with the gusts.
+- **Avalanches.** Snowfall builds up fresh snow, the wind drifts it into slabs, and both
+  settle over a few days, faster when it's warm. The HUD shows the danger on the usual
+  scale (Low, Moderate, Considerable, High, Extreme). Slabs break on snow slopes between
+  28° and 50°: natural slides start somewhere above you, and crossing a loaded slope can
+  break one under your feet. The debris pours down the fall line under a powder cloud.
+  If it reaches you, you're swept away tumbling and carried with it; on the rope it pours
+  over you and the rope holds. Half the time you end up buried and lose time and health
+  digging out.
+- **Serac fall.** Ice breaks off the hanging serac above the Bottleneck now and then, most
+  in the warmth of the afternoon, and the blocks come down the couloir.
+- **Radio forecast.** In a camp a box under the clock gives the forecast for the next day
+  and a half. It is usually right about what is coming but can be a few hours off on when.
+
+![A whiteout at Camp 4](docs/screenshots/whiteout.png)
+![An avalanche on the Abruzzi Spur](docs/screenshots/avalanche.png)
+
+The weather where the climber is lives in `climber.conditions` (air temperature, wind
+chill, wind and gusts, visibility, snowfall, how exposed the spot is, fresh snow and
+avalanche danger), for the HUD and for the body's survival systems to read. All the
+weather numbers are in [`src/data/weather.json`](src/data/weather.json).
+
 ## Terrain
 
 The terrain shader blends rock, scree, glacier, snow and ice from slope, altitude
@@ -264,19 +311,22 @@ and curvature:
 ```
 index.html            HUD and start screen markup
 src/main.js           scene, camera, game loop, key bindings
-src/data/             route.json (camps, fixed-rope lines), tuning.json (all movement numbers)
-src/sim/              paceModel.js, climberBody.js, hazards.js (loose rock, rockfall, snow trail): pure rules, no graphics
+src/data/             route.json (camps, fixed-rope lines), tuning.json (all movement numbers), weather.json
+src/sim/              paceModel.js, climberBody.js, hazards.js (loose rock, rockfall, snow trail),
+                      weather.js (weather timeline, temperature, wind, visibility, snowpack), avalanche.js: pure rules, no graphics
 src/world/            heightmap.js, terrain.js (mesh + shader), fixedRopes.js, sky.js, hazardMeshes.js,
-                      camps.js (layouts), campProps.js (tents, flags, gear), propBatch.js
-src/player/           climber.js (movement, ropes, falls, health), climberModel.js, ragdoll.js, breathAudio.js, input.js
+                      camps.js (layouts), campProps.js (tents, flags, gear), propBatch.js,
+                      weatherView.js (falling snow, avalanche clouds)
+src/player/           climber.js (movement, ropes, falls, health), climberModel.js, ragdoll.js, breathAudio.js, windAudio.js, input.js
 src/ui/hud.js         HUD, minimap, breath ring, vision vignette
 public/data/          the heightmap (float32) and its metadata
-tests/                Vitest: pace and stamina, simulated climbs, ropes, slopes, falls, death and rescue, hazards, sleep, survival
+tests/                Vitest: pace and stamina, simulated climbs, ropes, slopes, falls, death and rescue, hazards, sleep, survival, weather and avalanches
 ```
 
 URL parameters set up a view for screenshots and testing, for example
 `http://localhost:5173/?start&place=3&rope&pitch=10&dist=8`
-(also `yaw=`, `fp`, `fly=<metres>`, `hour=<0-24>`).
+(also `yaw=`, `fp`, `fly=<metres>`, `hour=<0-24>`, and `weather=storm`, `seed=<n>`,
+`avalanche` to set off a slide above you).
 
 ## Data
 

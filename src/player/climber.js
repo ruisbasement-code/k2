@@ -24,6 +24,13 @@
 // drops you until it comes tight. How you land in a slide (front or back, head or
 // feet first) decides how well you can self-arrest.
 //
+// Weather (when a Weather is attached): strong wind pushes you downwind and
+// slows you into it, and a hard gust can throw you off steep ground. Avalanches
+// come down from loaded slopes above, or break under your feet, and sweep you
+// away; ice breaks off the serac above the Bottleneck in the warmth of the day.
+// `conditions` holds the weather where you are (temperature, wind chill, wind,
+// visibility, avalanche danger) for the HUD and the body's survival systems.
+//
 // Movement is simulated in mountain time: the world clock runs timeScale times
 // faster than real time, so a realistic 400 m per hour still gets you somewhere.
 // This class has no rendering in it, so tests can drive it directly.
@@ -36,6 +43,8 @@ import { Physiology } from '../sim/physiology.js';
 import { Pack } from '../sim/pack.js';
 import { airAt } from '../sim/environment.js';
 import { SnowTrail, Rockfall, isLoose, ledgeAt } from '../sim/hazards.js';
+import { weatherTuning as W } from '../sim/weather.js';
+import { Avalanches, isSlabSlope } from '../sim/avalanche.js';
 
 const { tuning } = Pace;
 const DEG = 180 / Math.PI;
@@ -141,6 +150,14 @@ export class Climber {
     this.shake = 0;
     this.trail = new SnowTrail();
     this.rockfall = new Rockfall(hm);
+    /** The mountain's weather (sim/weather.js), or null for none. */
+    this.weather = null;
+    /** The weather where the climber is, from Weather.conditionsAt; null without weather. */
+    this.conditions = null;
+    this.avalanches = new Avalanches(hm);
+    const [sr, sc] = W.serac_grid;
+    const [sx, sz] = hm.gridToWorld(sr, sc);
+    this.serac = new THREE.Vector3(sx, hm.heightAt(sx, sz), sz);
     this.onMessage = () => {};
     this._altLog = [];
     this._logTimer = 0;
@@ -550,8 +567,10 @@ export class Climber {
     this.blocked = false;
     this.moving = false;
     const startY = this.position.y;
+    const wasFalling = this.falling;
 
     if (this.mode === Mode.FLY) {
+      this._weatherStep(dt, dtM, false);
       this._fly(dt, input);
       this.effort = 0;
       return;
@@ -571,6 +590,7 @@ export class Climber {
       this._noteCamp();
     }
     this._rocks(dt, dtM);
+    this._weatherStep(dt, dtM, wasFalling);
     this.shake *= Math.exp(-dt * 2.5);
     if (this.dead) return;
     this._stepBody(dtM / 3600, this.effort);
@@ -641,6 +661,7 @@ export class Climber {
         if (rope) target = this._ropeAssist(target, dir, grade, rope);
         target *= amount * this.body.speedFactor() * this.mods.speed;
         if (this.pushing) target *= Pace.pushFactor(this.breathAltitude);
+        target *= this._windPace(dir);
       }
       // Turning sharply costs the speed you had built up.
       const turn = dir.dot(this.moveDir);
@@ -721,6 +742,7 @@ export class Climber {
     }
     const turning = this._stepDir.lengthSq() > 0 && this._stepDir.dot(dir) < Math.cos(t.turn_step_deg / DEG);
     this._stepDir.copy(dir);
+    this._maybeTriggerSlab();
     if (this._footingSlope(this.slope, this.onLedge) <= t.climb_start_deg) return false;
 
     const clipped = this.clipped;
@@ -1020,6 +1042,140 @@ export class Climber {
     if (this.dead || this.falling || damage < t.rock_knockoff_damage || this.slope < t.climb_start_deg) return;
     const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
     this._slip(gx, gz, `${what} knocked you off your feet!`);
+  }
+
+  /**
+   * The weather around you: wind pushing and gusting, avalanches and serac fall.
+   * Wind and debris move in real seconds; the chance of a slide or calving is per
+   * mountain hour.
+   */
+  _weatherStep(dt, dtM, wasFalling) {
+    const w = this.weather;
+    if (w) {
+      w.update(this.mountainSeconds, dt);
+      const c = (this.conditions = w.conditionsAt(this.hm, this.position, this.hour));
+      // The survival systems' air (when they are present) follows the weather.
+      if (this.environment) Object.assign(this.environment, { airTempC: c.airC, windMs: c.wind, wet: Math.max(c.snowfall, c.spindrift * 0.5) });
+    }
+    const fly = this.mode === Mode.FLY;
+    const c = this.conditions;
+    if (w && !this.dead && !fly) {
+      if (!this.falling) this._wind(dt, c);
+      const natural = W.natural_per_hour * c.avalancheDanger ** 2;
+      if (Math.random() < (natural * dtM) / 3600) {
+        const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour);
+        if (slide) this._announceSlide(slide);
+      }
+      this._seracFall(dtM, c);
+    }
+    if (this.avalanches.active) {
+      const body = this.position.clone();
+      body.y += 0.9;
+      const hit = this.avalanches.step(dt, this.dead || fly ? null : body);
+      if (hit) this._caughtInAvalanche(hit);
+      // Debris carries you along with it.
+      if (this.falling && this.fall.avalanche) {
+        const blob = this.avalanches.nearestMoving(this.position, 20);
+        if (blob) this.velocity.lerp(blob.velocity, 1 - Math.exp(-dt * 1.5));
+      }
+    }
+    if (wasFalling && !this.falling && !this.dead && this.fall?.avalanche) {
+      this.fall.avalanche = false;
+      if (Math.random() < W.burial_chance) {
+        this._hurt(W.burial_damage, 'You were buried by the avalanche.');
+        this.mountainSeconds += 1200;
+        if (!this.dead) this.onMessage(`Buried! It took twenty minutes to dig yourself out of the debris. Health ${Math.round(this.health)}.`);
+      }
+    }
+  }
+
+  /** Strong wind pushes you downwind; a hard gust can throw you off steep ground. */
+  _wind(dt, c) {
+    const over = c.gust - W.push_from_m_s;
+    if (over <= 0 || this.dead) return;
+    const steep = this.slope > tuning.climb_start_deg;
+    const push = over * W.push_m_s_per_m_s * (this.clipped ? 1 / 3 : 1) * (steep && !this.moving ? 1.5 : 1);
+    this.position.x += c.windX * push * dt;
+    this.position.z += c.windZ * push * dt;
+    this.hm.clampInside(this.position);
+    this.position.y = this.hm.heightAt(this.position.x, this.position.z);
+    if (this.clipped) this._keepOnLeash();
+    const hard = c.gust - W.knockdown_m_s;
+    if (hard > 0 && !this.clipped && steep && Math.random() < W.knockdown_per_s * (hard / 6) * dt) {
+      const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
+      this._slip(gx, gz, 'A gust threw you off balance! Hold Space to self-arrest.');
+    }
+  }
+
+  /** Walking into the wind slows you; with it at your back, a little faster. */
+  _windPace(dir) {
+    const c = this.conditions;
+    if (!c) return 1;
+    const along = dir.x * c.windX + dir.z * c.windZ;
+    const into = Math.max(0, -along) * c.wind;
+    return Math.min(Math.max(1 - W.headwind_slow_per_m_s * into + 0.004 * Math.max(0, along) * c.wind, 0.3), 1.1);
+  }
+
+  /** A step onto a loaded slope can break the slab you're standing on. */
+  _maybeTriggerSlab() {
+    const c = this.conditions;
+    if (!c || !isSlabSlope(this.hm, this.position.x, this.position.z, this.hour)) return;
+    if (Math.random() >= W.trigger_per_step * c.avalancheDanger ** 2) return;
+    const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
+    const g = Math.hypot(gx, gz) || 1;
+    const [w0, w1] = W.slab_width_m;
+    const slide = this.avalanches.release(this.position.x + (gx / g) * 12, this.position.z + (gz / g) * 12, w0 + (w1 - w0) * Math.random());
+    if (slide) {
+      this.shake = 1;
+      this.onMessage('Whumpf! The slope fractured under your feet. Avalanche!');
+    }
+  }
+
+  _announceSlide(slide) {
+    const d = slide.origin.distanceTo(this.position);
+    if (d > 1200) return;
+    this.shake = Math.max(this.shake, Math.min(1, 300 / d));
+    const above = slide.origin.y > this.position.y + 20;
+    this.onMessage(above ? `Avalanche! A slope ${Math.round(d)} m above you has broken loose.` : `An avalanche thunders down ${Math.round(d)} m away.`);
+  }
+
+  /** Ice calves off the serac above the Bottleneck, most in the warm afternoon. */
+  _seracFall(dtM, c) {
+    if (!W.serac_enabled) return;
+    const s = this.serac;
+    const near = Math.hypot(s.x - this.position.x, s.z - this.position.z);
+    if (near > W.serac_near_m) return;
+    const warm = Math.max(0, 1 - Math.abs(this.hour - 14) / 5);
+    if (Math.random() >= (W.serac_per_hour * (1 + W.serac_warm_mult * warm) * dtM) / 3600) return;
+    const [gx, gz] = this.hm.gradient(s.x, s.z);
+    const g = Math.hypot(gx, gz) || 1;
+    const down = new THREE.Vector3(-gx / g, 0, -gz / g);
+    const n = 3 + Math.floor(Math.random() * 6);
+    for (let i = 0; i < n; i++) {
+      const at = s.clone().add(new THREE.Vector3((Math.random() - 0.5) * 20, 1, (Math.random() - 0.5) * 20));
+      this.rockfall.release(at, down.clone().multiplyScalar(2 + Math.random() * 3), 0.4 + Math.random() * 1.0, true);
+    }
+    this.shake = Math.max(this.shake, 0.4);
+    this.onMessage('A crack like a gunshot: the serac above is calving! Ice is coming down the Bottleneck.');
+  }
+
+  /** Hit by avalanche debris: swept away, or held on the rope while it pours over you. */
+  _caughtInAvalanche(blob) {
+    this.shake = 1;
+    if (this.clipped) {
+      this._hurt(W.rope_hold_damage, 'You were battered by an avalanche on the rope.');
+      if (!this.dead) this.onMessage(`The avalanche poured over you, but the rope held. Health ${Math.round(this.health)}.`);
+      return;
+    }
+    if (!this.falling) {
+      const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
+      this._startFall(gx, gz, 'Avalanche! You are swept away. Fight to stay on top!');
+    }
+    this.velocity.copy(blob.velocity);
+    this.fall.phase = 'tumble';
+    this.fall.arresting = false;
+    this.fall.avalanche = true;
+    this._hurt(W.catch_damage, 'You were swept away by an avalanche.');
   }
 
   _tumble(why = "You're tumbling out of control!") {
