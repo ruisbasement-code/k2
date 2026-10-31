@@ -20,7 +20,7 @@ import { tuning } from '../sim/paceModel.js';
 import { moraineAt } from './terrainDetail.js';
 
 /** How many open holes the terrain shader can cut out at once. */
-export const MAX_TERRAIN_HOLES = 48;
+export const MAX_TERRAIN_HOLES = 32;
 
 export function createTerrain(hm) {
   const { n, cell } = hm;
@@ -73,6 +73,8 @@ export function createTerrain(hm) {
     uHoleA: { value: Array.from({ length: MAX_TERRAIN_HOLES }, () => new THREE.Vector4()) },
     uHoleB: { value: Array.from({ length: MAX_TERRAIN_HOLES }, () => new THREE.Vector4()) },
     uHoleCount: { value: 0 },
+    // A circle around all of them, so the rest of the mountain skips the test.
+    uHoleBounds: { value: new THREE.Vector4(0, 0, -1, 0) },
   };
   const terrain = new THREE.Mesh(geo, terrainMaterial(false, holes));
   terrain.receiveShadow = true;
@@ -94,6 +96,11 @@ export function createTerrain(hm) {
       holes.uHoleB.value[i].set(h.half, h.width, h.kind === 'pit' || h.kind === 'moulin' ? 1 : 0, h.bend ?? 0);
     }
     holes.uHoleCount.value = n;
+    let cx = 0, cz = 0;
+    for (let i = 0; i < n; i++) { cx += list[i].x / n; cz += list[i].z / n; }
+    let r = -1;
+    for (let i = 0; i < n; i++) r = Math.max(r, Math.hypot(list[i].x - cx, list[i].z - cz) + list[i].half + Math.abs(list[i].bend ?? 0) + list[i].width);
+    holes.uHoleBounds.value.set(cx, cz, r, 0);
   };
   return group;
 }
@@ -317,14 +324,17 @@ float cracks(vec3 p, vec3 n, float scale) {
 uniform vec4 uHoleA[TERRAIN_HOLES];
 uniform vec4 uHoleB[TERRAIN_HOLES];
 uniform int uHoleCount;
+uniform vec4 uHoleBounds;
 
 // Inside an open crevasse (a lens tapering to its ends) or pit (a circle)?
 bool inHole(vec2 p) {
+  if (distance(p, uHoleBounds.xy) > uHoleBounds.z) return false;
   for (int i = 0; i < TERRAIN_HOLES; i++) {
     if (i >= uHoleCount) break;
     vec4 a = uHoleA[i];
     vec4 b = uHoleB[i];
     vec2 d = p - a.xy;
+    if (dot(d, d) > (b.x + b.y + abs(b.w)) * (b.x + b.y + abs(b.w))) continue;
     float u = dot(d, a.zw);
     if (abs(u) >= b.x) continue;
     float t = u / b.x;

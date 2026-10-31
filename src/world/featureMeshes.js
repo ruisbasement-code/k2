@@ -141,7 +141,7 @@ export class FeatureMeshes extends THREE.Group {
     this.features = features;
     this.terrain = terrain;
     this.ropes = ropes;
-    this.radius = 600;
+    this.radius = 350;
     this.centre = new THREE.Vector3(1e9, 0, 1e9);
     this.version = -1;
 
@@ -162,7 +162,7 @@ export class FeatureMeshes extends THREE.Group {
 
     this.holes = new THREE.Mesh(new THREE.BufferGeometry(), this.holeMat);
     this.lips = new THREE.Mesh(new THREE.BufferGeometry(), this.lipMat);
-    this.lips.castShadow = this.lips.receiveShadow = true;
+    this.lips.receiveShadow = true;
     this.lips.frustumCulled = false;
     this.add(this.lips);
     this.bridges = new THREE.Mesh(new THREE.BufferGeometry(), this.bridgeMat);
@@ -301,38 +301,46 @@ export class FeatureMeshes extends THREE.Group {
       along(pts, tuning.path_light_every_m * 0.7, 1.6);
     }
     if (!spots.length) return;
-    const n = spots.length;
-    const post = new THREE.InstancedMesh(
-      new THREE.CylinderGeometry(0.035, 0.05, 1.3, 6).translate(0, 0.65, 0),
-      new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.6, metalness: 0.5 }), n);
-    const lamp = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(0.11, 10, 8).translate(0, 1.38, 0),
-      new THREE.MeshBasicMaterial({ color: 0xffd38a, toneMapped: false }), n);
-    spots.forEach((p, i) => {
-      _m.makeTranslation(p.x, p.y - 0.15, p.z);
-      post.setMatrixAt(i, _m);
-      lamp.setMatrixAt(i, _m);
-    });
-    for (const m of [post, lamp]) {
-      m.computeBoundingSphere();
-      this.add(m);
-    }
-    post.castShadow = true;
-    // The glow: a soft warm halo around each lamp, drawn over the fog.
-    // A halo that scales with distance, and a small core that stays a few pixels
-    // wide however far away, so the line of lights reads across the glacier.
-    const at = new THREE.BufferGeometry().setFromPoints(spots.map((p) => new THREE.Vector3(p.x, p.y + 1.23, p.z)));
+    // In small groups, so each group is culled when it's off screen or far away.
+    const postGeo = new THREE.CylinderGeometry(0.035, 0.05, 1.3, 6).translate(0, 0.65, 0);
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.6, metalness: 0.5 });
+    const lampGeo = new THREE.SphereGeometry(0.11, 8, 6).translate(0, 1.38, 0);
+    const lampMat = new THREE.MeshBasicMaterial({ color: 0xffd38a, toneMapped: false });
+    // The glow: a halo that scales with distance, and a small core that stays a
+    // few pixels wide however far away, drawn over the fog so it shows in storms.
     const map = glowTexture();
-    const glow = (size, attenuate, color) => {
-      const pts = new THREE.Points(at, new THREE.PointsMaterial({
-        size, sizeAttenuation: attenuate, map, color,
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false,
-      }));
-      pts.frustumCulled = false;
-      this.add(pts);
-    };
-    glow(5, true, 0xffb85c);
-    glow(7, false, 0xffd9a0);
+    const glowMat = (size, attenuate, color) => new THREE.PointsMaterial({
+      size, sizeAttenuation: attenuate, map, color,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false,
+    });
+    const halo = glowMat(5, true, 0xffb85c), core = glowMat(6, false, 0xffd9a0);
+    this.lightGroups = [];
+    const size = 8;
+    for (let g = 0; g < spots.length; g += size) {
+      const group = spots.slice(g, g + size);
+      const lamps = new THREE.Group();
+      const post = new THREE.InstancedMesh(postGeo, postMat, group.length);
+      const lamp = new THREE.InstancedMesh(lampGeo, lampMat, group.length);
+      group.forEach((p, i) => {
+        _m.makeTranslation(p.x, p.y - 0.15, p.z);
+        post.setMatrixAt(i, _m);
+        lamp.setMatrixAt(i, _m);
+      });
+      post.computeBoundingSphere();
+      lamp.computeBoundingSphere();
+      const at = new THREE.BufferGeometry().setFromPoints(group.map((p) => new THREE.Vector3(p.x, p.y + 1.23, p.z)));
+      at.computeBoundingSphere();
+      lamps.add(post, lamp, new THREE.Points(at, halo), new THREE.Points(at, core));
+      lamps.userData.centre = at.boundingSphere.center.clone();
+      this.lightGroups.push(lamps);
+      this.add(lamps);
+    }
+  }
+
+  /** Hide the lights beyond their draw distance. */
+  _cullLights(position) {
+    const far = tuning.path_light_draw_m;
+    for (const g of this.lightGroups ?? []) g.visible = g.userData.centre.distanceTo(position) < far;
   }
 
   /**
@@ -389,7 +397,8 @@ export class FeatureMeshes extends THREE.Group {
   /** Rebuild what's near the climber when they move or something collapses. */
   update(position) {
     this.icefall.update();
-    const moved = Math.hypot(position.x - this.centre.x, position.z - this.centre.z) > 60;
+    this._cullLights(position);
+    const moved = Math.hypot(position.x - this.centre.x, position.z - this.centre.z) > 80;
     if (!moved && this.version === this.features.version) return;
     this.centre.copy(position);
     this.version = this.features.version;
