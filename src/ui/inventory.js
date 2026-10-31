@@ -12,7 +12,7 @@ export const DEVICES = ['gps', 'monitor', 'map'];
 export const SIGNALS = ['flares', 'strobe', 'whistle'];
 
 /** Hotbar order: what you'd reach for, first nine you carry get keys 1 to 9. */
-const HOTBAR = ['gps', 'monitor', 'map', 'axe', 'snack', 'water', 'oxygen', 'firstaid', 'flares', 'strobe', 'whistle', 'dex', 'warmers', 'radio'];
+const HOTBAR = ['gps', 'monitor', 'map', 'axe', 'poles', 'snack', 'water', 'oxygen', 'firstaid', 'flares', 'strobe', 'whistle', 'dex', 'warmers', 'radio'];
 
 /** The items on the hotbar right now, [{id, label, count}]. Collapsed, the signals come first. */
 export function hotbarItems(climber) {

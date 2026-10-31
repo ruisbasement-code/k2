@@ -31,7 +31,7 @@ export const GEAR = {
   rope: { label: 'Rope, 30 m', kg: 2.2, litres: 6, group: 'Climbing', note: 'With screws or pickets, protect a steep pitch (E). Climb out of crevasses.' },
   screws: { label: 'Ice screws ×4', kg: 0.6, litres: 1.5, group: 'Climbing', note: 'Protection on ice and glacier ice. Needs the rope.' },
   pickets: { label: 'Snow pickets ×2', kg: 0.7, litres: 2, group: 'Climbing', note: 'Protection in snow. Needs the rope.' },
-  poles: { label: 'Trekking poles', kg: 0.5, litres: 1, group: 'Climbing', note: 'Easier walking on gentle ground.' },
+  poles: { label: 'Trekking poles', kg: 0.5, litres: 1, group: 'Climbing', note: 'Faster, less tiring walking on gentle ground. On steep ground they skate: use the axe.' },
   probe: { label: 'Avalanche probe', kg: 0.3, litres: 1, group: 'Climbing', note: 'Probe for hidden crevasses (X). An axe shaft works too.' },
   tent: { label: 'Storm tent', kg: 2.4, litres: 9, group: 'Shelter', note: 'Pitch it anywhere not too steep (Z), then sleep and cook in it.' },
   tent_ul: { label: 'Ultralight storm tent', kg: 1.3, litres: 5, group: 'Shelter', unlock: true, replaces: 'tent', note: 'Same shelter, half the weight and room.' },
@@ -159,6 +159,7 @@ export class Expedition {
     if (pack.gear.has(id)) {
       pack.gear.delete(id);
       if (id === 'axe' || id === 'axe_tech') this.c.axe = { have: false, inHand: false, drawing: 0, dangling: 0 };
+      if (id === 'poles') this.c.poles.inHand = false;
       return true;
     }
     if (!this.fits(id)) return false;
@@ -168,6 +169,8 @@ export class Expedition {
     for (const [k, o] of Object.entries(GEAR)) if (o.replaces === id) pack.gear.delete(k);
     pack.gear.add(id);
     if (id === 'axe' || id === 'axe_tech') this.c.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
+    // Bought for the walk in: poles come out in your hands, the axe stays on the pack.
+    if (id === 'poles') this.c.poles.inHand = !this.c.axe.inHand;
     return true;
   }
 
@@ -411,7 +414,8 @@ export class Expedition {
       : !crampons ? { label: 'No crampons', slip: tuning.no_crampons_slip, speed: ICE.has(key) ? 0.85 : 1 }
         : pack.gear.has('crampons_pro') ? { slip: 0.75 } : null);
     set('gear:axe', pack.gear.has('axe_tech') && c.axeReady ? { slip: 0.8 } : null);
-    set('gear:poles', pack.gear.has('poles') && c.mode === 'walk' && !c.axeReady ? { effort: 0.92 } : null);
+    if (!pack.gear.has('poles')) c.poles.inHand = false;
+    set('gear:poles', c.polesOnSteep ? { label: 'Poles on steep ground' } : null);
     if (this.anchor && !this.protectedNow) this.anchor = null;
     if (c.clipped || c.dead) this.anchor = null;
     set('gear:protection', this.protectedNow ? { slip: 0.35 } : null);

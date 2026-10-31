@@ -176,7 +176,8 @@ export class Weather {
     const s = this._sample(this.time);
     this.freshCm += s.snow * W.snow_cm_per_hour * hours;
     const warm = this.airTemperature(5800, (this.time / 3600) % 24) > 0 ? W.warm_settle_mult : 1;
-    this.freshCm = Math.max(0, this.freshCm - W.settle_cm_per_hour * warm * hours);
+    // Snow still falling buries the settling layer, so it consolidates slowly until the sky clears.
+    this.freshCm = Math.max(0, this.freshCm - W.settle_cm_per_hour * warm * (1 - 0.6 * s.snow) * hours);
     const wind = W.wind_low_m_s * 2 * s.wind;
     if (wind > W.load_from_m_s && this.freshCm > 2) this.windSlab = Math.min(1, this.windSlab + W.load_per_hour * hours * (wind / W.load_from_m_s));
     else this.windSlab = Math.max(0, this.windSlab - W.load_per_hour * 0.25 * hours * warm);

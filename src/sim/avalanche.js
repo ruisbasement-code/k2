@@ -22,6 +22,27 @@ export function isSlabSlope(hm, x, z, hour = null) {
   return SNOW.has(key) || key === 'ice';
 }
 
+const smooth = (e0, e1, x) => {
+  const t = Math.min(Math.max((x - e0) / (e1 - e0), 0), 1);
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * How ready a slab slope is to go, 0..1. Slabs break most on 35-45° ground,
+ * less near the edges of the avalanche angles, and lee slopes (facing the way
+ * the wind blows) carry drifted, wind-loaded snow: up to twice as likely.
+ * windX/windZ: where the wind blows to. windSlab: the snowpack's wind loading, 0..1.
+ */
+export function slabLoad(hm, x, z, windX = 0, windZ = 0, windSlab = 0) {
+  const slope = hm.slopeDeg(x, z);
+  const steep = smooth(W.slab_min_deg, W.slab_min_deg + 7, slope) * (1 - smooth(W.slab_max_deg - 5, W.slab_max_deg, slope));
+  const [gx, gz] = hm.gradient(x, z);
+  const g = Math.hypot(gx, gz) || 1;
+  // The slope's downhill direction, along the wind: a lee slope.
+  const lee = Math.max(0, (-gx / g) * windX + (-gz / g) * windZ);
+  return Math.min(1, steep * (0.5 + 0.5 * lee * (0.4 + 0.6 * windSlab)));
+}
+
 export class Avalanches {
   constructor(hm) {
     this.hm = hm;
@@ -61,10 +82,10 @@ export class Avalanches {
    * Find a slab somewhere above a point, up the fall line and a little to the
    * side, and release it. Returns the slide or null if nothing above can slide.
    */
-  releaseAbove(x, z, hour = null, rng = Math.random) {
+  releaseAbove(x, z, hour = null, rng = Math.random, { spread = 160, wind = null } = {}) {
     const hm = this.hm;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const p = new THREE.Vector3(x + (rng() - 0.5) * 160, 0, z + (rng() - 0.5) * 160);
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const p = new THREE.Vector3(x + (rng() - 0.5) * spread, 0, z + (rng() - 0.5) * spread);
       const steps = 5 + Math.floor(rng() * 25);
       for (let i = 0; i < steps; i++) {
         const [gx, gz] = hm.gradient(p.x, p.z);
@@ -75,6 +96,8 @@ export class Avalanches {
       }
       hm.clampInside(p, 60);
       if (!isSlabSlope(hm, p.x, p.z, hour)) continue;
+      // Steep, wind-loaded slopes are the ones that go.
+      if (rng() > slabLoad(hm, p.x, p.z, wind?.x ?? 0, wind?.z ?? 0, wind?.slab ?? 0)) continue;
       const [w0, w1] = W.slab_width_m;
       return this.release(p.x, p.z, w0 + (w1 - w0) * rng(), rng);
     }

@@ -129,7 +129,7 @@ export class Hud {
     const c = this.climber;
     this.hot = hotbarItems(c);
     const html = this.hot.map((it, i) => {
-      const on = it.id === this.held || ((it.id === 'axe' || it.id === 'axe_tech') && c.axe.inHand) || (it.id === 'oxygen' && c.phys.flow > 0) || (it.id === 'strobe' && c.signals?.strobeOn);
+      const on = it.id === this.held || ((it.id === 'axe' || it.id === 'axe_tech') && c.axe.inHand) || (it.id === 'poles' && c.poles.inHand) || (it.id === 'oxygen' && c.phys.flow > 0) || (it.id === 'strobe' && c.signals?.strobeOn);
       return `<div class="hs${on ? ' on' : ''}" title="${it.label}"><b>${i + 1}</b>${icon(it.id)}${it.count !== undefined ? `<span>${it.count}</span>` : ''}</div>`;
     }).join('');
     if (html !== this._hotHtml) $('hotbar').innerHTML = this._hotHtml = html;
@@ -196,9 +196,13 @@ export class Hud {
       acts.push(['Click', 'Swing'], ['S + Click', 'Down']);
       if (c.grip < 30) alert ||= 'Grip failing';
     }
+    if (c.polesOnSteep) {
+      alert ||= 'Poles on steep ground';
+      if (c.axe.have) acts.push(['I', 'Axe']);
+    }
     if (c.blocked) {
       const axeGround = ['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier', 'ice'].includes(c.surface.key);
-      if (axeGround && !c.axeReady && c.slope < tuning.axe_climb_max_deg && c.axe.have) acts.push(['I', 'Axe']);
+      if (axeGround && !c.axeReady && !c.polesOnSteep && c.slope <= tuning.axe_wall_max_deg && c.axe.have) acts.push(['I', 'Axe']);
       else alert ||= 'Too steep';
     }
 
