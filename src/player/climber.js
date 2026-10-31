@@ -766,7 +766,9 @@ export class Climber {
     const w = this.weather;
     if (w) {
       w.update(this.mountainSeconds, dt);
-      this.conditions = w.conditionsAt(this.hm, this.position, this.hour);
+      const c = (this.conditions = w.conditionsAt(this.hm, this.position, this.hour));
+      // The survival systems' air (when they are present) follows the weather.
+      if (this.environment) Object.assign(this.environment, { airTempC: c.airC, windMs: c.wind, wet: Math.max(c.snowfall, c.spindrift * 0.5) });
     }
     const fly = this.mode === Mode.FLY;
     const c = this.conditions;
