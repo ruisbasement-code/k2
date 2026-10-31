@@ -2,6 +2,8 @@
 // footprints the climber leaves in the snow.
 
 import * as THREE from 'three';
+import { ledgesNear } from '../sim/hazards.js';
+import { tuning } from '../sim/paceModel.js';
 
 const MAX_ROCKS = 96;
 const _m = new THREE.Matrix4();
@@ -74,5 +76,49 @@ export class FootprintMesh extends THREE.InstancedMesh {
     this.next = (this.next + 1) % this.max;
     this.count = Math.min(this.count + 1, this.max);
     this.instanceMatrix.needsUpdate = true;
+  }
+}
+
+/**
+ * The small ledges on steep faces near the climber: level shelves set into the
+ * slope, snowy on top. Rebuilt as the climber moves.
+ */
+export class LedgeMesh extends THREE.Group {
+  constructor(hm, max = 1500) {
+    super();
+    this.hm = hm;
+    this.radius = 350;
+    this.centre = new THREE.Vector3(1e9, 0, 1e9);
+    const r = tuning.ledge_radius_m;
+    const rock = new THREE.CylinderGeometry(r, r * 0.8, 1.2, 9, 1);
+    rock.translate(0, -0.65, 0);
+    const snow = new THREE.CylinderGeometry(r * 0.98, r * 0.98, 0.14, 9, 1);
+    snow.translate(0, 0.02, 0);
+    this.rock = new THREE.InstancedMesh(rock, new THREE.MeshStandardMaterial({ color: 0x4a443f, roughness: 0.95, flatShading: true }), max);
+    this.snow = new THREE.InstancedMesh(snow, new THREE.MeshStandardMaterial({ color: 0xe8eef4, roughness: 0.9, flatShading: true }), max);
+    for (const m of [this.rock, this.snow]) {
+      m.count = 0;
+      m.castShadow = true;
+      m.receiveShadow = true;
+      m.frustumCulled = false;
+      this.add(m);
+    }
+    this.max = max;
+  }
+
+  update(position) {
+    if (Math.hypot(position.x - this.centre.x, position.z - this.centre.z) < 80) return;
+    this.centre.copy(position);
+    const ledges = ledgesNear(this.hm, position.x, position.z, this.radius).slice(0, this.max);
+    ledges.forEach((l, i) => {
+      // Level top at the slope's height at the centre: it juts out on the downhill side.
+      const y = this.hm.heightAt(l.x, l.z) + 0.05;
+      _q.setFromAxisAngle(_up, (i * 2.399) % (Math.PI * 2));
+      _m.compose(new THREE.Vector3(l.x, y, l.z), _q, _s.setScalar(1));
+      this.rock.setMatrixAt(i, _m);
+      this.snow.setMatrixAt(i, _m);
+    });
+    this.rock.count = this.snow.count = ledges.length;
+    this.rock.instanceMatrix.needsUpdate = this.snow.instanceMatrix.needsUpdate = true;
   }
 }

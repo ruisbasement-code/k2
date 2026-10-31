@@ -83,6 +83,7 @@ export class Hud {
     if (c.falling && c.fall.rope) return 'Falling onto the rope…';
     if (c.falling) {
       if (c.fall.arresting) return 'Digging in… keep holding Space';
+      if (c.runaway) return 'Sliding too fast to dig in. Hold Space as soon as you slow down or reach flatter ground.';
       const o = c.fall.orient;
       if (o.back || o.head) return `Sliding ${c.slideHow()}! Hold Space: roll onto your front and swing your feet downhill.`;
       return 'Sliding! Hold Space to self-arrest before you pick up speed.';
@@ -106,6 +107,7 @@ export class Hud {
     if (c.sink > 0.25) text += ', knee-deep';
     else if (c.sink > 0.1) text += ', ankle-deep';
     if (c.packing > 0) text += ', trodden';
+    if (c.onLedge) text += ', on a ledge';
     return text;
   }
 

@@ -11,6 +11,9 @@ import route from '../src/data/route.json';
 import { loadHeightmap } from './helpers.js';
 
 const { tuning } = Pace;
+// Rockfall is off in the game for now; these tests turn it on to check it still works.
+const rockfallOff = !tuning.rockfall_enabled;
+tuning.rockfall_enabled = true;
 const naturalRockfall = tuning.rockfall_per_min;
 tuning.rockfall_per_min = 0;
 
@@ -135,7 +138,8 @@ describe('rock and ice fall', () => {
     expect(released[0].position.y).toBeLessThan(y0);
   });
 
-  it('can be turned on and off in tuning', () => {
+  it('is off in the game for now, but can be turned on in tuning', () => {
+    expect(rockfallOff).toBe(true);
     expect(naturalRockfall).toBeGreaterThan(0);
   });
 });

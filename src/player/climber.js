@@ -31,7 +31,7 @@
 import * as THREE from 'three';
 import * as Pace from '../sim/paceModel.js';
 import { ClimberBody } from '../sim/climberBody.js';
-import { SnowTrail, Rockfall, isLoose } from '../sim/hazards.js';
+import { SnowTrail, Rockfall, isLoose, ledgeAt } from '../sim/hazards.js';
 
 const { tuning } = Pace;
 const DEG = 180 / Math.PI;
@@ -211,6 +211,7 @@ export class Climber {
       if (this.fall.rope) return 'Falling on the rope!';
       if (this.tumbling) return 'Tumbling!';
       if (this.fall.arresting) return 'Self-arresting';
+      if (this.runaway) return 'Sliding out of control!';
       return `Sliding ${this.slideHow()}!`;
     }
     if (this.mode === Mode.DEAD || this.mode === Mode.FLY) return MODE_NAMES[this.mode];
@@ -218,6 +219,16 @@ export class Climber {
     if (this.gasping) return 'Gasping for breath';
     if (this.clipped) return `${MODE_NAMES[this.groundMode]}, clipped in`;
     return MODE_NAMES[this.mode];
+  }
+
+  /** The slope your feet actually meet: flatter on a ledge. */
+  _footingSlope(slope, onLedge) {
+    return onLedge ? Math.max(0, slope - tuning.ledge_relief_deg) : slope;
+  }
+
+  /** Sliding with no chance to dig in yet: too fast to self-arrest. */
+  get runaway() {
+    return this.falling && !this.tumbling && !this.fall.rope && this.velocity.length() >= this._arrestTool().maxSpeed;
   }
 
   /** How you are sliding, e.g. "head-first on your back". */
@@ -310,11 +321,14 @@ export class Climber {
     this._updateGroundMode(this.slope);
     this.surface = Pace.surfaceAt(this.position.y, this.slope, this.hm.glacierAt(this.position.x, this.position.z), this.hour);
     this.packing = SNOW.has(this.surface.key) ? this.trail.packing(this.position.x, this.position.z) : 0;
+    // A small ledge underfoot gives you somewhere flatter to stand.
+    this.onLedge = !!ledgeAt(this.position.x, this.position.z, this.slope);
+    const footing = this._footingSlope(this.slope, this.onLedge);
     this.sink = this.surface.sink_m * (1 - this.packing);
     const clipped = this.clipped;
     // On steep ground, clipped in means jumaring.
     if (clipped && this.groundMode !== Mode.WALK) this.mode = Mode.ROPE;
-    if (!clipped && this.slope > this.surface.stand_deg) {
+    if (!clipped && footing > this.surface.stand_deg) {
       // Too steep for this surface to hold you without a rope.
       this._startFall(gx, gz, `Too steep to stand on ${this.surface.label.toLowerCase()}. You're sliding! Hold Space to self-arrest.`);
       return;
@@ -365,7 +379,7 @@ export class Climber {
     this._breathPace(dtM, grade, climbing);
     if (!this.moving) {
       this.stepPhase = 1;
-      this._maybeSlip(dtM, gx, gz, false);
+      if (!this.onLedge) this._maybeSlip(dtM, gx, gz, false);
       return;
     }
 
@@ -421,21 +435,21 @@ export class Climber {
     }
     const turning = this._stepDir.lengthSq() > 0 && this._stepDir.dot(dir) < Math.cos(t.turn_step_deg / DEG);
     this._stepDir.copy(dir);
-    if (this.slope <= t.climb_start_deg) return false;
+    if (this._footingSlope(this.slope, this.onLedge) <= t.climb_start_deg) return false;
 
     const clipped = this.clipped;
     const why = (what) => clipped ? `${what} The rope will catch you.` : `${what} Hold Space to self-arrest.`;
     if (this.slope > 20 && isLoose(p.x, p.z, this.surface.key) && Math.random() < t.crumble_chance) {
       // The hold breaks away and goes down the slope.
       const down = new THREE.Vector3(-gx, 0, -gz).normalize();
-      for (let i = 0; i < 1 + Math.floor(Math.random() * 3); i++) {
+      for (let i = 0; t.rockfall_enabled && i < 1 + Math.floor(Math.random() * 3); i++) {
         const at = p.clone().addScaledVector(down, 0.6 + i * 0.4);
         this.rockfall.release(at, down.clone().multiplyScalar(1.5), 0.08 + Math.random() * 0.15);
       }
       this.shake = Math.max(this.shake, 0.6);
       const slips = Math.random() < t.crumble_slip_chance * (clipped ? t.rope_slip_mult : 1);
       if (slips) return this._slip(gx, gz, why('A hold crumbled under you!'));
-      this.onMessage('A loose hold crumbled. Rocks clatter down the slope.');
+      this.onMessage('A loose hold crumbled under your foot.');
       return false;
     }
     const slope = clipped ? Math.min(this.slope, t.no_rope_max_deg) : this.slope;
@@ -491,10 +505,14 @@ export class Climber {
     this.unclip();
     this.mode = Mode.FALL;
     this.pace = 0;
+    // Start moving down the fall line, along the slope rather than off it.
+    down.y = -Math.hypot(gx, gz);
+    if (down.lengthSq() > 1e-6) down.normalize();
     this.velocity.copy(down).multiplyScalar(Math.max(2, how.speed ?? 0));
     this.fall = {
       startY: this.position.y, distance: 0, topSpeed: 0, worstHit: 0, time: 0,
       phase: 'slide', arresting: false, orient, turning: 0, rope: null,
+      air: 0, contact: 0, spin: 0,
     };
     this.shake = Math.max(this.shake, 0.8);
     this.onMessage(why);
@@ -515,6 +533,14 @@ export class Climber {
     this.fall.rope = { id, anchor, length };
   }
 
+  /**
+   * What you self-arrest with. For now bare hands and boots; an ice axe (later)
+   * will return a higher maxSpeed and grip here.
+   */
+  _arrestTool() {
+    return { name: 'hands', maxSpeed: tuning.self_arrest_below_m_s, grip: 1 };
+  }
+
   /** How well you can dig in, from how you are lying in the slide. */
   _arrestEffect() {
     const o = this.fall.orient;
@@ -530,19 +556,39 @@ export class Climber {
     const steps = Math.ceil(dt / 0.004);
     const h = dt / steps;
     let touching = false;
+    const f = this.fall;
     for (let i = 0; i < steps; i++) {
       v.y -= t.gravity * h;
+      // Air drag on a falling body: terminal speed is about 55 m/s low down, more up high.
+      const rho = 1.225 * Math.exp(-p.y / 8500);
+      const sp = v.length();
+      v.multiplyScalar(Math.max(0, 1 - ((0.5 * rho * t.body_drag_area_m2) / t.body_mass_kg) * sp * h));
+      // Each bounce and scrape of a tumble costs energy, short hops included.
+      if (f.phase === 'tumble') v.multiplyScalar(Math.max(0, 1 - t.tumble_drag * sp * h));
       const before = p.clone();
       p.addScaledVector(v, h);
       this.hm.clampInside(p);
       const ground = this.hm.heightAt(p.x, p.z);
-      if (p.y <= ground) {
+      const hitGround = p.y <= ground;
+      // Skimming just above the slope still counts as on it; only a real drop is airborne.
+      if (p.y - ground > 0.4) {
+        f.air += h;
+        f.contact = 0;
+        if (f.air > t.tumble_airborne_s && !f.rope) this._tumble('You went over the edge!');
+      } else {
+        f.air = 0;
+        f.contact += h;
+      }
+      if (hitGround) {
         p.y = ground;
         touching = true;
         this.hm.normalAt(p.x, p.z, n);
         const slope = Math.acos(Math.min(n.y, 1)) * DEG;
-        const surface = Pace.surfaceAt(p.y, slope, this.hm.glacierAt(p.x, p.z));
+        const surface = Pace.surfaceAt(p.y, slope, this.hm.glacierAt(p.x, p.z), this.hour);
         this.surface = surface;
+        const ledge = !f.rope && ledgeAt(p.x, p.z, slope);
+        if (f.phase === 'tumble' && f.contact > t.tumble_settle_s && slope < t.tumble_slope_deg) this._settle();
+        else if (!f.rope && slope > t.tumble_slope_deg && v.length() > t.tumble_min_speed_m_s) this._tumble('Over the steep ground, you start to cartwheel!');
         const into = v.dot(n);
         if (into < 0) {
           const hit = -into;
@@ -550,7 +596,7 @@ export class Climber {
             this._hurt((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * surface.impact);
             this.fall.worstHit = Math.max(this.fall.worstHit, hit);
           }
-          if (hit > t.tumble_on_hit_m_s) this._tumble();
+          if (hit > t.tumble_on_hit_m_s && !f.rope) this._tumble();
           // Hard hits bounce a little; soft contact just follows the slope.
           v.addScaledVector(n, -into * (hit > 3 ? 1 + t.bounce : 1));
         }
@@ -558,8 +604,15 @@ export class Climber {
         const speed = v.length();
         if (speed > 1e-4) {
           let mu = surface.friction;
-          this.fall.arresting = arrest && this.fall.phase === 'slide' && !this.fall.rope && speed < t.self_arrest_below_m_s;
-          if (this.fall.arresting) mu += surface.arrest * this._arrestEffect();
+          // A cartwheeling body hits and scrapes, losing speed much faster than a slide.
+          if (f.phase === 'tumble') mu = Math.max(mu, t.tumble_friction);
+          if (ledge) mu += t.ledge_friction;
+          const tool = this._arrestTool();
+          f.arresting = arrest && f.phase === 'slide' && !f.rope && speed < tool.maxSpeed;
+          if (f.arresting) mu += surface.arrest * tool.grip * this._arrestEffect();
+          else if (f.phase === 'slide' && speed > tool.maxSpeed) f.spin += speed * 0.08 * h;
+          // A sliding body ploughs through snow and loses speed with it.
+          if (f.phase === 'slide') v.multiplyScalar(Math.max(0, 1 - surface.slide_drag * speed * h));
           const decel = mu * t.gravity * n.y * h;
           v.multiplyScalar(Math.max(0, 1 - decel / speed));
           if (surface.key === 'rock' && speed > t.slide_damage_above_m_s) this._hurt(t.rock_slide_damage * speed * h);
@@ -569,23 +622,22 @@ export class Climber {
       if (arrest && this.fall.phase === 'slide') this._rollOver(h);
       const speed = v.length();
       if (speed > t.max_fall_speed_m_s) v.multiplyScalar(t.max_fall_speed_m_s / speed);
-      if (speed > t.tumble_above_m_s) this._tumble();
       this.fall.distance += p.distanceTo(before);
       this.fall.topSpeed = Math.max(this.fall.topSpeed, speed);
       if (this.dead) return;
     }
     this.fall.time += dt;
-    // Missed the moment to arrest: the slide gets away from you.
-    if (!this.fall.rope && this.fall.phase === 'slide' && this.fall.time > t.arrest_window_s && v.length() > 3) this._tumble();
     this.slope = this.hm.slopeDeg(p.x, p.z);
     if (this.fall.rope) {
       if (this.fall.time > 0.3 && v.length() < t.stand_up_below_m_s && touching) this._caughtByRope();
       return;
     }
-    const standable = this.slope < this.surface.stand_deg;
+    this.onLedge = !!ledgeAt(p.x, p.z, this.slope);
+    const standable = this._footingSlope(this.slope, this.onLedge) < this.surface.stand_deg;
     if (touching && v.length() < t.stand_up_below_m_s && standable) {
       v.set(0, 0, 0);
-      const how = this.fall.phase === 'slide' && this.fall.arresting ? 'You self-arrested' : 'You came to a stop';
+      const how = this.fall.phase === 'slide' && this.fall.arresting ? 'You self-arrested'
+        : this.onLedge ? 'You caught on a ledge' : 'You came to a stop';
       this.mode = Mode.WALK;
       this._updateGroundMode(this.slope);
       const drop = Math.round(this.fall.startY - p.y);
@@ -649,7 +701,7 @@ export class Climber {
   _rocks(dt, dtM) {
     const t = tuning;
     if (this.mode === Mode.FLY) return;
-    if (!this.dead && Math.random() < (t.rockfall_per_min * this._rockfallHourFactor() * dtM) / 60) {
+    if (t.rockfall_enabled && !this.dead && Math.random() < (t.rockfall_per_min * this._rockfallHourFactor() * dtM) / 60) {
       const rocks = this.rockfall.releaseAbove(this.position.x, this.position.z);
       if (rocks.length) {
         this.onMessage(rocks[0].ice ? 'Ice is breaking off above you! Watch the slope.' : 'Rockfall! Stones are coming down from above.');
@@ -683,11 +735,23 @@ export class Climber {
     this._slip(gx, gz, `${what} knocked you off your feet!`);
   }
 
-  _tumble() {
+  _tumble(why = "You're tumbling out of control!") {
     if (this.fall.phase === 'tumble') return;
     this.fall.phase = 'tumble';
     this.fall.arresting = false;
-    this.onMessage("You're tumbling out of control!");
+    this.fall.contact = 0;
+    this.onMessage(why);
+  }
+
+  /** Back on gentler ground the tumble flattens out into a slide, any way up. */
+  _settle() {
+    const f = this.fall;
+    f.phase = 'slide';
+    f.orient = { back: Math.random() < 0.5, head: Math.random() < 0.5 };
+    f.turning = 0;
+    if (this.velocity.length() < this._arrestTool().maxSpeed * 1.5) {
+      this.onMessage(`Sliding ${this.slideHow()}. Hold Space to dig in as you slow!`);
+    }
   }
 
   _hurt(amount, cause = null) {

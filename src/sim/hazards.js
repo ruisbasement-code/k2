@@ -23,6 +23,42 @@ export function isLoose(x, z, surface) {
 }
 
 /**
+ * The ledge at this spot, if any: small terraces and steps on steep faces that the
+ * elevation grid is too coarse to show. Returns its centre {x, z} or null.
+ */
+export function ledgeAt(x, z, slopeDeg) {
+  const t = tuning;
+  if (slopeDeg < t.ledge_min_deg || slopeDeg > t.ledge_max_deg) return null;
+  const cell = t.ledge_cell_m;
+  const i = Math.floor(x / cell), j = Math.floor(z / cell);
+  if (hash2(i + 7919, j - 104729) >= t.ledge_share) return null;
+  // Somewhere inside the cell, away from its edges.
+  const room = cell / 2 - t.ledge_radius_m;
+  const cx = (i + 0.5) * cell + (hash2(i, j + 31) - 0.5) * 2 * room;
+  const cz = (j + 0.5) * cell + (hash2(i + 17, j) - 0.5) * 2 * room;
+  return Math.hypot(x - cx, z - cz) <= t.ledge_radius_m ? { x: cx, z: cz } : null;
+}
+
+/** Every ledge centre within radius of a point, for drawing. */
+export function ledgesNear(hm, x, z, radius) {
+  const t = tuning;
+  const cell = t.ledge_cell_m;
+  const out = [];
+  const room = cell / 2 - t.ledge_radius_m;
+  for (let i = Math.floor((x - radius) / cell); i <= Math.floor((x + radius) / cell); i++) {
+    for (let j = Math.floor((z - radius) / cell); j <= Math.floor((z + radius) / cell); j++) {
+      if (hash2(i + 7919, j - 104729) >= t.ledge_share) continue;
+      const cx = (i + 0.5) * cell + (hash2(i, j + 31) - 0.5) * 2 * room;
+      const cz = (j + 0.5) * cell + (hash2(i + 17, j) - 0.5) * 2 * room;
+      if (Math.abs(cx) > hm.size / 2 - 50 || Math.abs(cz) > hm.size / 2 - 50) continue;
+      const s = hm.slopeDeg(cx, cz);
+      if (s >= t.ledge_min_deg && s <= t.ledge_max_deg) out.push({ x: cx, z: cz, slope: s });
+    }
+  }
+  return out;
+}
+
+/**
  * Footprints in the snow. Every step on snow treads its cell; trodden snow is
  * packed, so you sink less and move faster on your own trail.
  */

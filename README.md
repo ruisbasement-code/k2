@@ -65,7 +65,9 @@ realistic pace still gets you somewhere. All the speeds below are in mountain ti
   downhill (most accidents happen on the way down).
 - **Above 35° only on a fixed rope.** Unroped, you can't go up it, and if you stand
   on ground steeper than its surface can hold you, you start to slide.
-- **Fixed ropes**: press **C** within 5 m of the orange rope. You are not locked to
+- **Fixed ropes**: press **C** within 5 m of the orange rope. A blue tether runs from
+  your harness to a carabiner on the rope, hanging slack and lying on the snow until
+  you reach its end or it catches a fall. You are not locked to
   the line: you move freely up to 8 m from it. Moving along the rope gets the jumar's
   speed, the rope gently steers you back toward its line as you drift, it lets you
   climb anything near it, and slips are rarer. If you do slip, the jumar locks and you
@@ -91,10 +93,13 @@ and hard ice only to 27°. Ice slides the furthest and is the hardest to stop on
 - **Loose rock.** Some rock and much of the scree is loose. A step on it can crumble
   the hold, send stones down the slope and make you slip.
 
-**Rock and ice fall.** Stones and ice chunks also come down by themselves from steep
-faces above you, most in the warm afternoon and least at night when everything is
-frozen. You get a warning, they bounce down the terrain, and a hit hurts (and can
-knock you off steep ground). Get out of the fall line.
+**Ledges.** The 31 m elevation grid smooths away the small steps and terraces of a
+real face, so steep ground is dotted with small ledges (the level shelves you can see
+near you). You can stand on one where the slope around it is too steep, and a slide
+across one loses a lot of speed.
+
+**Rock and ice fall** is built (`rockfall_enabled` in `tuning.json`) but switched off
+for now: loose holds still crumble, but send no rocks down.
 
 **Breathing pace.** Up high every step uphill takes several breaths: under one at
 Base Camp, about one at 6,500 m, 3–4 at 8,000 m and 7 near the summit (the HUD shows
@@ -104,12 +109,16 @@ your breathing catches up.
 **Falls.** A slip or too-steep ground starts a slide. You pick up speed down the
 fall line, slowed by the surface's friction. Hold **Space** straight away to
 self-arrest: it works while you are still slow (under 8 m/s) and within about 2
-seconds, much better on snow than ice. How you landed matters: slipping while facing
+seconds, much better on snow than ice. A runaway slide that slows down again (on a
+ledge or a gentler run-out) can still be arrested. How you landed matters: slipping while facing
 into the slope puts you on your front, feet first, the best position; facing out
 puts you on your back. Holding Space rolls you onto your front (half a second) and
 then swings your feet round downhill (another second), so a head-first slide on your
 back is the hardest to stop. Too fast, too late, or a hard hit, and you
-tumble out of control (a ragdoll) until the ground eases and friction stops you.
+tumble (a ragdoll) only when you leave the ground, hit hard or go over ground steeper
+than 50°; back on gentler ground a tumble flattens out into a slide again. Speeds
+are physical: air drag (thinner up high), snow you plough through, and energy lost
+in every bounce of a tumble keep a long fall to about 25–30 m/s.
 Damage comes from how hard you hit the ground and from scraping over rock at speed,
 not from how far you fell, so a long slide on snow can hurt less than a short drop
 onto rock. Health heals slowly at rest and faster in a camp. At 0 you die, and **R**

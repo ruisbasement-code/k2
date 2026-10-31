@@ -19,7 +19,8 @@ import { Input } from './player/input.js';
 import { Ragdoll } from './player/ragdoll.js';
 import { Hud } from './ui/hud.js';
 import { Sky } from './world/sky.js';
-import { RockfallMesh, FootprintMesh } from './world/hazardMeshes.js';
+import { RockfallMesh, FootprintMesh, LedgeMesh } from './world/hazardMeshes.js';
+import { Tether } from './world/tether.js';
 
 const EYE_HEIGHT = 1.65;
 
@@ -50,6 +51,10 @@ scene.add(rockMesh);
 const prints = new FootprintMesh(hm, tuning.max_footprints);
 scene.add(prints);
 climber.trail.onPrint = (p) => prints.add(p);
+const ledges = new LedgeMesh(hm);
+scene.add(ledges);
+const tether = new Tether(hm);
+scene.add(tether);
 const model = new ClimberModel();
 scene.add(model);
 const ragdoll = new Ragdoll(model);
@@ -154,6 +159,8 @@ function slideOrientation(c) {
   _U.normalize();
   const { head, back } = c.fall.orient;
   if (head) _U.negate();
+  // A runaway slide spins you slowly about the slope's normal.
+  if (c.fall.spin) _U.applyAxisAngle(_N, c.fall.spin);
   // The model faces -z: on the front, -z points into the slope.
   _Z.copy(_N).multiplyScalar(back ? -1 : 1);
   _X.crossVectors(_U, _Z).normalize();
@@ -198,6 +205,34 @@ function animateModel(dt) {
   model.pose(pose, view.gait, c.moving, Math.min(c.slope / 30, 1));
 }
 
+const _harness = new THREE.Vector3();
+const _clip = new THREE.Vector3();
+const _ropeDir = new THREE.Vector3();
+
+/** The tether from the harness to the fixed rope: slides along it, locks on it in a fall. */
+function updateTether(dt) {
+  const c = climber;
+  const ropeFall = c.falling && c.fall.rope;
+  if (!c.clipped && !ropeFall) {
+    tether.update(dt, null);
+    return;
+  }
+  model.updateMatrixWorld(true);
+  model.localToWorld(_harness.set(0, 0.98, -0.12));
+  let id, length;
+  if (ropeFall) {
+    id = c.fall.rope.id;
+    _clip.copy(c.fall.rope.anchor);
+    length = c.fall.rope.length;
+  } else {
+    id = c.ropeId;
+    ropes.pointAt(id, ropes.nearestOn(id, c.position).s, _clip);
+    length = tuning.rope_leash_m + 1;
+  }
+  ropes.tangentAt(id, ropes.nearestOn(id, _clip).s, _ropeDir);
+  tether.update(dt, _harness, _clip, length, _ropeDir);
+}
+
 let last = performance.now();
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
@@ -205,7 +240,9 @@ function frame(now) {
   view.time += dt;
   climber.update(dt, input.movement());
   rockMesh.update();
+  ledges.update(climber.position);
   animateModel(dt);
+  updateTether(dt);
   updateCamera();
   audio.update();
   hud.update(dt);
@@ -220,4 +257,4 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__k2 = { climber, hm, ropes, teleport, view };
+window.__k2 = { climber, hm, ropes, teleport, view, tether };
