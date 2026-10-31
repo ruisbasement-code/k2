@@ -31,10 +31,15 @@
 import * as THREE from 'three';
 import * as Pace from '../sim/paceModel.js';
 import { ClimberBody } from '../sim/climberBody.js';
+import { sleepPlan, sleepRecovery } from '../sim/sleep.js';
+import { Physiology } from '../sim/physiology.js';
+import { Pack } from '../sim/pack.js';
+import { airAt } from '../sim/environment.js';
 import { SnowTrail, Rockfall, isLoose, ledgeAt } from '../sim/hazards.js';
 
 const { tuning } = Pace;
 const DEG = 180 / Math.PI;
+const _UP = new THREE.Vector3(0, 1, 0);
 const SNOW = new Set(['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier']);
 
 export const Mode = { WALK: 'walk', CLIMB: 'climb', STEEP: 'steep', ROPE: 'rope', FALL: 'fall', DEAD: 'dead', FLY: 'fly' };
@@ -61,6 +66,36 @@ export class Climber {
     /** The highest camp reached; you are rescued to it if you die. */
     this.lastCamp = this.places[0] ?? null;
     this.health = 100;
+    /**
+     * Injuries that never heal (bone damage and the like), each {label, health}:
+     * the health they take off the top. Rest and sleep only heal up to maxHealth.
+     */
+    this.permanentInjuries = [];
+    /** Sleeping tents, {camp, x, z}; set from the camp layouts (createCamps). */
+    this.tents = [];
+    /** Food, water, warmth, oxygen and altitude illness. */
+    this.phys = new Physiology();
+    this.phys.onMessage = (text) => this.onMessage(text);
+    this.phys.onPermanentInjury = (label, health) => this.addPermanentInjury(label, health);
+    /** What you carry. You start packed from Base Camp's stores. */
+    this.pack = new Pack();
+    this.campStores = structuredClone(tuning.camp_stores);
+    this.pack.resupply(this.campStores['Base Camp'] ?? {});
+    /**
+     * Hook for the weather: set airTempC, windMs or wet (0..1) here to replace the
+     * fair-weather air. Leave a field null or unset to use the default.
+     */
+    this.environment = {};
+    /**
+     * Hook for weather and terrain: extra effects by id, each
+     * {label, speed, effort, slip, staminaCap} multipliers (any can be left out).
+     */
+    this.effects = new Map();
+    /** Modifiers from the body and effects this frame. */
+    this.mods = this.phys.modifiers();
+    /** Turn back from a summit push by this hour. */
+    this.turnaroundHour = tuning.turnaround_default;
+    this._turnaroundWarnedDay = 0;
     this.velocity = new THREE.Vector3();
     this.surface = Pace.surfaceAt(5000, 0);
     /** The fall in progress or the last one: start height, distance, top speed, worst hit. */
@@ -190,11 +225,253 @@ export class Climber {
     const camp = this.lastCamp;
     this.mode = Mode.WALK;
     this.placeAt(camp.x + 6, camp.z + 6, 0, 0);
-    this.health = 40;
+    this.health = Math.min(40, this.maxHealth);
     this.body.stamina = 30;
+    // Carried down and looked after on the way: the altitude illness eases, you are warmed and fed.
+    const ph = this.phys;
+    ph.hace = 0;
+    ph.hape = 0;
+    ph.ams = Math.min(ph.ams, 0.3);
+    ph.rebound = 0;
+    ph.flow = 0;
+    ph.core = Math.max(ph.core, 36);
+    ph.hydration = Math.max(ph.hydration, 50);
+    ph.food = Math.max(ph.food, 40);
     this.body.exhausted = false;
     this.mountainSeconds += tuning.rescue_hours * 3600;
     this.onMessage(`Rescued and carried to ${camp.name} after ${tuning.rescue_hours} hours. Rest here to heal.`);
+  }
+
+  /** The most health you can heal back to: 100 less any permanent injuries. */
+  get maxHealth() {
+    return Math.max(0, 100 - this.permanentInjuries.reduce((sum, i) => sum + i.health, 0));
+  }
+
+  /** An injury that rest and sleep will not heal. */
+  addPermanentInjury(label, health) {
+    this.permanentInjuries.push({ label, health });
+    this.health = Math.min(this.health, this.maxHealth);
+  }
+
+  /** The tent within reach, if any. */
+  nearestTent() {
+    let best = null, bestD = tuning.tent_reach_m;
+    for (const t of this.tents) {
+      const d = Math.hypot(t.x - this.position.x, t.z - this.position.z);
+      if (d < bestD) { best = t; bestD = d; }
+    }
+    return best;
+  }
+
+  /** Standing by a tent, on your feet: you can crawl in and sleep. */
+  canSleep() {
+    if (this.mode === Mode.FLY || this.falling || this.dead) return false;
+    return !!this.nearestTent();
+  }
+
+  /** How long a sleep here and now would last, for the HUD. */
+  sleepPlan() {
+    return sleepPlan(this.hour);
+  }
+
+  /**
+   * Crawl into the tent and sleep: through to the morning at night, a nap in the day.
+   * Returns what happened, or null if there is no tent within reach.
+   */
+  sleep() {
+    if (!this.canSleep()) {
+      if (this.mode !== Mode.FLY && !this.falling && !this.dead) this.onMessage('No tent here. Find a camp tent to sleep in.');
+      return null;
+    }
+    const tent = this.nearestTent();
+    const plan = sleepPlan(this.hour);
+    const before = this.health;
+    // Dinner before a night's sleep, then the night itself, then breakfast.
+    if (plan.night) this._cookMeal();
+    const died = this._passTime(plan.hours, { sheltered: true, sleeping: true });
+    if (died) return { ...plan, healed: 0, rested: false, camp: tent.camp, died: true };
+    if (plan.night) this._cookMeal();
+    const r = sleepRecovery(plan.hours, {
+      health: this.health,
+      maxHealth: this.maxHealth,
+      stamina: this.body.stamina,
+      staminaCap: this.body.staminaCap(this.breathAltitude),
+    });
+    this.unclip();
+    this.health = r.health;
+    this.body.stamina = r.stamina;
+    if (r.rested) this.body.exhausted = false;
+    this.pace = 0;
+    this.velocity.set(0, 0, 0);
+    this.breathDebt = 0;
+    this.gasping = false;
+    this.body.breathRate = tuning.breath_rest;
+    this._altLog = [];
+    const healed = Math.round(this.health - before);
+    const slept = plan.hours >= 1 ? `${Math.round(plan.hours * 10) / 10} h` : `${Math.round(plan.hours * 60)} min`;
+    let text = plan.night
+      ? `You slept ${slept} in the tent at ${tent.camp}. Day ${this.day}, ${this.clockText()}.`
+      : `You napped ${slept} in the tent at ${tent.camp}.`;
+    text += r.rested ? ' Well rested.' : ' A little rested.';
+    if (healed > 0) text += ` Healed ${healed}.`;
+    if (this.permanentInjuries.length && this.health >= this.maxHealth) text += ' Some injuries will not heal.';
+    this.onMessage(text);
+    return { ...plan, healed, rested: r.rested, camp: tent.camp };
+  }
+
+  /** The altitude your lungs feel: lower than the real one on bottled oxygen. */
+  get breathAltitude() {
+    return this.mode === Mode.FLY ? this.position.y : this.phys.effectiveAltitude;
+  }
+
+  /** The air here: the weather's values where it sets them, else fair weather. */
+  get air() {
+    return airAt(this.position.y, this.hour, this.environment);
+  }
+
+  /** Body modifiers combined with any effects from weather and terrain. */
+  _modifiers() {
+    const m = this.phys.modifiers(this.pack.kg);
+    for (const e of this.effects.values()) {
+      m.speed *= e.speed ?? 1;
+      m.effort *= e.effort ?? 1;
+      m.slip *= e.slip ?? 1;
+      m.staminaCap *= e.staminaCap ?? 1;
+    }
+    this.body.capMult = m.staminaCap;
+    this.body.recoverMult = m.staminaRecover;
+    return m;
+  }
+
+  /** Food, water, warmth, oxygen and illness for dtH mountain hours. */
+  _stepBody(dtH, effort, { sheltered = false, sleeping = false } = {}) {
+    const r = this.phys.step(dtH, { altitude: this.position.y, effort, air: this.air, pack: this.pack, sheltered, sleeping });
+    if (r.damage > 0) this._hurt(r.damage, r.cause);
+    if (sleeping || sheltered) this.body.capMult = this.phys.modifiers(this.pack.kg).staminaCap;
+  }
+
+  /** Let hours pass resting in shelter (sleeping or cooking). Returns true if you died. */
+  _passTime(hours, opts) {
+    let left = hours;
+    while (left > 1e-9 && !this.dead) {
+      const h = Math.min(0.25, left);
+      this.mountainSeconds += h * 3600;
+      this._stepBody(h, 0, opts);
+      left -= h;
+    }
+    return this.dead;
+  }
+
+  /** Melt snow and eat a hot meal, if there is gas. Returns false without gas. */
+  _cookMeal() {
+    const p = tuning.pack;
+    if (this.pack.gasBrews < 1) return false;
+    this.pack.gasBrews--;
+    this.phys.drink(tuning.cook_drink_l);
+    this.pack.water = p.water.max_l;
+    if (this.pack.meal > 0) this.phys.eat(this.pack, 'meal');
+    return true;
+  }
+
+  _canAct() {
+    return this.mode !== Mode.FLY && !this.falling && !this.dead;
+  }
+
+  /** Eat a snack bar from the pack. */
+  eat() {
+    if (!this._canAct()) return false;
+    if (!this.phys.eat(this.pack, 'snack')) {
+      this.onMessage('No snack bars left. Restock at a camp (G).');
+      return false;
+    }
+    this.onMessage(`You eat a snack bar. ${this.pack.snack} left.`);
+    return true;
+  }
+
+  /** Drink a sip from your water bottle. */
+  drink() {
+    if (!this._canAct()) return false;
+    const sip = Math.min(tuning.pack.water.sip_l, this.pack.water);
+    if (sip <= 0.01) {
+      this.onMessage('Your bottles are empty. Melt snow on the stove in a tent (K).');
+      return false;
+    }
+    this.pack.water -= sip;
+    this.phys.drink(sip);
+    this.onMessage(`You drink. ${this.pack.water.toFixed(2)} L left.`);
+    return true;
+  }
+
+  /** Step the oxygen regulator to the next flow. */
+  cycleOxygen() {
+    const flows = tuning.o2_flows;
+    if (!this.pack.bottles.length) {
+      this.phys.flow = 0;
+      this.onMessage('No oxygen bottles. Camps 2 to 4 have oxygen stocked (G).');
+      return;
+    }
+    this.phys.flow = flows[(flows.indexOf(this.phys.flow) + 1) % flows.length];
+    this.onMessage(this.phys.flow ? `Oxygen on at ${this.phys.flow} L/min` : 'Oxygen off');
+  }
+
+  /** Take a dexamethasone tablet against HACE and AMS. */
+  takeDex() {
+    if (!this._canAct()) return false;
+    if (!this.phys.takeDex(this.pack)) {
+      this.onMessage('No dexamethasone left.');
+      return false;
+    }
+    this.onMessage(`You take dexamethasone. It holds off altitude sickness for ${tuning.pack.dex.hours} hours, but going down is the cure.`);
+    return true;
+  }
+
+  /** In a tent: melt snow to fill your bottles and drink, and eat a hot meal. Takes time. */
+  cook() {
+    if (!this._canAct()) return false;
+    if (!this.nearestTent()) {
+      this.onMessage('You need a tent to cook in.');
+      return false;
+    }
+    if (!this._cookMeal()) {
+      this.onMessage('No gas for the stove. Restock at a camp (G).');
+      return false;
+    }
+    this.unclip();
+    this._passTime(tuning.cook_hours, { sheltered: true });
+    if (!this.dead) this.onMessage(`You melt snow and eat (${tuning.cook_hours} h). Bottles full, ${this.pack.meal} meals left.`);
+    return true;
+  }
+
+  /** Restock the pack from the camp you are in. */
+  resupply() {
+    if (!this._canAct()) return false;
+    const camp = this._campNearby();
+    const stores = camp && this.campStores[camp.name];
+    if (!stores) {
+      this.onMessage('Nothing to restock from here. Camps have food, gas and water; Camps 2 to 4 have oxygen.');
+      return false;
+    }
+    const took = this.pack.resupply(stores);
+    this.onMessage(took.length ? `Restocked at ${camp.name}: ${took.join(', ')}. Pack ${this.pack.kg.toFixed(1)} kg.` : `Nothing more to take at ${camp.name}.`);
+    return took.length > 0;
+  }
+
+  cycleTurnaround() {
+    const hours = tuning.turnaround_hours;
+    this.turnaroundHour = hours[(hours.indexOf(this.turnaroundHour) + 1) % hours.length];
+    this.onMessage(`Turnaround time ${String(this.turnaroundHour).padStart(2, '0')}:00. Wherever you are by then, start down.`);
+  }
+
+  /** Past the turnaround time high on the mountain: time to go down. */
+  get pastTurnaround() {
+    return this.position.y > tuning.turnaround_above_m && this.hour >= this.turnaroundHour && this.hour < 22;
+  }
+
+  _checkTurnaround() {
+    if (this.pastTurnaround && this._turnaroundWarnedDay !== this.day) {
+      this._turnaroundWarnedDay = this.day;
+      this.onMessage(`It's past your ${this.turnaroundHour}:00 turnaround. Go down now, summit or not.`);
+    }
   }
 
   /** Distance to the nearest rope, for the HUD prompt. */
@@ -240,7 +517,7 @@ export class Climber {
 
   /** Breaths needed per step uphill here. */
   get breathsPerStep() {
-    return Pace.breathsPerStep(this.position.y);
+    return Pace.breathsPerStep(this.breathAltitude);
   }
 
   /** Expedition day, starting at 1. */
@@ -284,6 +561,7 @@ export class Climber {
       this.verticalNow = 0;
       return;
     }
+    this.mods = this._modifiers();
     if (this.mode === Mode.FALL) {
       this._fallStep(dt, !!input.arrest);
       this.effort = 0.6;
@@ -295,7 +573,10 @@ export class Climber {
     this._rocks(dt, dtM);
     this.shake *= Math.exp(-dt * 2.5);
     if (this.dead) return;
-    this.body.step(dtM / 3600, this.effort, this.position.y, dt);
+    this._stepBody(dtM / 3600, this.effort);
+    if (this.dead) return;
+    this._checkTurnaround();
+    this.body.step(dtM / 3600, this.effort, this.breathAltitude, dt);
     this.verticalNow = this.falling ? 0 : ((this.position.y - startY) / Math.max(dtM, 1e-4)) * 3600;
     this._trackVertical(dt);
   }
@@ -336,6 +617,11 @@ export class Climber {
 
     // Where you want to go, and how fast that would be.
     let dir = this._worldDir(input);
+    if (this.mods.wobble > 0 && dir.lengthSq() > 1e-6) {
+      // Ataxia and confusion: your feet don't go quite where you mean them to.
+      const s = this.mountainSeconds / this.timeScale;
+      dir.applyAxisAngle(_UP, this.mods.wobble * 0.8 * (Math.sin(s * 1.3) * 0.6 + Math.sin(s * 3.7) * 0.4));
+    }
     const amount = Math.min(dir.length(), 1);
     const wants = amount >= 0.05 && !this.gasping;
     let target = 0;
@@ -351,10 +637,10 @@ export class Climber {
         const climbing = this.groundMode !== Mode.WALK;
         let ground = this.surface.speed;
         if (this.surface.sink_m > 0) ground += (t.packed_speed - ground) * this.packing;
-        target = Pace.groundSpeed(climbing, this.slope, grade, this.position.y) * ground;
+        target = Pace.groundSpeed(climbing, this.slope, grade, this.breathAltitude) * ground;
         if (rope) target = this._ropeAssist(target, dir, grade, rope);
-        target *= amount * this.body.speedFactor();
-        if (this.pushing) target *= Pace.pushFactor(this.position.y);
+        target *= amount * this.body.speedFactor() * this.mods.speed;
+        if (this.pushing) target *= Pace.pushFactor(this.breathAltitude);
       }
       // Turning sharply costs the speed you had built up.
       const turn = dir.dot(this.moveDir);
@@ -373,7 +659,7 @@ export class Climber {
       this.blocked = true;
     }
     const climbing = this.groundMode !== Mode.WALK;
-    this.effort = wants && target > 0 ? Pace.effort(climbing, grade, this.pushing) * (1 + t.sink_effort * this.sink) : 0;
+    this.effort = wants && target > 0 ? Pace.effort(climbing, grade, this.pushing) * (1 + t.sink_effort * this.sink) * this.mods.effort : 0;
     if (this.gasping) this.effort = 0.3;
     this.moving = this.pace > 0;
     this._breathPace(dtM, grade, climbing);
@@ -458,6 +744,7 @@ export class Climber {
     });
     if (SNOW.has(this.surface.key)) chance *= 1 - 0.5 * this.packing;
     if (clipped) chance *= t.rope_slip_mult;
+    chance *= this.mods.slip;
     if (Math.random() < chance) {
       const what = grade < -0.05 ? 'You slipped stepping down' : 'You slipped';
       return this._slip(gx, gz, why(`${what} on the ${this.surface.label.toLowerCase()}!`));
@@ -475,7 +762,7 @@ export class Climber {
   /** Running down steep ground, a foot can catch and pitch you forward. */
   _maybeTrip(dtM, gx, gz, grade) {
     if (this.clipped || grade >= -0.05 || this.groundMode !== Mode.WALK) return;
-    const perMin = Pace.tripChancePerMin(this.slope, this.pushing);
+    const perMin = Pace.tripChancePerMin(this.slope, this.pushing) * this.mods.slip;
     if (perMin > 0 && Math.random() < (perMin * dtM) / 60) {
       this._startFall(gx, gz, 'You tripped running downhill and pitched forward! Hold Space to self-arrest.', { head: true, back: false, speed: this.pace });
     }
@@ -484,7 +771,7 @@ export class Climber {
   /** Unroped on very steep ground, any minute can be the one you slip. */
   _maybeSlip(dtM, gx, gz, moving) {
     if (this.clipped) return;
-    const perMin = Pace.slipChancePerMin(this.slope, this.pushing, this.surface.key, moving);
+    const perMin = Pace.slipChancePerMin(this.slope, this.pushing, this.surface.key, moving) * this.mods.slip;
     if (perMin <= 0) return;
     if (Math.random() < (perMin * dtM) / 60) {
       this._startFall(gx, gz, `You slipped on the ${this.surface.label.toLowerCase()}! Hold Space to self-arrest.`);
@@ -768,9 +1055,10 @@ export class Climber {
 
   /** Injuries heal slowly when resting, faster in a camp. */
   _heal(dtM) {
-    if (this.moving || this.health >= 100) return;
+    const max = this.maxHealth;
+    if (this.moving || this.health >= max) return;
     const rate = this._campNearby() ? tuning.camp_health_regen_per_hour : tuning.health_regen_per_hour;
-    this.health = Math.min(100, this.health + (rate * dtM) / 3600);
+    this.health = Math.min(max, this.health + (rate * dtM) / 3600);
   }
 
   _campNearby() {
@@ -815,7 +1103,7 @@ export class Climber {
     const align = Math.abs(dir.dot(rope.up));
     const close = 1 - Math.min(Math.max((rope.distance - 2) / (tuning.rope_leash_m - 2), 0), 1);
     const incline = Math.atan(grade);
-    const jumar = Pace.ropeSpeed((incline * 180) / Math.PI, grade >= 0, this.position.y) * Math.cos(incline);
+    const jumar = Pace.ropeSpeed((incline * 180) / Math.PI, grade >= 0, this.breathAltitude) * Math.cos(incline);
     return Math.max(speed, speed + (jumar - speed) * align * close);
   }
 
