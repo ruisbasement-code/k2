@@ -351,23 +351,34 @@ float vnoise(vec2 p) {
              mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 
-float fbm(vec2 p, int octaves) {
+// World metres covered by one pixel here, set at the start of terrainSample. Noise
+// finer than a couple of pixels is faded to its average instead of drawn, or it
+// aliases into a shimmering maze.
+float gFoot = 0.01;
+
+// fp: the pixel's footprint in p's units (0 = draw every octave).
+float fbm(vec2 p, int octaves, float fp) {
   float v = 0.0;
   float a = 0.5;
   for (int i = 0; i < 5; i++) {
     if (i >= octaves) break;
-    v += a * vnoise(p);
+    float keep = 1.0 - smoothstep(0.25, 0.6, fp);
+    v += a * mix(0.5, vnoise(p), keep);
     p = p * 2.03 + vec2(17.1, 9.3);
+    fp *= 2.03;
     a *= 0.5;
   }
   return v;
 }
 
+float fbm(vec2 p, int octaves) { return fbm(p, octaves, 0.0); }
+
 // Noise projected along the axis the surface faces most, so cliffs are not smeared.
 float triFbm(vec3 p, vec3 n, float scale, int octaves) {
   vec3 w = pow(abs(n), vec3(4.0));
   w /= (w.x + w.y + w.z);
-  return fbm(p.zy * scale, octaves) * w.x + fbm(p.xz * scale, octaves) * w.y + fbm(p.xy * scale, octaves) * w.z;
+  float fp = gFoot * scale;
+  return fbm(p.zy * scale, octaves, fp) * w.x + fbm(p.xz * scale, octaves, fp) * w.y + fbm(p.xy * scale, octaves, fp) * w.z;
 }
 
 // Bump mapping from screen-space derivatives (Mikkelsen 2010).
@@ -423,7 +434,8 @@ float cracks(vec3 p, vec3 n, float scale) {
   w /= (w.x + w.y + w.z);
   vec2 a = cells(p.zy * scale), b = cells(p.xz * scale), c = cells(p.xy * scale);
   float e = (a.y - a.x) * w.x + (b.y - b.x) * w.y + (c.y - c.x) * w.z;
-  return 1.0 - smoothstep(0.0, 0.08, e);
+  // Lines thinner than a pixel are faded out rather than aliased.
+  return (1.0 - smoothstep(0.0, 0.08, e)) * (1.0 - smoothstep(0.03, 0.08, gFoot * scale));
 }
 
 #ifdef TERRAIN_HOLES
@@ -455,6 +467,7 @@ bool inHole(vec2 p) {
 struct TerrainSample { vec3 albedo; float roughness; float bump; };
 
 TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
+  gFoot = max(length(fwidth(p)), 1e-4);
   float dist = length(p - cam);
   float h = p.y;
   // Ground type follows the slope of the terrain, not of every boulder up close.
@@ -477,10 +490,10 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   // Distance down the face, counting the drop too, so cliffs don't stretch the streaks.
   float alongM = dot(p.xz, downDir) - p.y;
   // Thin streaks: varied across the slope, stretched 15x down it.
-  float streaks = fbm(vec2(acrossM * 0.35, alongM * 0.023), 4);
+  float streaks = fbm(vec2(acrossM * 0.35, alongM * 0.023), 4, gFoot * 0.35);
   // Finer streaks only close up, faded out before they get small enough to shimmer.
   float closeUp = 1.0 - smoothstep(25.0, 90.0, dist);
-  float streaksNear = closeUp > 0.0 ? mix(0.5, fbm(vec2(acrossM * 0.55, alongM * 0.05), 3), closeUp) : 0.5;
+  float streaksNear = closeUp > 0.0 ? mix(0.5, fbm(vec2(acrossM * 0.55, alongM * 0.05), 3, gFoot * 0.55), closeUp) : 0.5;
 
   // Fractured rock: blocks a few metres across, and smaller joints within them.
   float blockCrack = near > 0.0 ? cracks(p, n, 0.18) : 0.0;
@@ -510,7 +523,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   // ice between them streaked with dirt along the flow, and snow cover higher up
   // (the accumulation zone) and in hollows.
   float moraine = clamp(surf.w + (medium - 0.5) * 0.25, 0.0, 1.0);
-  float flowStreak = fbm(vec2(p.x * 0.05, p.z * 0.006), 3);
+  float flowStreak = fbm(vec2(p.x * 0.05, p.z * 0.006), 3, gFoot * 0.05);
   vec3 rubble = mix(vec3(0.27, 0.25, 0.23), vec3(0.50, 0.46, 0.41), fine * near + 0.45 * (1.0 - near));
   rubble *= 0.85 + 0.3 * hash12(floor(p.xz * 1.3)) * near;
   vec3 glacierIce = mix(vec3(0.52, 0.66, 0.77), vec3(0.80, 0.86, 0.91), smoothstep(0.3, 0.75, medium));
@@ -536,7 +549,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   snowAmt += steepMix * near * patches;
   snowAmt = smoothstep(0.3, 0.6, snowAmt + (medium - 0.5) * 0.3);
   // Wind ripples (sastrugi) across the prevailing westerly, and soft runnels on steep snow.
-  float ripples = grain > 0.0 ? mix(0.5, fbm(vec2(p.x * 0.09, p.z * 0.9), 3), grain) : 0.5;
+  float ripples = grain > 0.0 ? mix(0.5, fbm(vec2(p.x * 0.09, p.z * 0.9), 3, gFoot * 0.9), grain) : 0.5;
   float runnels = smoothstep(30.0, 50.0, slope) * near;
   vec3 snow = vec3(0.80, 0.83, 0.88) * (0.92 + 0.08 * fine);
   snow *= 1.0 - 0.04 * runnels * smoothstep(0.45, 0.7, streaksNear) - 0.03 * (ripples - 0.5) * grain;
@@ -589,7 +602,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   TerrainSample s;
   s.albedo = col;
   s.roughness = mix(mix(0.95, 0.75, snowy), 0.35, iceLike);
-  s.bump = (fine * near * mix(1.6, 0.35, snowy) + medium * mid * 6.0) * 0.6;
+  s.bump = (fine * near * mix(1.6, 0.2, snowy) + medium * mid * 6.0) * 0.6;
   // Cracks cut in, ripples and runnels shape the snow, a ledge stands proud of the slope.
   s.bump += (-0.25 * blockCrack * near - 0.1 * jointCrack) * (1.0 - snowy)
     + (0.05 * ripples * grain + 0.12 * runnels * streaksNear) * snowy

@@ -242,11 +242,11 @@ export class Hud {
     red.style.opacity = hurt > 0 || this.flash > 0.01 ? 1 : 0;
     const blur = $('hurt-blur');
     blur.style.setProperty('--inner', `${Math.max(0, inner - 10).toFixed(1)}%`);
-    blur.style.setProperty('--blur', `${(14 * hurt + 4 * this.flash).toFixed(1)}px`);
+    blur.style.setProperty('--blur', `${(24 * hurt + 6 * this.flash).toFixed(1)}px`);
     blur.style.opacity = hurt > 0.05 || this.flash > 0.05 ? 1 : 0;
     // The whole view dims, loses colour and goes soft as well.
     if (hurt < 0.02) return '';
-    return `blur(${(2.2 * deep).toFixed(2)}px) brightness(${(1 - 0.55 * deep).toFixed(2)}) saturate(${(1 - 0.8 * hurt).toFixed(2)}) contrast(${(1 - 0.25 * deep).toFixed(2)})`;
+    return `blur(${(1.5 * hurt + 5 * deep).toFixed(2)}px) brightness(${(1 - 0.55 * deep).toFixed(2)}) saturate(${(1 - 0.8 * hurt).toFixed(2)}) contrast(${(1 - 0.25 * deep).toFixed(2)})`;
   }
 
   // ---- Devices ----
