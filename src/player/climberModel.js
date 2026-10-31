@@ -215,100 +215,166 @@ export class ClimberModel extends THREE.Group {
   }
 
   /**
+   * Poses the body on the ground under it. Feet (and on steep ground, hands) are
+   * placed on the slope with two-bone IK, the body leans into the hill, and the
+   * pelvis drops so no leg has to stretch past its length.
+   *
    * @param mode 'walk' | 'climb' | 'rope' | 'rest' | 'slide' | 'fly'
    * @param phase gait phase in radians
-   * @param lean 0..1, how steep the ground ahead is
+   * @param moving whether the climber is moving
+   * @param rise ground rise per metre in the direction the climber faces
+   *   (tan of the slope; positive uphill, negative downhill)
    */
-  pose(mode, phase, moving, lean) {
+  pose(mode, phase, moving, rise = 0) {
     const j = this.joints;
+    if (mode === 'slide' || mode === 'fly') return this._poseFK(mode);
+    const th = Math.atan(rise);
+    const up = Math.max(th, 0);
+    // Points on the slope in the sagittal plane, as [y, z] (the climber faces -z):
+    // s metres up the surface and n metres out from it.
+    const onSlope = (s, n) => [s * Math.sin(th) + n * Math.cos(th), -s * Math.cos(th) + n * Math.sin(th)];
     const sw = moving ? Math.sin(phase) : 0;
-    const cw = moving ? Math.cos(phase) : 0;
-    // [hip, knee] per leg and [shoulder, elbow] per arm; knees bend backward (negative).
-    let legs, arms, spine = 0, pelvisTilt = 0, head = 0, spread = 0.12;
-    let tool = 'axe';
+    const step = (i) => phase + i * Math.PI; // left and right limbs half a cycle apart
+    let pelvis, pt, sp, feet, hands = null, footMax, head = 0.1, spread = 0.12, tool = 'axe';
+    let armsFK = [[0, 0.1], [0, 0.1]];
+
     switch (mode) {
       case 'walk': {
-        const lift = (c) => Math.max(0, c) * 0.55; // knee bends while the leg swings through
-        legs = [[sw * 0.5 + 0.05, -0.12 - lift(cw)], [-sw * 0.5 + 0.05, -0.12 - lift(-cw)]];
-        arms = [[-sw * 0.45 + 0.1, 0.35], [sw * 0.45 + 0.25, 0.5]];
-        spine = -0.12 - 0.25 * lean;
-        pelvisTilt = -0.05;
-        head = 0.12 + 0.2 * lean;
+        // Stride along the ground, lifting the foot as it swings through.
+        feet = [0, 1].map((i) => {
+          const z = moving ? -0.28 * Math.sin(step(i)) : (i ? 0.06 : -0.06);
+          const lift = moving ? Math.max(0, Math.cos(step(i))) * 0.1 : 0;
+          return [-z * rise + BONES.ankleHeight + lift, z];
+        });
+        pelvis = [0.96 + (moving ? Math.abs(Math.cos(phase)) * 0.02 : 0), 0.02];
+        pt = -0.05 - 0.25 * up + 0.1 * Math.min(th, 0);
+        sp = -0.1 - 0.35 * up;
+        armsFK = [[-sw * 0.45 + 0.1, 0.35], [sw * 0.45 + 0.25, 0.5]];
+        footMax = 0.45;
+        head = 0.1 + 0.4 * up;
         break;
       }
-      case 'climb':
-        // Facing into the slope: kicking crampons in, swinging the axe high.
-        legs = [[0.75 + sw * 0.4, -0.9 - Math.max(0, sw) * 0.4], [0.75 - sw * 0.4, -0.9 - Math.max(0, -sw) * 0.4]];
-        arms = [[1.9 - sw * 0.5, 0.5], [2.4 + sw * 0.5, 0.35]];
-        spine = -0.35;
-        pelvisTilt = -0.2;
-        head = 0.45;
-        spread = 0.2;
+      case 'climb': {
+        // Facing into the slope: body leaning in, crampons kicked into the surface,
+        // mitts and axe on the slope above, moving one limb at a time.
+        // Hips over the feet but held off the slope, chest leaning in.
+        pelvis = [0.8, 0.2 * Math.sin(up)];
+        pt = -0.15 * up;
+        sp = -0.3 * up - 0.05;
+        feet = [0, 1].map((i) => {
+          const c = step(i);
+          return onSlope(moving ? 0.14 * Math.sin(c) : (i ? -0.08 : 0.04), 0.09 + (moving ? Math.max(0, Math.cos(c)) * 0.08 : 0));
+        });
+        hands = [0, 1].map((i) => {
+          const c = step(i + 1); // each hand moves with the opposite foot
+          return onSlope(1.15 + (moving ? 0.13 * Math.sin(c) : (i ? 0.08 : -0.04)), 0.1 + (moving ? Math.max(0, Math.cos(c)) * 0.12 : 0));
+        });
+        footMax = 0.6;
+        head = 0.25 + 0.6 * up;
+        spread = 0.22;
         break;
-      case 'rope':
-        // Left mitt high on the jumar, right hand on the rope below, stepping up.
-        legs = [[0.55 + sw * 0.35, -0.75 - Math.max(0, sw) * 0.35], [0.55 - sw * 0.35, -0.75 - Math.max(0, -sw) * 0.35]];
-        arms = [[2.5 + sw * 0.2, 0.25 + Math.max(0, -sw) * 0.4], [0.9, 0.9]];
-        spine = -0.3;
-        pelvisTilt = -0.15;
-        head = 0.4;
+      }
+      case 'rope': {
+        // Jumaring: left mitt slides the jumar up the rope, right hand holds the
+        // rope below it, stepping up the slope.
+        pelvis = [0.84, 0.18 * Math.sin(up)];
+        pt = -0.12 * up;
+        sp = -0.22 * up - 0.05;
+        feet = [0, 1].map((i) => {
+          const c = step(i);
+          return onSlope(moving ? 0.15 * Math.sin(c) : (i ? -0.06 : 0.06), 0.09 + (moving ? Math.max(0, Math.cos(c)) * 0.08 : 0));
+        });
+        hands = [
+          onSlope(1.45 + (moving ? 0.1 * Math.sin(phase) : 0), 0.42),
+          onSlope(0.8, 0.38),
+        ];
+        footMax = 0.6;
+        head = 0.25 + 0.5 * up;
         tool = 'jumar';
         break;
-      case 'slide':
-        // Face-down against the slope, arms up digging the axe in, feet kicking.
-        legs = [[-0.15, -0.5], [-0.05, -0.7]];
-        arms = [[2.9, 0.4], [2.7, 0.6]];
-        spine = 0.15;
-        head = -0.3;
-        spread = 0.25;
-        break;
-      case 'rest': {
-        // Bent over, hands on knees, back heaving with each breath.
-        const breath = Math.sin(phase) * 0.05;
-        legs = [[0.45, -0.55], [0.45, -0.55]];
-        arms = [[0.9, -0.05], [0.9, -0.05]];
-        spine = -0.75 - breath;
-        pelvisTilt = -0.15;
-        head = 0.7;
-        spread = 0.16;
-        break;
       }
-      default:
-        legs = [[0, 0], [0, 0]];
-        arms = [[0, 0.1], [0, 0.1]];
+      default: {
+        // Resting: bent over, hands on knees, back heaving with each breath.
+        const breath = Math.sin(phase) * 0.05;
+        feet = [[0.06 * rise + BONES.ankleHeight, -0.06], [-0.06 * rise + BONES.ankleHeight, 0.06]];
+        pelvis = [0.84, 0.08];
+        pt = -0.15;
+        sp = -0.6 - breath;
+        armsFK = [[0.9, -0.05], [0.9, -0.05]];
+        footMax = 0.45;
+        head = 0.55;
+        spread = 0.16;
+      }
     }
-    const sides = ['L', 'R'];
-    sides.forEach((side, i) => {
-      const [hip, knee] = legs[i];
-      j[`hip${side}`].rotation.set(hip, 0, 0);
-      j[`knee${side}`].rotation.set(knee, 0, 0);
-      j[`ankle${side}`].rotation.set(-(hip + knee + pelvisTilt) * 0.85, 0, 0); // keep soles roughly level
-      const [shoulder, elbow] = arms[i];
-      const s = i ? 1 : -1;
-      j[`shoulder${side}`].rotation.set(shoulder, 0, s * spread);
-      j[`elbow${side}`].rotation.set(elbow, 0, 0);
-      j[`wrist${side}`].rotation.set(0, 0, 0);
+
+    // Lower the pelvis until both feet are within reach.
+    const reach = (BONES.thigh + BONES.shin) * 0.985;
+    for (const [fy, fz] of feet) {
+      const dz = fz - pelvis[1];
+      pelvis[0] = Math.min(pelvis[0], fy + Math.sqrt(Math.max(reach * reach - dz * dz, 0)) + 0.02);
+    }
+    j.pelvis.position.set(0, pelvis[0], pelvis[1]);
+    j.pelvis.rotation.set(pt, 0, mode === 'walk' && moving ? sw * 0.05 : 0);
+    j.spine.rotation.set(sp, mode === 'walk' && moving ? -sw * 0.08 : 0, 0);
+    // Look up the slope rather than at it.
+    const look = head - (pt + sp);
+    j.neck.rotation.set(look * 0.4, 0, 0);
+    j.head.rotation.set(look * 0.6, 0, 0);
+
+    const hip = [pelvis[0] - 0.02 * Math.cos(pt), pelvis[1] - 0.02 * Math.sin(pt)];
+    const footAbs = Math.min(Math.max(th, -footMax), footMax);
+    ['L', 'R'].forEach((side, i) => {
+      const [a, k] = twoBone(hip, feet[i], BONES.thigh, BONES.shin, -1);
+      j[`hip${side}`].rotation.set(a - pt, 0, 0);
+      j[`knee${side}`].rotation.set(k, 0, 0);
+      j[`ankle${side}`].rotation.set(footAbs - (a + k), 0, 0); // sole flat on the slope
     });
-    j.pelvis.rotation.set(pelvisTilt, 0, moving && mode === 'walk' ? sw * 0.05 : 0);
-    j.spine.rotation.set(spine, moving && mode === 'walk' ? -sw * 0.08 : 0, 0);
-    j.neck.rotation.set(head * 0.4, 0, 0);
-    j.head.rotation.set(head * 0.6, 0, 0);
 
-    // Drop the pelvis so the lower foot rests on the ground.
-    const drop = Math.max(...legs.map(([h, k]) =>
-      BONES.thigh * Math.cos(h + pelvisTilt) + BONES.shin * Math.cos(h + k + pelvisTilt)));
-    const bob = moving && mode === 'walk' ? Math.abs(cw) * 0.02 : 0;
-    j.pelvis.position.y = mode === 'slide' ? BONES.pelvisHeight : drop + BONES.ankleHeight + 0.02 + 0.01 + bob;
+    const tilt = pt + sp;
+    const shoulder = [
+      pelvis[0] + 0.08 * Math.cos(pt) + 0.42 * Math.cos(tilt),
+      pelvis[1] + 0.08 * Math.sin(pt) + 0.42 * Math.sin(tilt),
+    ];
+    ['L', 'R'].forEach((side, i) => {
+      let [a, e] = armsFK[i];
+      if (hands) {
+        const [ha, he] = twoBone(shoulder, hands[i], BONES.upperArm, BONES.forearm + 0.06, 1);
+        a = ha - tilt;
+        e = he;
+      }
+      j[`shoulder${side}`].rotation.set(a, 0, (i ? 1 : -1) * spread);
+      j[`elbow${side}`].rotation.set(e, 0, 0);
+      j[`wrist${side}`].rotation.set(hands ? -0.4 : 0, 0, 0);
+    });
 
-    // Walking, the axe is held by its head like a cane; climbing, by the shaft
-    // with the pick reaching up into the slope.
-    if (mode === 'climb') {
-      this.axe.position.set(0, -0.62, 0);
-      this.axe.rotation.set(0, 0, Math.PI);
+    this._tools(tool);
+  }
+
+  /** Simple forward-kinematics poses for sliding and scout flying. */
+  _poseFK(mode) {
+    const j = this.joints;
+    this.resetPose();
+    if (mode === 'slide') {
+      // Face-down against the slope, arms up digging the axe in, feet kicking.
+      j.hipL.rotation.x = -0.15; j.kneeL.rotation.x = -0.5;
+      j.hipR.rotation.x = -0.05; j.kneeR.rotation.x = -0.7;
+      j.shoulderL.rotation.set(2.9, 0, -0.25); j.elbowL.rotation.x = 0.4;
+      j.shoulderR.rotation.set(2.7, 0, 0.25); j.elbowR.rotation.x = 0.6;
+      j.spine.rotation.x = 0.15;
+      j.head.rotation.x = -0.3;
     } else {
-      this.axe.position.set(0, 0.03, 0);
-      this.axe.rotation.set(0, 0, 0);
+      j.shoulderL.rotation.z = -0.12;
+      j.shoulderR.rotation.z = 0.12;
     }
+    this._tools('axe');
+  }
+
+  /** The axe is held by its head, shaft down, so on steep ground it plunges into
+   * the slope; on fixed ropes it's stowed on the pack and the jumar comes out. */
+  _tools(tool) {
+    const j = this.joints;
+    this.axe.position.set(0, 0.03, 0);
+    this.axe.rotation.set(0, 0, 0);
     this.axe.visible = tool === 'axe';
     this.stowedAxe.visible = tool !== 'axe';
     this.jumar.visible = tool === 'jumar';
@@ -321,4 +387,20 @@ export class ClimberModel extends THREE.Group {
       this.tether.geometry.setFromPoints([a.applyMatrix4(inv), b.applyMatrix4(inv)]);
     }
   }
+}
+
+/**
+ * Two-bone IK in the sagittal plane. Points are [y, z]; angles are measured from
+ * straight down, positive forward (-z). bend -1 bends the middle joint backward
+ * (a knee), +1 forward (an elbow). Returns [first bone angle, middle joint angle].
+ */
+function twoBone(root, target, l1, l2, bend) {
+  const dy = target[0] - root[0];
+  const dz = target[1] - root[1];
+  const d = Math.min(Math.max(Math.hypot(dy, dz), Math.abs(l1 - l2) + 1e-3), l1 + l2 - 1e-4);
+  const phi = Math.atan2(-dz, -dy);
+  const clamp1 = (x) => Math.min(Math.max(x, -1), 1);
+  const b = Math.acos(clamp1((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d)));
+  const g = Math.acos(clamp1((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2)));
+  return [phi - bend * b, bend * (Math.PI - g)];
 }

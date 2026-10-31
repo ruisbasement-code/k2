@@ -203,7 +203,10 @@ function animateModel(dt) {
     pose = 'rest';
     view.gait += (dt * c.body.breathRate / 60) * Math.PI * 2;
   }
-  model.pose(pose, view.gait, c.moving, Math.min(c.slope / 30, 1));
+  // Ground rise in the direction the climber faces, for fitting hands and feet to the slope.
+  const [gx, gz] = hm.gradient(c.position.x, c.position.z, 3);
+  const rise = -(gx * Math.sin(model.rotation.y) + gz * Math.cos(model.rotation.y));
+  model.pose(pose, view.gait, c.moving, rise);
 }
 
 const _harness = new THREE.Vector3();
