@@ -173,6 +173,23 @@ and curvature:
 - The Godwin-Austen Glacier around Base Camp is rubble-covered ice streaked along its flow.
 - Procedural detail and bump mapping fade with distance, and distant terrain sits in haze.
 
+## Camps and climber
+
+- **Base Camp** is a spread of expedition compounds on the glacier. Each has a mess
+  tent, a stone-walled kitchen under a tarp, dome tents on levelled stone platforms,
+  a toilet tent, blue drums, duffels and a solar panel. A puja altar with a flag pole
+  stands in the middle of camp, with strings of prayer flags that flutter in the wind.
+- **ABC and Camps 1–4** are a few small tents on ledges dug into the slope, each with a
+  built-up stone or snow-block wall on its downhill side, kept clear of the fixed rope.
+  Oxygen bottles, packs and ice axes lie on the porches, and bamboo wands mark the
+  snow camps.
+- **The climber** wears a red one-piece down suit, helmet, goggles and mask, a harness
+  and a pack with a foam pad, and big double boots with crampons. They walk with the axe
+  like a cane, swing it overhead on steep ground, and stow it to jumar up fixed ropes.
+  The body is a joint hierarchy (`ClimberModel.joints` and `.bones`), ready for ragdoll.
+
+![The climber](docs/screenshots/climber.png)
+
 ## Project layout
 
 ```
@@ -180,7 +197,8 @@ index.html            HUD and start screen markup
 src/main.js           scene, camera, game loop, key bindings
 src/data/             route.json (camps, fixed-rope lines), tuning.json (all movement numbers)
 src/sim/              paceModel.js, climberBody.js, hazards.js (loose rock, rockfall, snow trail): pure rules, no graphics
-src/world/            heightmap.js, terrain.js (mesh + shader), fixedRopes.js, camps.js, sky.js, hazardMeshes.js
+src/world/            heightmap.js, terrain.js (mesh + shader), fixedRopes.js, sky.js, hazardMeshes.js,
+                      camps.js (layouts), campProps.js (tents, flags, gear), propBatch.js
 src/player/           climber.js (movement, ropes, falls, health), climberModel.js, ragdoll.js, breathAudio.js, input.js
 src/ui/hud.js         HUD, minimap, breath ring, vision vignette
 public/data/          the heightmap (float32) and its metadata

@@ -43,7 +43,8 @@ const hm = await Heightmap.load();
 scene.add(createTerrain(hm));
 const ropes = new FixedRopes(hm, route.fixed_ropes);
 scene.add(ropes.createMesh());
-scene.add(createCamps(hm, route.places));
+const camps = createCamps(hm, route.places, ropes);
+scene.add(camps);
 
 const climber = new Climber(hm, ropes, route.places);
 const rockMesh = new RockfallMesh(climber.rockfall);
@@ -245,6 +246,7 @@ function frame(now) {
   updateTether(dt);
   updateCamera();
   audio.update();
+  camps.userData.update(now / 1000);
   hud.update(dt);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
