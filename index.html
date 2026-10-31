@@ -21,7 +21,7 @@
   <div class="row">To summit <b id="dist">—</b></div>
   <hr>
   <div class="label">Health</div>
-  <div id="health" class="bar"><div id="health-fill"></div></div>
+  <div id="health" class="bar"><div id="health-fill"></div><div id="health-cap" hidden title="Permanent injuries: you can't heal past this"></div></div>
   <div class="label">Stamina</div>
   <div id="stamina" class="bar"><div id="stamina-fill"></div><div id="stamina-cap" title="The most you can recover at this altitude"></div></div>
   <div id="breath"><div id="breath-dial"><div id="breath-ring"></div></div><span id="breath-text"></span></div>
@@ -31,11 +31,12 @@
 
 <div id="map-panel" class="panel"><canvas id="map" width="340" height="340"></canvas></div>
 
+<div id="sleep"></div>
 <div id="prompt"></div>
 <div id="message"></div>
 <div id="keys">
   <kbd>WASD</kbd> move · <kbd>Shift</kbd> push pace · <kbd>Space</kbd> self-arrest · <kbd>C</kbd> clip/unclip rope · mouse look (click) · wheel zoom ·
-  <kbd>V</kbd> view · <kbd>T</kbd> time speed · <kbd>1</kbd>–<kbd>9</kbd> jump to camp · <kbd>F</kbd> scout fly · <kbd>R</kbd> rescue · <kbd>M</kbd> mute
+  <kbd>V</kbd> view · <kbd>T</kbd> time speed · <kbd>1</kbd>–<kbd>9</kbd> jump to camp · <kbd>F</kbd> scout fly · <kbd>Z</kbd> sleep in tent · <kbd>R</kbd> rescue · <kbd>M</kbd> mute
 </div>
 
 <div id="death" hidden>

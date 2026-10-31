@@ -159,6 +159,14 @@
   "camp_radius_m": 60,
   "rescue_hours": 6,
 
+  "_sleep": "Press Z by a camp tent (within tent_reach_m of it) to sleep. From night_from_hour you sleep until wake_hour the next morning; in the day it is a nap of nap_hours. full_rest_hours or more fully restores stamina; each hour asleep heals sleep_health_per_hour, but never permanent injuries.",
+  "tent_reach_m": 3.5,
+  "night_from_hour": 18,
+  "wake_hour": 6,
+  "nap_hours": 2,
+  "full_rest_hours": 7,
+  "sleep_health_per_hour": 30,
+
   "breath_rest": 12,
   "breath_altitude": 12,
   "breath_effort": 16,

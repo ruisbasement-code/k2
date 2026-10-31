@@ -47,6 +47,7 @@ const camps = createCamps(hm, route.places, ropes);
 scene.add(camps);
 
 const climber = new Climber(hm, ropes, route.places);
+climber.tents = camps.userData.tents;
 const rockMesh = new RockfallMesh(climber.rockfall);
 scene.add(rockMesh);
 const prints = new FootprintMesh(hm, tuning.max_footprints);
@@ -82,6 +83,7 @@ input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
 input.on('KeyR', () => climber.rescue());
+input.on('KeyZ', () => { if (climber.sleep()) hud.showSleep(); });
 input.on('KeyM', () => { audio.muted = !audio.muted; hud.showMessage(audio.muted ? 'Breathing muted' : 'Breathing on'); });
 
 teleport(0);

@@ -23,11 +23,19 @@ export class Hud {
     this.messageTime = 4;
   }
 
+  /** Fade to black and back, for a night's sleep. */
+  showSleep() {
+    this.sleepTime = 2.5;
+    this.messageTime = 6;
+  }
+
   update(dt) {
     const c = this.climber;
     const body = c.body;
     this.messageTime -= dt;
     $('message').style.opacity = Math.min(Math.max(this.messageTime, 0), 1);
+    this.sleepTime = Math.max((this.sleepTime ?? 0) - dt, 0);
+    $('sleep').style.opacity = Math.min(this.sleepTime / 1.2, 1).toFixed(3);
 
     // Breath ring and vision: every frame so the pulse is smooth.
     const p = body.breathPhase;
@@ -43,6 +51,8 @@ export class Hud {
     v.style.opacity = (0.25 + 0.7 * strain).toFixed(3);
 
     $('health-fill').style.width = `${c.health}%`;
+    $('health-cap').style.left = `${c.maxHealth}%`;
+    $('health-cap').hidden = c.maxHealth >= 100;
     $('stamina-fill').style.width = `${body.stamina}%`;
     $('stamina-fill').classList.toggle('low', body.exhausted || body.stamina < 25);
     $('stamina-cap').style.left = `${body.staminaCap(c.position.y)}%`;
@@ -95,8 +105,12 @@ export class Hud {
     if (c.blocked) return 'Too steep to climb without a fixed rope';
     if (c.clipped) return 'Clipped in: move freely. The rope speeds you along it and catches slips. C unclips.';
     if (c.ropeDistance() < CLIP_RANGE) return 'Fixed rope here. Press C to clip in.';
+    if (c.canSleep()) {
+      const plan = c.sleepPlan();
+      return plan.night ? 'Tent here. Press Z to sleep until morning.' : `Tent here. Press Z for a ${plan.hours} h nap.`;
+    }
     if (c.slope > tuning.climb_start_deg) return `Steep ${c.surface.label.toLowerCase()} and unroped: one slip and you slide.`;
-    if (c.health < 50) return 'Injured. Rest to heal, faster in a camp.';
+    if (c.health < 50) return 'Injured. Rest to heal, faster in a camp, or sleep in a tent.';
     if (body.stamina < 25) return 'Nearly spent. Stop and rest.';
     return '';
   }

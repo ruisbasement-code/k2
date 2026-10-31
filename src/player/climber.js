@@ -31,6 +31,7 @@
 import * as THREE from 'three';
 import * as Pace from '../sim/paceModel.js';
 import { ClimberBody } from '../sim/climberBody.js';
+import { sleepPlan, sleepRecovery } from '../sim/sleep.js';
 import { SnowTrail, Rockfall, isLoose, ledgeAt } from '../sim/hazards.js';
 
 const { tuning } = Pace;
@@ -61,6 +62,13 @@ export class Climber {
     /** The highest camp reached; you are rescued to it if you die. */
     this.lastCamp = this.places[0] ?? null;
     this.health = 100;
+    /**
+     * Injuries that never heal (bone damage and the like), each {label, health}:
+     * the health they take off the top. Rest and sleep only heal up to maxHealth.
+     */
+    this.permanentInjuries = [];
+    /** Sleeping tents, {camp, x, z}; set from the camp layouts (createCamps). */
+    this.tents = [];
     this.velocity = new THREE.Vector3();
     this.surface = Pace.surfaceAt(5000, 0);
     /** The fall in progress or the last one: start height, distance, top speed, worst hit. */
@@ -190,11 +198,84 @@ export class Climber {
     const camp = this.lastCamp;
     this.mode = Mode.WALK;
     this.placeAt(camp.x + 6, camp.z + 6, 0, 0);
-    this.health = 40;
+    this.health = Math.min(40, this.maxHealth);
     this.body.stamina = 30;
     this.body.exhausted = false;
     this.mountainSeconds += tuning.rescue_hours * 3600;
     this.onMessage(`Rescued and carried to ${camp.name} after ${tuning.rescue_hours} hours. Rest here to heal.`);
+  }
+
+  /** The most health you can heal back to: 100 less any permanent injuries. */
+  get maxHealth() {
+    return Math.max(0, 100 - this.permanentInjuries.reduce((sum, i) => sum + i.health, 0));
+  }
+
+  /** An injury that rest and sleep will not heal. */
+  addPermanentInjury(label, health) {
+    this.permanentInjuries.push({ label, health });
+    this.health = Math.min(this.health, this.maxHealth);
+  }
+
+  /** The tent within reach, if any. */
+  nearestTent() {
+    let best = null, bestD = tuning.tent_reach_m;
+    for (const t of this.tents) {
+      const d = Math.hypot(t.x - this.position.x, t.z - this.position.z);
+      if (d < bestD) { best = t; bestD = d; }
+    }
+    return best;
+  }
+
+  /** Standing by a tent, on your feet: you can crawl in and sleep. */
+  canSleep() {
+    if (this.mode === Mode.FLY || this.falling || this.dead) return false;
+    return !!this.nearestTent();
+  }
+
+  /** How long a sleep here and now would last, for the HUD. */
+  sleepPlan() {
+    return sleepPlan(this.hour);
+  }
+
+  /**
+   * Crawl into the tent and sleep: through to the morning at night, a nap in the day.
+   * Returns what happened, or null if there is no tent within reach.
+   */
+  sleep() {
+    if (!this.canSleep()) {
+      if (this.mode !== Mode.FLY && !this.falling && !this.dead) this.onMessage('No tent here. Find a camp tent to sleep in.');
+      return null;
+    }
+    const tent = this.nearestTent();
+    const plan = sleepPlan(this.hour);
+    const before = this.health;
+    const r = sleepRecovery(plan.hours, {
+      health: this.health,
+      maxHealth: this.maxHealth,
+      stamina: this.body.stamina,
+      staminaCap: this.body.staminaCap(this.position.y),
+    });
+    this.unclip();
+    this.mountainSeconds += plan.hours * 3600;
+    this.health = r.health;
+    this.body.stamina = r.stamina;
+    if (r.rested) this.body.exhausted = false;
+    this.pace = 0;
+    this.velocity.set(0, 0, 0);
+    this.breathDebt = 0;
+    this.gasping = false;
+    this.body.breathRate = tuning.breath_rest;
+    this._altLog = [];
+    const healed = Math.round(this.health - before);
+    const slept = plan.hours >= 1 ? `${Math.round(plan.hours * 10) / 10} h` : `${Math.round(plan.hours * 60)} min`;
+    let text = plan.night
+      ? `You slept ${slept} in the tent at ${tent.camp}. Day ${this.day}, ${this.clockText()}.`
+      : `You napped ${slept} in the tent at ${tent.camp}.`;
+    text += r.rested ? ' Well rested.' : ' A little rested.';
+    if (healed > 0) text += ` Healed ${healed}.`;
+    if (this.permanentInjuries.length && this.health >= this.maxHealth) text += ' Some injuries will not heal.';
+    this.onMessage(text);
+    return { ...plan, healed, rested: r.rested, camp: tent.camp };
   }
 
   /** Distance to the nearest rope, for the HUD prompt. */
@@ -768,9 +849,10 @@ export class Climber {
 
   /** Injuries heal slowly when resting, faster in a camp. */
   _heal(dtM) {
-    if (this.moving || this.health >= 100) return;
+    const max = this.maxHealth;
+    if (this.moving || this.health >= max) return;
     const rate = this._campNearby() ? tuning.camp_health_regen_per_hour : tuning.health_regen_per_hour;
-    this.health = Math.min(100, this.health + (rate * dtM) / 3600);
+    this.health = Math.min(max, this.health + (rate * dtM) / 3600);
   }
 
   _campNearby() {

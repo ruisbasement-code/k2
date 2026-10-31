@@ -15,20 +15,28 @@ const { rng, pick } = P;
 /** World placement at (x, y, z) facing yaw (local +z points along yaw). */
 const place = (x, y, z, yaw) => new THREE.Matrix4().makeRotationY(yaw).setPosition(x, y, z);
 
+/**
+ * Builds every camp. The group's userData.tents lists the sleeping tents as
+ * {camp, x, z}, for sleeping in them.
+ */
 export function createCamps(hm, places, ropes) {
   const group = new THREE.Group();
   const mats = campMaterials();
+  const tentList = [];
   places.forEach((p, i) => {
     if (!p.tents) return;
     const b = new PropBatch();
     const rand = rng(9173 + i * 7919);
     const [cx, cz] = hm.gridToWorld(p.r, p.c);
-    if (p.tents > 10) buildBaseCamp(b, hm, cx, cz, p.tents, rand);
-    else buildHighCamp(b, hm, ropes, cx, cz, p.tents, rand);
+    const sleeping = [];
+    if (p.tents > 10) buildBaseCamp(b, hm, cx, cz, p.tents, rand, sleeping);
+    else buildHighCamp(b, hm, ropes, cx, cz, p.tents, rand, sleeping);
+    for (const [x, z] of sleeping) tentList.push({ camp: p.name, x, z });
     const camp = b.build(mats);
     camp.name = p.name;
     group.add(camp);
   });
+  group.userData.tents = tentList;
   group.userData.update = (t) => mats.update(t);
   return group;
 }
@@ -60,7 +68,7 @@ function levelSite(b, hm, x, z, yaw, [x0, x1, z0, z1], kind, rand, cut = false) 
 /** Matrix for a small prop standing on the terrain at world (x, z). */
 const onGround = (hm, x, z, yaw = 0) => place(x, hm.heightAt(x, z), z, yaw);
 
-function buildBaseCamp(b, hm, cx, cz, tents, rand) {
+function buildBaseCamp(b, hm, cx, cz, tents, rand, sleeping) {
   // Puja altar near the middle of camp, with flag strings fanning out from its pole.
   const ax = cx + 9, az = cz - 7;
   const top = P.chorten(b, onGround(hm, ax, az, 0.3), rand);
@@ -116,6 +124,7 @@ function buildBaseCamp(b, hm, cx, cz, tents, rand) {
       const tyaw = Math.atan2(kx - x, kz - z) + (rand() - 0.5) * 0.4;
       const site = levelSite(b, hm, x, z, tyaw, [-1.6, 1.6, -1.2, 1.9], 'rock', rand);
       P.domeTent(b, site, pick(rand, P.TENT_COLORS), rand);
+      sleeping.push([x, z]);
       placed++;
     }
     // Duffels piled by the mess tent door, and a flag string across the compound.
@@ -142,7 +151,7 @@ function buildBaseCamp(b, hm, cx, cz, tents, rand) {
   }
 }
 
-function buildHighCamp(b, hm, ropes, cx, cz, tents, rand) {
+function buildHighCamp(b, hm, ropes, cx, cz, tents, rand, sleeping) {
   const y0 = hm.heightAt(cx, cz);
   const kind = y0 > 6900 || y0 < 5600 ? 'snow' : 'rock';
   const sites = findLedges(hm, ropes, cx, cz, tents, 40);
@@ -153,6 +162,7 @@ function buildHighCamp(b, hm, ropes, cx, cz, tents, rand) {
     const site = levelSite(b, hm, x, z, yaw, [-1.5, 1.5, -1.0, 1.25], kind, rand, true);
     // Expedition tents high on the mountain are small and mostly yellow or orange.
     P.domeTent(b, site, pick(rand, [0xf2b705, 0xf5c518, 0xe8571c, 0xd62b1f, 0xf2b705]), rand, { len: 2.1, wid: 1.35, h: 1.0 });
+    sleeping.push([x, z]);
     // Gear on the porch.
     const m = site.clone();
     if (rand() < 0.7) P.oxygen(b, m.clone().multiply(new THREE.Matrix4().makeTranslation(0.8, 0, 1.3)));
