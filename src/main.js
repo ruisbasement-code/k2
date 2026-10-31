@@ -134,7 +134,7 @@ input.on('KeyC', () => climber.toggleClip());
 input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
-input.on('KeyR', () => respawn());
+input.on('KeyR', () => (climber.collapsed ? climber.giveUp() : respawn()));
 input.on('KeyZ', () => shelterOrSleep());
 input.on('KeyK', () => cook());
 input.on('KeyB', () => climber.eat());
@@ -472,8 +472,8 @@ function animateModel(dt) {
   // In first person you see your own body (the head is hidden), unless scouting.
   model.visible = !(view.firstPerson && c.mode === Mode.FLY);
   model.firstPerson = view.firstPerson;
-  if (c.tumbling || c.dead) {
-    ragdoll.update(dt, c.position, c.velocity, c.dead);
+  if (c.tumbling || c.dead || c.collapsed) {
+    ragdoll.update(dt, c.position, c.velocity, c.dead || !!c.collapsed);
     return;
   }
   ragdoll.stop();

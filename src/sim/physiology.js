@@ -15,6 +15,11 @@
 //   chill through your clothes. Resting in the open cools you; a tent and
 //   sleeping bag warm you. Below 35 °C you are clumsy, below 32 °C confused and
 //   no longer shivering, at 28 °C you die.
+// - Cold exposure: whenever the air takes heat faster than resting and effort
+//   make it (so you would have to shiver to keep up), the cold slowly wears your
+//   health down, and faster the weaker you already are. Night, wind, storms and
+//   wet clothes make it worse; moving, a down suit, a snow cave out of the wind
+//   and above all a tent or a camp slow or stop it. Hurt and out in the cold, it can kill.
 // - Frostbite builds in hard wind chill, faster when you are cold, dry, short of
 //   oxygen or not moving. It heals while still shallow; deep frostbite is a
 //   permanent injury.
@@ -35,6 +40,7 @@ const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
 const STAGES = {
   food: [[20, 'Low blood sugar', 'You feel shaky and weak. Eat something (B).'], [0, 'Starving', 'You have nothing left to burn. Eat (B).']],
   water: [[60, 'Thirsty', 'You are getting dehydrated. Drink (H).'], [30, 'Dehydrated', 'Badly dehydrated: weak and headachy. Drink (H) or melt snow at a camp (K).'], [10, 'Severely dehydrated', 'Severely dehydrated. Drink now.']],
+  chill: [[0.3, 'Cold', 'The cold is getting to you. Keep moving, wear warm gear or get out of the wind.'], [0.8, 'Freezing', 'Freezing: the cold is draining your health. Get into a tent or a snow cave.']],
   cold: [[35, 'Hypothermia', 'Mild hypothermia: shivering hard and clumsy. Keep moving or get into a tent.'], [32, 'Moderate hypothermia', 'Moderate hypothermia: you have stopped shivering and are confused. Get into a tent.']],
   frostbite: [[0.25, 'Frostnip', 'Your fingers and toes are numb: frostnip.'], [0.5, 'Frostbite', 'Frostbite: your fingers are clumsy and white. Get warm in a tent.']],
   ams: [[0.25, 'Mild AMS', 'Your head is pounding: mild altitude sickness. Rest, drink, or go down.'], [0.5, 'AMS', 'Altitude sickness: nausea and a splitting headache. Go down or use oxygen.'], [0.8, 'Severe AMS', 'Severe altitude sickness: you are vomiting. Go down now.']],
@@ -51,6 +57,8 @@ export class Physiology {
   hydration = 90;
   /** Core body temperature, °C. */
   core = tuning.core_normal_c;
+  /** Cold exposure: how hard the cold is on you now, 0 (fine) to 1.5 (killing you fast). */
+  chill = 0;
   /** Frostbite in hands and feet, 0..1 (0.8 is deep and permanent). */
   frostbite = 0;
   /** Gear: a down suit multiplies insulation; mitts, goggles and warmers slow frostbite. */
@@ -93,10 +101,13 @@ export class Physiology {
   /**
    * Advance the body.
    * @param dtH mountain hours
-   * @param ctx {altitude, effort, air, pack, sheltered, sleeping}
+   * @param ctx {altitude, effort, air, pack, sheltered, sleeping, outOfWind, health}
+   *   sheltered: in a tent; outOfWind: in a snow cave or crevasse (no wind chill);
+   *   inCamp: among a camp's tents, where you can warm up any time (no cold drain);
+   *   health: the climber's health now, so the cold can bite harder when you are weak
    * @returns {damage, cause} health lost and what from
    */
-  step(dtH, { altitude, effort = 0, air, pack, sheltered = false, sleeping = false }) {
+  step(dtH, { altitude, effort = 0, air, pack, sheltered = false, sleeping = false, outOfWind = false, inCamp = false, health = 100 }) {
     const t = tuning;
     if (dtH <= 0) return { damage: 0, cause: null };
     this.air = air;
@@ -127,12 +138,20 @@ export class Physiology {
     this.hydration = clamp(this.hydration - (litres / t.water_full_deficit_l) * 100 * dtH, 0, 100);
 
     // Warmth.
-    const outside = sheltered ? air.airTempC + t.tent_warmth_c : air.feelsLikeC;
+    const outside = sheltered ? air.airTempC + t.tent_warmth_c : outOfWind ? air.airTempC : air.feelsLikeC;
     const insulation = (sleeping ? t.sleeping_bag_insulation : t.insulation * (1 - 0.4 * clamp(air.wet ?? 0, 0, 1))) * this.insulationMult;
     let heat = t.heat_rest + t.heat_effort * effort + (this.shivering ? t.heat_shiver : 0);
     if (this.food <= 0) heat *= 0.6;
     const loss = (this.core - outside) / insulation;
     this.core = Math.min(t.core_normal_c, this.core + (heat - loss) * t.heat_rate_c_per_h * dtH);
+    this._health = health;
+
+    // Cold exposure: how far the heat you make without shivering falls short.
+    const made = (t.heat_rest + t.heat_effort * effort) * (this.food <= 0 ? 0.6 : 1);
+    const fromAir = (loss - made - t.cold_deficit_from) / t.cold_deficit_full;
+    const fromCore = (t.core_normal_c - 0.5 - this.core) / (t.core_normal_c - t.hypothermia_moderate_c);
+    const chill = clamp(Math.max(fromAir, fromCore), 0, 1.5);
+    this.chill = inCamp || sheltered || chill < t.cold_chill_min ? 0 : chill;
 
     // Frostbite.
     if (!sheltered && air.feelsLikeC < t.frostbite_from_c) {
@@ -206,6 +225,9 @@ export class Physiology {
     if (this.hape > 0.4) add(t.illness_health_per_h * (this.hape / 0.4) * dtH, 'HAPE killed you.');
     if (this.ams > 0.8) add(2 * dtH, 'Altitude sickness wore you down until you could not go on.');
     if (this.core < t.hypothermia_moderate_c) add(5 * dtH, 'You froze to death.');
+    // The cold wears you down, faster the weaker you are.
+    const weak = 1 - clamp((this._health ?? 100) / 100, 0, 1);
+    add(t.cold_health_per_h * this.chill * (1 + t.cold_low_health_boost * weak) * dtH, 'The cold wore you down until you could not go on.');
     if (this.frostbite > 0.6) add(1 * dtH, 'Frostbite and the cold finished you.');
     if (this.deterioration > 0.5) add(2 * dtH, 'The death zone wore you out.');
     if (this.food <= 0) add(1 * dtH, 'You starved.');

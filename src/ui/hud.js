@@ -108,6 +108,11 @@ export class Hud {
     if (c.dead) {
       $('death-cause').textContent = c.deathCause;
     }
+    $('collapsed').hidden = !c.collapsed;
+    if (c.collapsed) {
+      const min = Math.ceil(c.collapseHoursLeft * 60);
+      $('collapsed-left').textContent = `About ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min before you freeze.`;
+    }
     this._prompt();
     this._chips();
     this._hotbar();
@@ -153,6 +158,7 @@ export class Hud {
     const out = (alert = '') => ({ alert, actions: acts });
     if (c.mode === Mode.FLY) { acts.push(['F', 'Land']); return out(); }
     if (c.dead) return out();
+    if (c.collapsed) return out('Collapsed');
     if (c.tumbling) return out('Tumbling');
     if (c.falling && (c.fall.rope || c.fall.hole)) return out('Falling');
     if (c.falling) {

@@ -29,7 +29,7 @@ export const CONTROLS = [
     [['O'], 'Oxygen flow'],
     [['P'], 'Take dexamethasone'],
     [['Y'], 'Turnaround time'],
-    [['R'], 'Respawn at Base Camp, after dying'],
+    [['R'], 'Respawn at Base Camp after dying · give up when collapsed'],
   ]],
   ['View', [
     [['Mouse'], 'Look (click to capture)'],
