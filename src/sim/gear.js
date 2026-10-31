@@ -14,16 +14,18 @@ const ICE = new Set(['ice', 'glacier']);
 /**
  * Every piece of gear. litres is the room it takes in the pack; kg its weight.
  * unlock: only after a summit and a safe return. replaces: the better version of.
+ * where: worn (head, body, feet), on the harness (axe) or in a pocket instead of
+ * in the pack, so it weighs but takes no pack room.
  */
 export const GEAR = {
-  gps: { label: 'Wympr GPS', kg: 0.22, litres: 0.3, group: 'Devices', note: 'Satellite GPS and messenger: altitude, pace, weather and forecast. Halves rescue time.' },
-  monitor: { label: 'Vitals monitor', kg: 0.12, litres: 0.2, group: 'Devices', note: 'Wrist pulse oximeter: food, water, warmth, oxygen and how your body is coping.' },
-  map: { label: 'Topo map', kg: 0.1, litres: 0.1, group: 'Devices', note: 'Paper map of K2 and the Godwin-Austen Glacier, with the route and camps.' },
-  radio: { label: 'Radio', kg: 0.3, litres: 0.4, group: 'Devices', note: 'Hear the weather forecast anywhere, not just in camp.' },
-  axe: { label: 'Ice axe', kg: 0.6, litres: 2, group: 'Climbing', note: 'Climb steeper snow and ice, and self-arrest.' },
-  axe_tech: { label: 'Technical ice axe', kg: 0.5, litres: 2, group: 'Climbing', unlock: true, replaces: 'axe', note: 'Curved pick: holds better, fewer slips with it out.' },
-  crampons: { label: 'Crampons', kg: 0.9, litres: 2.5, group: 'Climbing', note: 'Without them, snow and ice are treacherous.' },
-  crampons_pro: { label: 'Steel-front crampons', kg: 0.8, litres: 2, group: 'Climbing', unlock: true, replaces: 'crampons', note: 'Aggressive front points: a quarter fewer slips on snow and ice.' },
+  gps: { label: 'Wympr GPS', kg: 0.22, litres: 0.3, group: 'Devices', note: 'Satellite GPS: altitude, pace, weather and forecast.', where: 'pocket' },
+  monitor: { label: 'Vitals monitor', kg: 0.12, litres: 0.2, group: 'Devices', note: 'Wrist pulse oximeter: food, water, warmth, oxygen and how your body is coping.', where: 'pocket' },
+  map: { label: 'Topo map', kg: 0.1, litres: 0.1, group: 'Devices', note: 'Paper map of K2 and the Godwin-Austen Glacier, with the route and camps.', where: 'pocket' },
+  radio: { label: 'Radio', kg: 0.3, litres: 0.4, group: 'Devices', note: 'Hear the weather forecast anywhere, not just in camp.', where: 'pocket' },
+  axe: { label: 'Ice axe', kg: 0.6, litres: 2, group: 'Climbing', note: 'Climb steeper snow and ice, and self-arrest.', where: 'axe' },
+  axe_tech: { label: 'Technical ice axe', kg: 0.5, litres: 2, group: 'Climbing', unlock: true, replaces: 'axe', note: 'Curved pick: holds better, fewer slips with it out.', where: 'axe' },
+  crampons: { label: 'Crampons', kg: 0.9, litres: 2.5, group: 'Climbing', note: 'Without them, snow and ice are treacherous.', where: 'feet' },
+  crampons_pro: { label: 'Steel-front crampons', kg: 0.8, litres: 2, group: 'Climbing', unlock: true, replaces: 'crampons', note: 'Aggressive front points: a quarter fewer slips on snow and ice.', where: 'feet' },
   rope: { label: 'Rope, 30 m', kg: 2.2, litres: 6, group: 'Climbing', note: 'With screws or pickets, protect a steep pitch (E). Climb out of crevasses.' },
   screws: { label: 'Ice screws ×4', kg: 0.6, litres: 1.5, group: 'Climbing', note: 'Protection on ice and glacier ice. Needs the rope.' },
   pickets: { label: 'Snow pickets ×2', kg: 0.7, litres: 2, group: 'Climbing', note: 'Protection in snow. Needs the rope.' },
@@ -34,9 +36,9 @@ export const GEAR = {
   bivy: { label: 'Bivy sack', kg: 0.5, litres: 2, group: 'Shelter', note: 'Crawl in and sleep where you stand (Z). No cooking.' },
   shovel: { label: 'Snow shovel', kg: 0.7, litres: 3, group: 'Shelter', note: 'Dig a snow cave to sleep in (Z), on snow.' },
   stove: { label: 'Stove', kg: 0.4, litres: 1.5, group: 'Shelter', note: 'Cook and melt snow in your own shelter (K). Camps have kitchens.' },
-  down_suit: { label: 'Down suit', kg: 2.2, litres: 8, group: 'Clothing', note: 'Far warmer in the cold up high.' },
+  down_suit: { label: 'Down suit', kg: 2.2, litres: 8, group: 'Clothing', note: 'Far warmer in the cold up high.', where: 'body' },
   gloves: { label: 'Spare mitts', kg: 0.3, litres: 1, group: 'Clothing', note: 'Dry spares: much slower frostbite.' },
-  goggles: { label: 'Goggles', kg: 0.15, litres: 0.5, group: 'Clothing', note: 'Keep wind off your face: slower frostbite.' },
+  goggles: { label: 'Goggles', kg: 0.15, litres: 0.5, group: 'Clothing', note: 'Keep wind off your face: slower frostbite.', where: 'head' },
 };
 
 /** The pack itself sets how much fits. */
@@ -66,7 +68,7 @@ export function gearKg(pack) {
 
 export function gearLitres(pack) {
   let l = 0;
-  for (const id of pack.gear) l += GEAR[id]?.litres ?? 0;
+  for (const id of pack.gear) if (!GEAR[id]?.where) l += GEAR[id]?.litres ?? 0;
   for (const [id, n] of Object.entries(pack.extra)) l += (CONSUMABLE_LITRES[id] ?? 0) * n;
   return l;
 }
@@ -141,6 +143,7 @@ export class Expedition {
   /** Whether an item would fit, swapping out what it replaces. */
   fits(id) {
     const g = GEAR[id];
+    if (g.where) return true;
     let free = this.free();
     if (g.replaces && this.pack.gear.has(g.replaces)) free += GEAR[g.replaces].litres;
     for (const [k, o] of Object.entries(GEAR)) if (o.replaces === id && this.pack.gear.has(k)) free += o.litres;

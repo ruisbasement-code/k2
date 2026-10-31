@@ -7,6 +7,8 @@ import { Mode, CLIP_RANGE } from '../player/climber.js';
 import { tuning } from '../sim/paceModel.js';
 import { compass, dangerLabel } from '../sim/weather.js';
 import { hasGear } from '../sim/gear.js';
+import { hotbarItems } from './inventory.js';
+import { icon } from './icons.js';
 import route from '../data/route.json';
 import featureDefs from '../data/features.json';
 
@@ -105,12 +107,23 @@ export class Hud {
     $('death').hidden = !c.dead;
     if (c.dead) {
       $('death-cause').textContent = c.deathCause;
-      $('death-camp').textContent = c.lastCamp?.name ?? 'Base Camp';
     }
     this._prompt();
     this._chips();
+    this._hotbar();
     if (this.held === 'gps') this._gps();
     if (this.held === 'monitor') this._monitor();
+  }
+
+  /** The quick slots along the bottom: keys 1 to 9 hold or use what's in them. */
+  _hotbar() {
+    const c = this.climber;
+    this.hot = hotbarItems(c);
+    const html = this.hot.map((it, i) => {
+      const on = it.id === this.held || ((it.id === 'axe' || it.id === 'axe_tech') && c.axe.inHand) || (it.id === 'oxygen' && c.phys.flow > 0);
+      return `<div class="hs${on ? ' on' : ''}" title="${it.label}"><b>${i + 1}</b>${icon(it.id)}${it.count !== undefined ? `<span>${it.count}</span>` : ''}</div>`;
+    }).join('');
+    if (html !== this._hotHtml) $('hotbar').innerHTML = this._hotHtml = html;
   }
 
   /** Serious conditions as small tags over the health bar. */
@@ -241,12 +254,12 @@ export class Hud {
     red.style.setProperty('--flash', (this.flash * 0.45).toFixed(3));
     red.style.opacity = hurt > 0 || this.flash > 0.01 ? 1 : 0;
     const blur = $('hurt-blur');
-    blur.style.setProperty('--inner', `${Math.max(0, inner - 10).toFixed(1)}%`);
-    blur.style.setProperty('--blur', `${(14 * hurt + 4 * this.flash).toFixed(1)}px`);
+    blur.style.setProperty('--inner', `${Math.max(0, inner - 25).toFixed(1)}%`);
+    blur.style.setProperty('--blur', `${(24 * hurt + 6 * this.flash).toFixed(1)}px`);
     blur.style.opacity = hurt > 0.05 || this.flash > 0.05 ? 1 : 0;
     // The whole view dims, loses colour and goes soft as well.
     if (hurt < 0.02) return '';
-    return `blur(${(2.2 * deep).toFixed(2)}px) brightness(${(1 - 0.55 * deep).toFixed(2)}) saturate(${(1 - 0.8 * hurt).toFixed(2)}) contrast(${(1 - 0.25 * deep).toFixed(2)})`;
+    return `blur(${(1.2 * hurt + 3.5 * deep + 1.5 * this.flash).toFixed(2)}px) brightness(${(1 - 0.55 * deep).toFixed(2)}) saturate(${(1 - 0.8 * hurt).toFixed(2)}) contrast(${(1 - 0.25 * deep).toFixed(2)})`;
   }
 
   // ---- Devices ----

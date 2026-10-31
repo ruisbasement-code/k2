@@ -49,6 +49,7 @@ lists every control (`src/ui/controls.js`), with the sound switch.
 | Click | Swing the axe on a steep wall (S + click to climb down) |
 | X | Probe ahead for hidden crevasses (needs a probe or an axe) |
 | Tab | Inventory: click a device to hold it, a supply to use it |
+| 1 – 9 | Hotbar along the bottom: hold or use what's in that slot |
 | G | Gear up at Base Camp · restock at a camp · strike your own tent |
 | J / U / M | Hold the Wympr GPS / the vitals monitor / the map |
 | L | Headlamp: off, on, high beam, red |
@@ -56,9 +57,9 @@ lists every control (`src/ui/controls.js`), with the sound switch.
 | K | Cook in a tent (your own needs your stove) |
 | B / H / O / P | Eat / drink / oxygen flow / dexamethasone |
 | Y | Turnaround time |
-| R | After dying: be rescued (twice as fast with the GPS) |
+| R | After dying: respawn at Base Camp, everything fresh (summit unlocks kept) |
 | Mouse, wheel, V, T | Look, zoom, first / third person, time speed |
-| 1 – 9, F, N | Dev: jump to a camp, scout fly, next weather |
+| F, N | Dev: scout fly, next weather (`?place=2` in the URL jumps to a camp) |
 
 ### Gear
 

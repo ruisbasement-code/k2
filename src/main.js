@@ -33,7 +33,7 @@ import { TerrainFeatures } from './sim/terrainFeatures.js';
 import { FeatureMeshes } from './world/featureMeshes.js';
 import featureDefs from './data/features.json';
 import { Expedition, GEAR, difficulty, hasGear } from './sim/gear.js';
-import { Inventory } from './ui/inventory.js';
+import { Inventory, hotbarItems } from './ui/inventory.js';
 import { Minigame } from './ui/minigame.js';
 import { ControlsMenu } from './ui/controls.js';
 import { ShelterMeshes } from './world/shelters.js';
@@ -128,12 +128,13 @@ function teleport(i) {
   if (hm.slopeDeg(x, z) > tuning.climb_start_deg && climber.ropeDistance() < CLIP_RANGE) climber.toggleClip();
 }
 
-for (let i = 0; i < 9; i++) input.on(`Digit${i + 1}`, () => teleport(i));
+// 1 to 9: the hotbar slots along the bottom.
+for (let i = 0; i < 9; i++) input.on(`Digit${i + 1}`, () => useSlot(i));
 input.on('KeyC', () => climber.toggleClip());
 input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
-input.on('KeyR', () => climber.rescue());
+input.on('KeyR', () => respawn());
 input.on('KeyZ', () => shelterOrSleep());
 input.on('KeyK', () => cook());
 input.on('KeyB', () => climber.eat());
@@ -190,6 +191,15 @@ const inventory = new Inventory(document.getElementById('inventory'), expedition
   },
 });
 inventory.onClose = () => relock();
+
+/** Hold or use what's in a hotbar slot. */
+function useSlot(i) {
+  const it = hotbarItems(climber)[i];
+  if (!it) return;
+  if (['gps', 'monitor', 'map'].includes(it.id)) holdDevice(it.id);
+  else if (it.id === 'axe' || it.id === 'axe_tech') climber.toggleAxe();
+  else inventory.actions.use(it.id);
+}
 
 function openInventory(store) {
   if (minigame.busy) return;
@@ -342,6 +352,20 @@ document.getElementById('go').onclick = () => {
   openInventory(true);
 };
 if (params.has('start')) start.remove();
+// Back from the dead: straight to Base Camp, no title screen.
+if (takeFlag('k2.respawn')) {
+  start.querySelector('h1').textContent = 'Base Camp';
+  start.querySelector('.sub').textContent = 'Day 1 · 5,000 m';
+  document.getElementById('go').textContent = 'Gear up';
+}
+
+/** Dead: start again from Base Camp, everything fresh. Summit unlocks are kept. */
+function respawn() {
+  if (!climber.dead) return;
+  try { sessionStorage.setItem('k2.respawn', '1'); } catch { /* the title screen shows instead */ }
+  location.replace(location.pathname);
+}
+document.getElementById('respawn').onclick = () => respawn();
 
 const _dir = new THREE.Vector3();
 const _eye = new THREE.Vector3();
@@ -531,6 +555,7 @@ function frame(now) {
   view.groundY = climber.falling || Math.abs(cy - view.groundY) > 3 || !Number.isFinite(view.groundY)
     ? cy : view.groundY + (cy - view.groundY) * (1 - Math.exp(-dt * 14));
   // Paused in the menu; standing still while busy with your hands or your pack.
+  if (climber.dead && document.pointerLockElement) release(); // free the mouse for the respawn button
   if (!menu.open) {
     const still = minigame.busy || inventory.open;
     climber.update(dt, still ? { x: 0, y: 0, push: false, up: false, down: false, arrest: false } : input.movement());
@@ -562,6 +587,15 @@ addEventListener('resize', () => {
 });
 
 window.__k2 = { climber, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
+
+/** Read and clear a one-off flag that survives a reload. */
+function takeFlag(key) {
+  try {
+    const v = sessionStorage.getItem(key);
+    sessionStorage.removeItem(key);
+    return v === '1';
+  } catch { return false; }
+}
 
 /** Browser storage can be missing or blocked; the game runs without it. */
 function load(key) {
