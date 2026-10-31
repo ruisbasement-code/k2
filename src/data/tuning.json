@@ -165,11 +165,14 @@
   "breath_tired": 8,
   "breath_max": 60,
 
-  "_crevasses": "Glacier crevasses, pits and moulins, generated one per crevasse_cell_m cell at most: crevasse_share of glacier cells (more where the ice steepens), snowfield_crevasse_share on the high snowfields between snowfield_crevasse_m. Below bare_glacier_below_m the glacier is bare and most are open; above it hidden_share_snow are hidden under snow bridges. serac_tower_share of the steepest glacier cells hold an ice tower instead.",
-  "crevasse_cell_m": 45,
-  "crevasse_share": 0.4,
+  "_crevasses": "Glacier crevasses come in fields of parallel cracks across the flow, at most one field per crevasse_cell_m cell: crevasse_share of glacier cells (more where the ice steepens) hold one, cracks crevasse_spacing_m apart, bowed up to crevasse_bow_m. Pits and moulins come with some fields, snowfield_crevasse_share on the high snowfields between snowfield_crevasse_m. Below bare_glacier_below_m the glacier is bare and most are open; above it hidden_share_snow are hidden under snow bridges. serac_tower_share of the steepest glacier cells hold an ice tower instead.",
+  "crevasse_cell_m": 150,
+  "crevasse_share": 0.6,
+  "crevasse_spacing_m": [10, 18],
+  "crevasse_bow_m": 6,
+  "crevasse_field_reach_m": 90,
   "snowfield_crevasse_m": [7450, 8050],
-  "snowfield_crevasse_share": 0.06,
+  "snowfield_crevasse_share": 0.25,
   "bare_glacier_below_m": 5000,
   "hidden_share_bare": 0.15,
   "hidden_share_snow": 0.65,
@@ -206,6 +209,9 @@
   "serac_fall_enabled": true,
   "serac_fall_per_hour": 0.1,
   "icefall_warn_m": 400,
+
+  "_path_lights": "Lamp posts every path_light_every_m along the wanded glacier trail from Base Camp, and a little closer up the rope to Camp 1.",
+  "path_light_every_m": 30,
 
   "_caverns": "Resting in a snow cave or ice cavern heals at cavern_health_regen_per_hour, out of the wind.",
   "cavern_health_regen_per_hour": 22,

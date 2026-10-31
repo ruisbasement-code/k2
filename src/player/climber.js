@@ -900,14 +900,13 @@ export class Climber {
 
   /** Keep a body inside the slot: along it, and between its walls. */
   _confineToHole(p, hole) {
-    const dx = p.x - hole.x, dz = p.z - hole.z;
-    let u = dx * hole.ux + dz * hole.uz;
-    let v = -dx * hole.uz + dz * hole.ux;
+    let { u, v } = TerrainFeatures.local(hole, p.x, p.z);
     u = Math.min(Math.max(u, -hole.half * 0.85), hole.half * 0.85);
     const w = Math.max(0.05, TerrainFeatures.halfWidth(hole, u) * 0.7);
     v = Math.min(Math.max(v, -w), w);
-    p.x = hole.x + hole.ux * u - hole.uz * v;
-    p.z = hole.z + hole.uz * u + hole.ux * v;
+    const q = TerrainFeatures.point(hole, u, v);
+    p.x = q.x;
+    p.z = q.z;
   }
 
   /** Dropping down the slot: the walls rub and slow you until you wedge at the bottom. */
@@ -996,11 +995,10 @@ export class Climber {
       // Across the slot: the normal pointing the way you face.
       const nx = -hole.uz, nz = hole.ux;
       const side = fx * nx + fz * nz >= 0 ? 1 : -1;
-      const u = (p.x - hole.x) * hole.ux + (p.z - hole.z) * hole.uz;
-      const out = TerrainFeatures.halfWidth(hole, u) + 1.2;
-      const v = -(p.x - hole.x) * hole.uz + (p.z - hole.z) * hole.ux;
-      p.x += nx * (side * out - v);
-      p.z += nz * (side * out - v);
+      const { u } = TerrainFeatures.local(hole, p.x, p.z);
+      const q = TerrainFeatures.point(hole, u, side * (TerrainFeatures.halfWidth(hole, u) + 1.2));
+      p.x = q.x;
+      p.z = q.z;
     }
     p.y = this._groundAt(p.x, p.z);
     this.inHole = null;

@@ -81,7 +81,7 @@ export function createTerrain(hm) {
     for (let i = 0; i < n; i++) {
       const h = list[i];
       holes.uHoleA.value[i].set(h.x, h.z, h.ux, h.uz);
-      holes.uHoleB.value[i].set(h.half, h.width, h.kind === 'pit' || h.kind === 'moulin' ? 1 : 0, 0);
+      holes.uHoleB.value[i].set(h.half, h.width, h.kind === 'pit' || h.kind === 'moulin' ? 1 : 0, h.bend ?? 0);
     }
     holes.uHoleCount.value = n;
   };
@@ -192,8 +192,8 @@ bool inHole(vec2 p) {
     vec2 d = p - a.xy;
     float u = dot(d, a.zw);
     if (abs(u) >= b.x) continue;
-    float v = dot(d, vec2(-a.w, a.z));
     float t = u / b.x;
+    float v = dot(d, vec2(-a.w, a.z)) - b.w * (1.0 - t * t);
     float w = b.z > 0.5 ? b.y * sqrt(1.0 - t * t) : b.y * sqrt(1.0 - t * t * t * t);
     if (abs(v) < w) return true;
   }

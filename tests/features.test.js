@@ -55,9 +55,14 @@ function glacierHoles(f, filter = () => true) {
 
 /** A spot just outside a hole, on the side away from its middle, facing it. */
 function besideHole(h, gap = 1.2) {
-  const nx = -h.uz, nz = h.ux;
-  const out = TerrainFeatures.halfWidth(h, 0) + gap;
-  return { x: h.x + nx * out, z: h.z + nz * out, faceX: h.x, faceZ: h.z };
+  const c = mid(h);
+  const s = TerrainFeatures.point(h, 0, TerrainFeatures.halfWidth(h, 0) + gap);
+  return { x: s.x, z: s.z, faceX: c.x, faceZ: c.z };
+}
+
+/** The middle of a hole (a bowed crevasse's centre point is off to one side). */
+function mid(h) {
+  return TerrainFeatures.point(h, 0, 0);
 }
 
 const STILL = { x: 0, y: 0 };
@@ -77,12 +82,25 @@ describe('where the features are', () => {
     for (const h of holes) expect(hm.glacierAt(h.x, h.z) + (hm.heightAt(h.x, h.z) > 7400 ? 1 : 0)).toBeGreaterThan(0.3);
   });
 
-  it('lies across the glacier flow', () => {
-    for (const h of glacierHoles(f, (q) => q.kind === 'crevasse').slice(0, 20)) {
-      const [gx, gz] = hm.gradient(h.x, h.z, 20);
+  it('lies across the glacier flow, in fields of parallel cracks that never cross', () => {
+    const cracks = glacierHoles(f, (q) => q.kind === 'crevasse');
+    let square = 0, counted = 0;
+    for (const h of cracks) {
+      const [gx, gz] = hm.gradient(h.x, h.z, 60);
       const g = Math.hypot(gx, gz);
       if (g < 0.03) continue;
-      expect(Math.abs(h.ux * gx + h.uz * gz) / g).toBeLessThan(0.05);
+      counted++;
+      if (Math.abs(h.ux * gx + h.uz * gz) / g < 0.5) square++;
+    }
+    // Most within 30° of square to the fall line (a whole field shares one direction).
+    expect(square / counted).toBeGreaterThan(0.75);
+    // No crack's middle line runs through another crack.
+    for (const a of cracks) {
+      for (let u = -a.half * 0.9; u <= a.half * 0.9; u += 2) {
+        const p = TerrainFeatures.point(a, u, 0);
+        const hit = f.holeAt(p.x, p.z);
+        expect(hit === null || hit.hole === a).toBe(true);
+      }
     }
   });
 
@@ -181,7 +199,8 @@ describe('crevasses and pits', () => {
       const f = world();
       const h = { ...glacierHoles(f, (q) => q.kind === 'crevasse')[0], depth };
       const c = climberWith(f);
-      c.placeAt(h.x, h.z, h.x + 1, h.z);
+      const m = mid(h);
+      c.placeAt(m.x, m.z, m.x + 1, m.z);
       c._enterHole({ hole: h, u: 0, v: 0 }, 'test');
       run(c, 10, STILL);
       return 100 - c.health;
@@ -195,7 +214,8 @@ describe('crevasses and pits', () => {
     const f = world();
     const h = glacierHoles(f, (q) => q.kind === 'crevasse' && q.hidden)[0];
     const c = climberWith(f);
-    c.placeAt(h.x, h.z, h.x + h.ux, h.z + h.uz);
+    const m = mid(h);
+    c.placeAt(m.x, m.z, m.x + h.ux, m.z + h.uz);
     vi.spyOn(Math, 'random').mockReturnValue(0);
     c.mountainSeconds = 14 * 3600;
     expect(c._stepHazards(0, 0)).toBe(true);
@@ -215,7 +235,7 @@ describe('crevasses and pits', () => {
     const s = besideHole(h, 3);
     c.placeAt(s.x, s.z, s.faceX, s.faceZ);
     c._startFall(0, 0, 'test');
-    c.velocity.set(h.x - s.x, 0, h.z - s.z).setLength(8);
+    c.velocity.set(mid(h).x - s.x, 0, mid(h).z - s.z).setLength(8);
     run(c, 3, STILL);
     expect(c.fall?.hole || c.mode === Mode.HOLE).toBeTruthy();
   });
@@ -224,7 +244,8 @@ describe('crevasses and pits', () => {
     const f = world();
     const h = { ...glacierHoles(f, (q) => q.kind === 'crevasse')[0], depth: 8 };
     const c = climberWith(f);
-    c.placeAt(h.x, h.z, h.x, h.z);
+    const m = mid(h);
+    c.placeAt(m.x, m.z, m.x, m.z);
     c._enterHole({ hole: h, u: 0, v: 0 }, 'test');
     run(c, 5, STILL);
     expect(c.mode).toBe(Mode.HOLE);
