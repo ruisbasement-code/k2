@@ -12,7 +12,10 @@
 // to self-arrest. Too fast, too late or a hard hit and you tumble. Damage comes
 // from how hard you hit the ground and from scraping over rock, not from distance.
 // Lose all your health and you die; you are then rescued to the last camp you
-// reached. Falls run in real seconds, not mountain time.
+// reached. Falls run in real seconds, not mountain time. Out in the cold your
+// health ticks down (see physiology.js); at very low health in the cold you
+// collapse where you are and slowly freeze, unless someone finds you and
+// revives you (revive()) before the cold finishes you.
 //
 // Movement has momentum: you speed up and slow down gradually, and running down
 // steep ground can trip you. On scrambling ground each step is a placement that
@@ -96,6 +99,11 @@ export class Climber {
     /** The highest camp reached; you are rescued to it if you die. */
     this.lastCamp = this.places[0] ?? null;
     this.health = 100;
+    /**
+     * Collapsed in the cold: {hoursLeft, hours, startHealth} while you lie
+     * helpless waiting to be found, else null. revive() brings you round.
+     */
+    this.collapsed = null;
     /**
      * Injuries that never heal (bone damage and the like), each {label, health}:
      * the health they take off the top. Rest and sleep only heal up to maxHealth.
@@ -383,6 +391,7 @@ export class Climber {
   rescue() {
     if (!this.dead || !this.lastCamp) return;
     const camp = this.lastCamp;
+    this.collapsed = null;
     this.mode = Mode.WALK;
     this.placeAt(camp.x + 6, camp.z + 6, 0, 0);
     this.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
@@ -403,6 +412,80 @@ export class Climber {
     const hours = tuning.rescue_hours * (this.rescueHoursMult ?? 1);
     this.mountainSeconds += hours * 3600;
     this.onMessage(`Rescued and carried to ${camp.name} after ${hours} hours. Rest here to heal.`);
+  }
+
+  /**
+   * Collapse at very low health in the cold: you drop where you stand and cannot
+   * move, and the cold kills you after a while unless someone revives you.
+   */
+  _checkCollapse() {
+    const t = tuning;
+    if (this.collapsed || this.dead || this.falling || this.mode === Mode.FLY) return;
+    if (this.health > t.collapse_below_health || this.phys.chill < t.collapse_chill) return;
+    const hours = t.collapse_hours;
+    this.collapsed = { hours, hoursLeft: hours, startHealth: Math.max(this.health, 1) };
+    this.velocity.set(0, 0, 0);
+    this.moving = false;
+    this.effort = 0;
+    this.onMessage('You collapse in the snow, too cold and weak to go on. You need someone to find you.');
+  }
+
+  /** Lying collapsed: you cannot move, and the cold counts down to your death. */
+  _collapsedStep(dt, dtM) {
+    const c = this.collapsed;
+    this.moving = false;
+    this.effort = 0;
+    this.verticalNow = 0;
+    this.velocity.set(0, 0, 0);
+    this.mods = this._modifiers();
+    const dtH = dtM / 3600;
+    // The body still runs (altitude illness can still kill you); the cold's
+    // damage is the freeze clock below rather than the usual drain.
+    const r = this.phys.step(dtH, {
+      altitude: this.position.y, effort: 0, air: this.air, pack: this.pack,
+      outOfWind: this.sheltered, health: this.health,
+    });
+    if (r.damage === Infinity) {
+      this._hurt(Infinity, r.cause);
+      return;
+    }
+    // Colder air freezes you faster; out of the wind or in a down suit, slower.
+    c.hoursLeft -= dtH * Math.min(Math.max(0.4 + this.phys.chill, 0.4), 1.6);
+    this.health = Math.max(0, c.startHealth * Math.max(c.hoursLeft, 0) / c.hours);
+    if (c.hoursLeft <= 0) {
+      this._hurt(Infinity, 'Nobody found you in time. You froze where you fell.');
+      return;
+    }
+    this.body.step(dtH, 0, this.breathAltitude, dt);
+  }
+
+  /** Hours left before a collapsed climber freezes to death, or null. */
+  get collapseHoursLeft() {
+    return this.collapsed ? Math.max(0, this.collapsed.hoursLeft) : null;
+  }
+
+  /**
+   * A rescuer finds you collapsed and gets you going again: warmed, back on your
+   * feet with a little health. Returns false if you were not collapsed. This is
+   * the hook another climber (multiplayer, later) will call.
+   * @param by who found you, for the message
+   */
+  revive(by = 'Another climber') {
+    if (!this.collapsed || this.dead) return false;
+    this.collapsed = null;
+    this.health = Math.max(this.health, Math.min(tuning.revive_health, this.maxHealth));
+    this.phys.core = Math.max(this.phys.core, 35.5);
+    this.body.stamina = Math.max(this.body.stamina, 20);
+    this.body.exhausted = false;
+    this.onMessage(`${by} found you and got you back on your feet. Get warm, fast.`);
+    return true;
+  }
+
+  /** Stop waiting to be found: you die of the cold now, and can be rescued to camp. */
+  giveUp() {
+    if (!this.collapsed || this.dead) return false;
+    this._hurt(Infinity, 'You froze where you fell.');
+    return true;
   }
 
   /** The most health you can heal back to: 100 less any permanent injuries. */
@@ -428,7 +511,7 @@ export class Climber {
 
   /** Standing by a tent, on your feet: you can crawl in and sleep. */
   canSleep() {
-    if (this.mode === Mode.FLY || this.falling || this.dead) return false;
+    if (this.mode === Mode.FLY || this.falling || this.dead || this.collapsed) return false;
     return !!this.nearestTent();
   }
 
@@ -443,7 +526,7 @@ export class Climber {
    */
   sleep() {
     if (!this.canSleep()) {
-      if (this.mode !== Mode.FLY && !this.falling && !this.dead) this.onMessage('No tent here. Find a camp tent to sleep in.');
+      if (this.mode !== Mode.FLY && !this.falling && !this.dead && !this.collapsed) this.onMessage('No tent here. Find a camp tent to sleep in.');
       return null;
     }
     const tent = this.nearestTent();
@@ -508,8 +591,12 @@ export class Climber {
 
   /** Food, water, warmth, oxygen and illness for dtH mountain hours. */
   _stepBody(dtH, effort, { sheltered = false, sleeping = false } = {}) {
-    const r = this.phys.step(dtH, { altitude: this.position.y, effort, air: this.air, pack: this.pack, sheltered, sleeping });
+    const r = this.phys.step(dtH, {
+      altitude: this.position.y, effort, air: this.air, pack: this.pack, sheltered, sleeping,
+      outOfWind: !sheltered && this.sheltered, inCamp: !!this._campNearby(), health: this.health,
+    });
     if (r.damage > 0) this._hurt(r.damage, r.cause);
+    if (!sleeping && !sheltered) this._checkCollapse();
     if (sleeping || sheltered) this.body.capMult = this.phys.modifiers(this.pack.kg).staminaCap;
   }
 
@@ -537,7 +624,7 @@ export class Climber {
   }
 
   _canAct() {
-    return this.mode !== Mode.FLY && !this.falling && !this.dead;
+    return this.mode !== Mode.FLY && !this.falling && !this.dead && !this.collapsed;
   }
 
   /** Eat a snack bar from the pack. */
@@ -661,6 +748,7 @@ export class Climber {
     }
     if (this.mode === Mode.HOLE) return `In a ${this.inHole.hole.kind === 'crevasse' || this.inHole.hole.kind === 'bergschrund' ? 'crevasse' : this.inHole.hole.kind}, ${Math.max(0, Math.round(this.inHole.rim - this.position.y))} m down`;
     if (this.mode === Mode.DEAD || this.mode === Mode.FLY) return MODE_NAMES[this.mode];
+    if (this.collapsed) return 'Collapsed in the cold';
     if (this.body.exhausted) return 'Exhausted';
     if (this.gasping) return 'Gasping for breath';
     if (this.clipped) return `${MODE_NAMES[this.groundMode]}, clipped in`;
@@ -733,6 +821,10 @@ export class Climber {
       this.verticalNow = 0;
       return;
     }
+    if (this.collapsed) {
+      this._collapsedStep(dt, dtM);
+      return;
+    }
     this.mods = this._modifiers();
     if (this.mode === Mode.FALL) {
       this._fallStep(dt, !!input.arrest);
@@ -754,7 +846,7 @@ export class Climber {
     if (this.tumbling && this.axeReady && Math.random() < tuning.axe_tumble_lose_per_s * dt) this._loseAxeGrip('Tumbling, you lost your grip on the axe.');
     if (this.dead) return;
     this._stepBody(dtM / 3600, this.effort);
-    if (this.dead) return;
+    if (this.dead || this.collapsed) return;
     this._checkTurnaround();
     this.body.step(dtM / 3600, this.effort, this.breathAltitude, dt);
     this.verticalNow = this.falling ? 0 : ((this.position.y - startY) / Math.max(dtM, 1e-4)) * 3600;
@@ -1706,6 +1798,7 @@ export class Climber {
     if (this.dead) return;
     this.health = Math.max(0, this.health - amount);
     if (this.health <= 0) {
+      this.collapsed = null;
       const drop = Math.round(this.falling ? this.fall.startY - this.position.y : 0);
       this.mode = Mode.DEAD;
       this.deathCause = cause ?? (drop > 0 ? `You fell ${drop} m.` : 'You were badly hurt.');
@@ -1714,13 +1807,14 @@ export class Climber {
     }
   }
 
-  /** Injuries heal slowly when resting, faster in a camp. */
+  /** Injuries heal slowly when resting, faster in a camp; not while you are freezing. */
   _heal(dtM) {
     const max = this.maxHealth;
     if (this.moving || this.health >= max) return;
     const rate = this._campNearby() ? tuning.camp_health_regen_per_hour
       : this.sheltered ? tuning.cavern_health_regen_per_hour : tuning.health_regen_per_hour;
-    this.health = Math.min(max, this.health + (rate * dtM) / 3600);
+    const warm = 1 - Math.min(this.phys.chill, 1);
+    this.health = Math.min(max, this.health + (rate * warm * dtM) / 3600);
   }
 
   _campNearby() {

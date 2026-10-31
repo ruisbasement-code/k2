@@ -167,6 +167,12 @@ button#set-off, #menu-resume, #start button { background: var(--accent); color: 
 #start .hint { color: var(--muted); font-size: 12px; margin-top: 18px; }
 #death { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(40, 0, 0, .45); }
 #death[hidden] { display: none; }
+#collapsed { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 12vh; pointer-events: none; background: rgba(150, 190, 230, .18); }
+#collapsed[hidden] { display: none; }
+#collapsed .card { position: static; max-width: 380px; padding: 14px 20px; text-align: center; }
+#collapsed h1 { margin: 0 0 6px; font-size: 22px; }
+#collapsed p { color: #d8dde5; }
+#collapsed .act { justify-content: center; text-shadow: none; }
 #death .card { position: static; max-width: 380px; padding: 18px 22px; text-align: center; }
 #death h1 { margin: 0 0 6px; font-size: 24px; }
 #death p { color: #d8dde5; }

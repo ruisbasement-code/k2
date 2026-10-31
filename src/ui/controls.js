@@ -28,7 +28,7 @@ export const CONTROLS = [
     [['O'], 'Oxygen flow'],
     [['P'], 'Take dexamethasone'],
     [['Y'], 'Turnaround time'],
-    [['R'], 'Be rescued, after dying'],
+    [['R'], 'Be rescued, after dying (give up, when collapsed)'],
   ]],
   ['View', [
     [['Mouse'], 'Look (click to capture)'],
