@@ -109,9 +109,19 @@ real face, so steep ground is dotted with small ledges, drawn into the terrain a
 narrow snowy steps with a shadow under the lip. You can stand on one where the slope around it is too steep, and a slide
 across one loses a lot of speed.
 
+**Close-up ground.** Around you the terrain is drawn in fine detail from the same
+relief you stand on (`src/world/terrainDetail.js`): jointed rock blocks on the faces,
+boulders on scree, moraine rubble stripes and ice hummocks on the glaciers, and
+wind-carved sastrugi on snow. It's solid: you walk over the boulders and a fall
+bounces off them. Camps and the fixed-rope lines are kept smooth.
+
 **Ice axe.** Press **I** to draw it from your pack (it takes a second, even mid-slide)
-or stow it. In hand it lets you climb snow and ice up to 50° unroped (rock is no
-easier), slower and harder, with fewer slips. Holding Space in a slide, the pick
+or stow it. In hand it lets you walk up snow and ice to 40° unroped (rock is no easier),
+slower and harder, with fewer slips. Steeper snow and ice, up to about 68°, you climb
+swing by swing: each left click plants the axe and pulls you half a metre up (S +
+click to climb down), costing stamina. Between swings you hang on the axe and your
+grip drains, faster on steeper ground and when you're spent; let it run out and you
+come off. Ledges, easier ground and the fixed ropes let it recover. Holding Space in a slide, the pick
 bites over half a second and stops you from up to 14 m/s on snow, but it mostly
 skates on hard ice. Arresting very fast can wrench it from your grip, and in a tumble
 you often lose it: it hangs on its leash until you grab it again, unless the leash

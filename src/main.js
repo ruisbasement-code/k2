@@ -9,7 +9,8 @@ import * as THREE from 'three';
 import './style.css';
 import route from './data/route.json';
 import { Heightmap } from './world/heightmap.js';
-import { createTerrain } from './world/terrain.js';
+import { createTerrain, createDetailPatch } from './world/terrain.js';
+import { TerrainDetail, campFlats } from './world/terrainDetail.js';
 import { FixedRopes } from './world/fixedRopes.js';
 import { createCamps } from './world/camps.js';
 import { Climber, Mode, CLIP_RANGE } from './player/climber.js';
@@ -50,6 +51,11 @@ const hm = await Heightmap.load();
 const terrain = createTerrain(hm);
 scene.add(terrain);
 const ropes = new FixedRopes(hm, route.fixed_ropes);
+// The rocks, boulders and sastrugi you stand on, smooth at camps and along the ropes.
+hm.detail = new TerrainDetail(hm, campFlats(hm, route.places));
+for (const line of ropes.ropes) hm.detail.addCorridor(line);
+const detailPatch = createDetailPatch(hm);
+scene.add(detailPatch);
 const features = new TerrainFeatures(hm, featureDefs, { ropes, places: route.places });
 const featureMeshes = new FeatureMeshes(hm, features, terrain, ropes);
 scene.add(featureMeshes);
@@ -107,6 +113,10 @@ input.on('KeyG', () => climber.resupply());
 input.on('KeyY', () => climber.cycleTurnaround());
 input.on('KeyX', () => climber.probe());
 input.on('KeyI', () => climber.toggleAxe());
+// Left click swings the axe on a steep wall (once the mouse is captured for looking).
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 0 && document.pointerLockElement === canvas) climber.swingAxe();
+});
 input.on('KeyM', () => {
   audio.muted = wind.muted = !audio.muted;
   hud.showMessage(audio.muted ? 'Sound muted' : 'Sound on');
@@ -152,7 +162,7 @@ function updateCamera() {
   view.pitch = Math.min(Math.max(view.pitch - look.dy * 0.0025, -1.45), 1.2);
   if (look.zoom) view.distance = Math.min(Math.max(view.distance * (1 + look.zoom * 0.12), 2), 80);
   const p = climber.position;
-  _eye.set(p.x, p.y + EYE_HEIGHT, p.z);
+  _eye.set(p.x, view.groundY + EYE_HEIGHT, p.z);
   _dir.set(-Math.sin(climber.yaw) * Math.cos(view.pitch), Math.sin(view.pitch), -Math.cos(climber.yaw) * Math.cos(view.pitch));
   if (view.firstPerson) {
     camera.position.copy(_eye);
@@ -160,7 +170,7 @@ function updateCamera() {
   } else {
     const d = climber.mode === Mode.FLY ? Math.max(view.distance, 25) : view.distance;
     camera.position.copy(_eye).addScaledVector(_dir, -d);
-    camera.position.y = Math.max(camera.position.y, hm.heightAt(camera.position.x, camera.position.z) + 0.6);
+    camera.position.y = Math.max(camera.position.y, hm.groundAt(camera.position.x, camera.position.z) + 0.6);
     camera.lookAt(_eye);
   }
   sway(camera);
@@ -230,6 +240,8 @@ function animateModel(dt) {
   }
   ragdoll.stop();
   model.position.copy(c.position);
+  // Stepping over rocks: ease the body up and down rather than popping.
+  model.position.y = view.groundY;
   if (c.falling) {
     // Sliding flat on the slope, the way the fall left you, digging in.
     slideOrientation(c);
@@ -298,11 +310,16 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   view.time += dt;
+  // Smoothed height for the body and camera over the small rocks; exact in a fall.
+  const cy = climber.position.y;
+  view.groundY = climber.falling || Math.abs(cy - view.groundY) > 3 || !Number.isFinite(view.groundY)
+    ? cy : view.groundY + (cy - view.groundY) * (1 - Math.exp(-dt * 14));
   climber.update(dt, input.movement());
   rockMesh.update();
   featureMeshes.update(climber.position);
   animateModel(dt);
   updateTether(dt);
+  detailPatch.userData.update(climber.position);
   updateCamera();
   audio.update();
   wind.update(climber.conditions);

@@ -261,7 +261,7 @@ describe('crevasses and pits', () => {
     }
     expect(c.mode).not.toBe(Mode.HOLE);
     expect(f.holeAt(c.position.x, c.position.z)).toBeNull();
-    expect(c.position.y).toBeCloseTo(hm.heightAt(c.position.x, c.position.z), 1);
+    expect(c.position.y).toBeCloseTo(hm.groundAt(c.position.x, c.position.z), 1);
   });
 
   it('finds hidden crevasses ahead when you probe', () => {

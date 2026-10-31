@@ -2,7 +2,11 @@
 //
 // Each vertex carries surface data for the shader in a `surf` attribute:
 // x = slope (0 to 1 for 0 to 90 degrees), y = glacier mask,
-// z = curvature (above 0.5 is a hollow where snow collects, below is a ridge).
+// z = curvature (above 0.5 is a hollow where snow collects, below is a ridge),
+// w = moraine (1 on the glaciers' rubble stripes, from terrainDetail.js).
+//
+// Around the climber a fine patch (createDetailPatch) draws the small-scale
+// relief you actually stand on: rocks, boulders, rubble and sastrugi.
 //
 // The small ledges the fall physics uses (see ledgeAt in sim/hazards.js) are drawn
 // here too, from the same hash, as snowy shelves with a rock step below them.
@@ -13,6 +17,7 @@
 import * as THREE from 'three';
 import { smooth } from './heightmap.js';
 import { tuning } from '../sim/paceModel.js';
+import { moraineAt } from './terrainDetail.js';
 
 /** How many open holes the terrain shader can cut out at once. */
 export const MAX_TERRAIN_HOLES = 48;
@@ -21,7 +26,7 @@ export function createTerrain(hm) {
   const { n, cell } = hm;
   const pos = new Float32Array(n * n * 3);
   const nrm = new Float32Array(n * n * 3);
-  const surf = new Float32Array(n * n * 3);
+  const surf = new Float32Array(n * n * 4);
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
       const i = r * n + c;
@@ -42,9 +47,10 @@ export function createTerrain(hm) {
       const wide = (Math.atan(Math.hypot(wx, wz)) * 180) / Math.PI;
       const glacier = smooth(5650, 5250, y) * smooth(17, 8, wide);
       const lap = (hm.at(r, c + 2) + hm.at(r, c - 2) + hm.at(r + 2, c) + hm.at(r - 2, c) - 4 * y) / (4 * cell * cell);
-      surf[i * 3] = slope / 90;
-      surf[i * 3 + 1] = glacier;
-      surf[i * 3 + 2] = Math.min(Math.max(0.5 + lap * 25, 0), 1);
+      surf[i * 4] = slope / 90;
+      surf[i * 4 + 1] = glacier;
+      surf[i * 4 + 2] = Math.min(Math.max(0.5 + lap * 25, 0), 1);
+      surf[i * 4 + 3] = glacier > 0.01 ? moraineAt(pos[i * 3], pos[i * 3 + 2]) : 0;
     }
   }
   const idx = new Uint32Array((n - 1) * (n - 1) * 6);
@@ -59,7 +65,7 @@ export function createTerrain(hm) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-  geo.setAttribute('surf', new THREE.BufferAttribute(surf, 3));
+  geo.setAttribute('surf', new THREE.BufferAttribute(surf, 4));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
   geo.computeBoundingSphere();
 
@@ -73,7 +79,7 @@ export function createTerrain(hm) {
 
   // Low ground beyond the edge of the data, so the horizon is not a void.
   const outerGeo = new THREE.RingGeometry(hm.size * 0.5, 100000, 64, 1);
-  outerGeo.setAttribute('surf', new THREE.BufferAttribute(new Float32Array(outerGeo.attributes.position.count * 3).fill(0.5), 3));
+  outerGeo.setAttribute('surf', new THREE.BufferAttribute(new Float32Array(outerGeo.attributes.position.count * 4).fill(0.5), 4));
   const outer = new THREE.Mesh(outerGeo, terrainMaterial(true));
   outer.rotation.x = -Math.PI / 2;
   outer.position.y = 4550;
@@ -92,16 +98,89 @@ export function createTerrain(hm) {
   return group;
 }
 
+/**
+ * The fine terrain right around the climber, built from the same relief the
+ * physics stands you on (hm.detail). update(position) rebuilds it as you move.
+ */
+export function createDetailPatch(hm) {
+  const SEG = 200, STEP = 0.4;
+  const half = (SEG * STEP) / 2;
+  const n = SEG + 1;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(n * n * 3);
+  const surf = new Float32Array(n * n * 4);
+  const idx = new Uint32Array(SEG * SEG * 6);
+  let k = 0;
+  for (let r = 0; r < SEG; r++) {
+    for (let c = 0; c < SEG; c++) {
+      const a = r * n + c, b = a + 1, d = a + n, e = d + 1;
+      idx[k++] = a; idx[k++] = d; idx[k++] = b;
+      idx[k++] = b; idx[k++] = d; idx[k++] = e;
+    }
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('surf', new THREE.BufferAttribute(surf, 4));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  const mat = terrainMaterial(false);
+  // Drawn in front of the coarse terrain it sits on.
+  mat.polygonOffset = true;
+  mat.polygonOffsetFactor = -2;
+  mat.polygonOffsetUnits = -4;
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  mesh.visible = false;
+  const centre = new THREE.Vector2(1e9, 1e9);
+  mesh.userData.update = (p, force = false) => {
+    if (!hm.detail) return;
+    if (!force && Math.max(Math.abs(p.x - centre.x), Math.abs(p.z - centre.y)) < 10) return;
+    // Snap to the grid so the surface doesn't swim as the patch moves.
+    const snap = STEP * 4;
+    centre.set(Math.round(p.x / snap) * snap, Math.round(p.z / snap) * snap);
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const i = r * n + c;
+        const x = centre.x - half + c * STEP;
+        const z = centre.y - half + r * STEP;
+        // Fade the relief out at the patch's edge to meet the coarse terrain.
+        const edge = Math.max(Math.abs(x - centre.x), Math.abs(z - centre.y));
+        const fade = smooth(half, half - 10, edge);
+        const base = hm.heightAt(x, z);
+        pos[i * 3] = x;
+        pos[i * 3 + 1] = base + (fade > 0 ? hm.detail.at(x, z) * fade : 0.02);
+        pos[i * 3 + 2] = z;
+        if ((r & 3) === 0 && (c & 3) === 0) {
+          const glacier = hm.glacierAt(x, z);
+          surf[i * 4] = hm.slopeDeg(x, z) / 90;
+          surf[i * 4 + 1] = glacier;
+          surf[i * 4 + 2] = 0.5;
+          surf[i * 4 + 3] = glacier > 0.01 ? moraineAt(x, z) : 0;
+        } else {
+          // Slowly varying: copy from the last sampled vertex.
+          const src = (r & ~3) * n + (c & ~3);
+          for (let q = 0; q < 4; q++) surf[i * 4 + q] = surf[src * 4 + q];
+        }
+      }
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.surf.needsUpdate = true;
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    mesh.visible = true;
+  };
+  return mesh;
+}
+
 function terrainMaterial(flatGround, holes = null) {
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 });
   mat.onBeforeCompile = (sh) => {
     if (holes) Object.assign(sh.uniforms, holes);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-attribute vec3 surf;
+attribute vec4 surf;
 varying vec3 vW;
 varying vec3 vWN;
-varying vec3 vSurf;`)
+varying vec4 vSurf;`)
       .replace('#include <fog_vertex>', `#include <fog_vertex>
 vW = (modelMatrix * vec4(transformed, 1.0)).xyz;
 vWN = normalize(mat3(modelMatrix) * objectNormal);
@@ -140,7 +219,7 @@ const LEDGE_DEFINES = () => `
 const TERRAIN_GLSL = /* glsl */ `
 varying vec3 vW;
 varying vec3 vWN;
-varying vec3 vSurf;
+varying vec4 vSurf;
 
 const float SNOWLINE = 5100.0;
 
@@ -259,7 +338,7 @@ bool inHole(vec2 p) {
 
 struct TerrainSample { vec3 albedo; float roughness; float bump; };
 
-TerrainSample terrainSample(vec3 p, vec3 n, vec3 surf, vec3 cam) {
+TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   float dist = length(p - cam);
   float h = p.y;
   float slope = degrees(acos(clamp(n.y, 0.0, 1.0)));
@@ -308,13 +387,24 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec3 surf, vec3 cam) {
   vec3 scree = mix(vec3(0.36, 0.33, 0.31), vec3(0.52, 0.48, 0.44), fine * near + medium * (1.0 - near));
   float screeAmt = smoothstep(34.0, 22.0, slope) * smoothstep(5900.0, 5300.0, h);
 
-  // Glacier: rubble-covered ice streaked along the flow (roughly north-south here),
-  // with bare grey-blue ice and white penitente fields between the streaks.
-  float streak = fbm(vec2(p.x * 0.012, p.z * 0.0016), 4);
-  float bare = smoothstep(0.48, 0.62, streak + (big - 0.5) * 0.3);
-  vec3 rubble = mix(vec3(0.30, 0.28, 0.27), vec3(0.47, 0.44, 0.41), fine * near + 0.4 * (1.0 - near));
-  vec3 glacierIce = mix(vec3(0.56, 0.62, 0.67), vec3(0.80, 0.83, 0.86), smoothstep(0.35, 0.8, medium));
+  // Glacier: medial moraine stripes of dark rubble running down-glacier (from the
+  // relief, so the stones you stand on are where the stripes are), bare blue-white
+  // ice between them streaked with dirt along the flow, and snow cover higher up
+  // (the accumulation zone) and in hollows.
+  float moraine = clamp(surf.w + (medium - 0.5) * 0.25, 0.0, 1.0);
+  float flowStreak = fbm(vec2(p.x * 0.05, p.z * 0.006), 3);
+  vec3 rubble = mix(vec3(0.27, 0.25, 0.23), vec3(0.50, 0.46, 0.41), fine * near + 0.45 * (1.0 - near));
+  rubble *= 0.85 + 0.3 * hash12(floor(p.xz * 1.3)) * near;
+  vec3 glacierIce = mix(vec3(0.52, 0.66, 0.77), vec3(0.80, 0.86, 0.91), smoothstep(0.3, 0.75, medium));
+  glacierIce = mix(glacierIce, vec3(0.45, 0.42, 0.38), smoothstep(0.55, 0.75, flowStreak) * 0.45);
+  float iceCracks = near > 0.0 ? cracks(p + 3.1, vec3(0.0, 1.0, 0.0), 0.35) * near : 0.0;
+  glacierIce = mix(glacierIce, vec3(0.32, 0.45, 0.58), iceCracks * 0.5);
+  float glacierSnow = clamp(smoothstep(5250.0, 5550.0, h + (big - 0.5) * 300.0) + max(hollow, 0.0) * 1.5
+    + (fine - 0.5) * 0.4 * near - 0.6 * moraine, 0.0, 1.0);
+  float bare = 1.0 - moraine;
   vec3 glacierCol = mix(rubble, glacierIce, bare);
+  glacierCol = mix(glacierCol, vec3(0.84, 0.87, 0.91), smoothstep(0.35, 0.65, glacierSnow));
+  bare *= 1.0 - smoothstep(0.35, 0.65, glacierSnow);
 
   // Snow collects in hollows and on slopes below ~50 degrees; wind strips ridges up high.
   float snowSlope = smoothstep(55.0 + (big - 0.5) * 14.0, 40.0 + (big - 0.5) * 14.0, slope);
@@ -373,7 +463,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec3 surf, vec3 cam) {
   col = mix(vec3(0.40, 0.39, 0.38), vec3(0.62, 0.66, 0.71), smoothstep(0.4, 0.65, big));
 #endif
 
-  float snowy = max(max(snowAmt * (1.0 - glacier * 0.75), glacier * bare), ledge * 0.7);
+  float snowy = max(max(snowAmt * (1.0 - glacier * 0.75), glacier * max(bare, glacierSnow)), ledge * 0.7);
   float iceLike = max(iceAmt, glacier * bare * 0.6);
   // Bump from screen-space derivatives breaks up into speckles at grazing angles:
   // fade it out where the surface is seen nearly edge-on.

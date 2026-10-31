@@ -78,6 +78,12 @@ export class Hud {
     $('vavg').textContent = signed(c.verticalAvg) + ' m/h';
     $('surface').textContent = this._surfaceText();
     $('axe').textContent = this._axeText();
+    const showGrip = c.onAxeWall || c.grip < 99;
+    $('grip-row').hidden = !showGrip;
+    if (showGrip) {
+      $('grip').textContent = `${Math.round(c.grip)}%`;
+      $('grip').style.color = c.grip < 30 ? '#ff6b5a' : '';
+    }
     $('place-row').hidden = !c.placeName;
     $('place').textContent = c.placeName;
     $('bps').textContent = c.breathsPerStep < 0.95 ? 'easy' : `${c.breathsPerStep.toFixed(1)} per step`;
@@ -181,6 +187,10 @@ export class Hud {
       if (!c.axe.inHand) return 'Sliding! Press I to get your axe out, then hold Space to arrest.';
       if (c.axe.dangling > 0) return 'Grabbing the axe off its leash…';
       return 'Getting the axe out…';
+    }
+    if (c.onAxeWall) {
+      if (c.grip < 30) return `Grip failing (${Math.round(c.grip)}%)! Keep swinging to a ledge or easier ground.`;
+      return 'Too steep to walk: click to swing the axe and pull up (S + click to climb down). Your grip drains while you hang.';
     }
     if (c.blocked) {
       const axeGround = ['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier', 'ice'].includes(c.surface.key);

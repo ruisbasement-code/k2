@@ -76,7 +76,7 @@ describe('ice axe', () => {
   });
 
   it('climbs steep snow unroped that you would slide off without it', () => {
-    const spot = find(({ x, z, s, key }) => s > 40 && s < 46 && key === 'firm_snow' && !ledgeAt(x, z, s));
+    const spot = find(({ x, z, s, key }) => s > 36 && s < 40 && key === 'firm_snow' && !ledgeAt(x, z, s));
     expect(spot).not.toBe(null);
     const go = (axe) => {
       const c = climber(spot, axe);
@@ -93,8 +93,34 @@ describe('ice axe', () => {
     const withAxe = go(true);
     expect(withAxe.c.falling).toBe(false);
     expect(withAxe.gain).toBeGreaterThan(0.3);
-    // Rock is no easier with an axe.
-    expect(tuning.axe_climb_max_deg).toBeGreaterThan(tuning.no_rope_max_deg);
+  });
+
+  it('climbs a wall too steep to walk swing by swing, and falls if you just hang there', () => {
+    const spot = find(({ x, z, s, key }) => s > 44 && s < 52 && (key === 'firm_snow' || key === 'ice') && !ledgeAt(x, z, s));
+    expect(spot).not.toBe(null);
+    const c = climber(spot, true);
+    const [gx, gz] = hm.gradient(spot.x, spot.z);
+    c.yaw = Math.atan2(-gx, -gz);
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    // Holding W alone gets you nowhere.
+    const y0 = c.position.y;
+    run(c, 0.5, { x: 0, y: 1 });
+    expect(c.onAxeWall).toBe(true);
+    expect(c.position.y - y0).toBeLessThan(0.05);
+    // Click, climb, click, climb.
+    const stamina = c.body.stamina;
+    for (let i = 0; i < 6 && c.onAxeWall; i++) {
+      c.swingAxe();
+      run(c, 0.5, { x: 0, y: 0 });
+    }
+    expect(c.position.y - y0).toBeGreaterThan(1);
+    expect(c.body.stamina).toBeLessThan(stamina);
+    expect(c.falling).toBe(false);
+    // Hang without swinging and your grip runs out.
+    if (c.onAxeWall) {
+      run(c, 40, { x: 0, y: 0 });
+      expect(c.falling || c.dead || c.grip === 0).toBe(true);
+    }
   });
 
   it('can be lost in a tumble: on its leash, or gone if the leash snaps', () => {
