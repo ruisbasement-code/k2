@@ -32,6 +32,7 @@ describe('sleep', () => {
 
   it('sleeps through the night to the morning, rested and healed', () => {
     const c = climberAtTent('Camp 2', 21);
+    c.phys.acclimatized = 6700;
     c.health = 35;
     c.body.stamina = 10;
     c.body.exhausted = true;
