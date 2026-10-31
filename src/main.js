@@ -43,7 +43,8 @@ const hm = await Heightmap.load();
 scene.add(createTerrain(hm));
 const ropes = new FixedRopes(hm, route.fixed_ropes);
 scene.add(ropes.createMesh());
-scene.add(createCamps(hm, route.places));
+const camps = createCamps(hm, route.places, ropes);
+scene.add(camps);
 
 const climber = new Climber(hm, ropes, route.places);
 const rockMesh = new RockfallMesh(climber.rockfall);
@@ -190,19 +191,27 @@ function animateModel(dt) {
   model.position.y -= c.sink * 0.8;
   const exposure = Math.min(Math.max((c.slope - 25) / 30, 0), 1);
   model.rotation.set(0, model.rotation.y, exposure * 0.03 * Math.sin(view.time * 0.9) + c.shake * 0.12 * Math.sin(view.time * 29));
-  let diff = c.heading - model.rotation.y;
+  let pose = { climb: 'climb', steep: 'climb', rope: 'rope', fly: 'fly' }[c.mode] ?? 'walk';
+  const winded = c.body.stamina < c.body.staminaCap(c.position.y) - 5 || c.body.exhausted;
+  if (!c.moving && c.mode !== Mode.FLY && winded) pose = 'rest';
+  // On steep ground (or a rope) you always face into the slope: backing down it
+  // or side-stepping across it. On gentler ground you face out and plunge-step down.
+  const [gx, gz] = hm.gradient(c.position.x, c.position.z, 3);
+  const riseAlong = (yaw) => -(gx * Math.sin(yaw) + gz * Math.cos(yaw));
+  const steep = pose === 'climb' || pose === 'rope';
+  const faceIn = steep && riseAlong(c.heading) < 0.7 * Math.hypot(gx, gz);
+  const backing = steep && riseAlong(c.heading) < -0.25;
+  let diff = (faceIn ? Math.atan2(-gx, -gz) : c.heading) - model.rotation.y;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   model.rotation.y += diff * (1 - Math.exp(-dt * 10));
   // Cadence is shown at a believable rate no matter how fast mountain time runs.
+  // Backing down runs the climbing cycle in reverse.
   const cadence = { walk: 5, climb: 3, steep: 3, rope: 2.5 }[c.mode] ?? 0;
-  if (c.moving) view.gait += dt * cadence;
-  let pose = { climb: 'climb', steep: 'climb', rope: 'rope', fly: 'fly' }[c.mode] ?? 'walk';
-  const winded = c.body.stamina < c.body.staminaCap(c.position.y) - 5 || c.body.exhausted;
-  if (!c.moving && c.mode !== Mode.FLY && winded) {
-    pose = 'rest';
-    view.gait += (dt * c.body.breathRate / 60) * Math.PI * 2;
-  }
-  model.pose(pose, view.gait, c.moving, Math.min(c.slope / 30, 1));
+  if (c.moving) view.gait += dt * cadence * (backing ? -1 : 1);
+  if (pose === 'rest') view.gait += (dt * c.body.breathRate / 60) * Math.PI * 2;
+  // Ground rise in the direction the model faces, for fitting hands and feet to the slope.
+  const rise = riseAlong(model.rotation.y);
+  model.pose(pose, view.gait, c.moving, rise);
 }
 
 const _harness = new THREE.Vector3();
@@ -218,7 +227,7 @@ function updateTether(dt) {
     return;
   }
   model.updateMatrixWorld(true);
-  model.localToWorld(_harness.set(0, 0.98, -0.12));
+  model.joints.pelvis.localToWorld(_harness.set(0, 0.02, -0.17)); // harness belay loop
   let id, length;
   if (ropeFall) {
     id = c.fall.rope.id;
@@ -245,6 +254,7 @@ function frame(now) {
   updateTether(dt);
   updateCamera();
   audio.update();
+  camps.userData.update(now / 1000);
   hud.update(dt);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
