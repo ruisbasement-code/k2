@@ -41,6 +41,7 @@ https://ruisbasement-code.github.io/k2/.
 | Shift | Push the pace: faster, but stamina drains much quicker (and it helps little up high) |
 | C | Clip into / unclip from a fixed rope (within 5 m) |
 | Space (hold) | Self-arrest when you start sliding |
+| P | Probe the snow ahead for hidden crevasses (takes 20 mountain seconds) |
 | R | After dying: be rescued to the highest camp you reached |
 | Mouse (click to capture), wheel | Look around, zoom |
 | V | First / third person |
@@ -173,6 +174,50 @@ and curvature:
 - The Godwin-Austen Glacier around Base Camp is rubble-covered ice streaked along its flow.
 - Procedural detail and bump mapping fade with distance, and distant terrain sits in haze.
 
+## Mountain features and hazards
+
+The 31 m elevation grid can't show what makes K2 dangerous up close, so these are
+added on top of it (`src/sim/terrainFeatures.js`, placed in
+[`src/data/features.json`](src/data/features.json), numbers in `tuning.json`):
+
+- **Crevasses.** The glaciers crack across their flow where the ice steepens.
+  On the lower Godwin-Austen Glacier most are open and easy to see; higher up, most
+  are **hidden under snow bridges**. Each step on a bridge can break it, much more
+  likely in the warm afternoon than in the frozen night and early morning, so cross
+  glaciers early. You may hear the snow sound hollow first. Fall in and you drop
+  8–30 m, slowed by the narrowing walls, onto the snow plug at the bottom; deep
+  falls hurt badly. A slide that runs over a crevasse goes into it too.
+- **Climbing out.** Face a wall and hold W. Without ice tools it's slow, exhausting
+  and you can peel off back to the bottom (`Climber._iceTool()` is where an axe and
+  crampons will plug in). You come out on the side you face.
+- **Probing (P).** Probe the snow in front of you to find hidden crevasses. Found ones
+  show as a dark line in the snow; the bridge can still give way.
+- **The wanded trail.** Bamboo wands with red flags mark a crevasse-free line from
+  Base Camp to the foot of the Abruzzi Spur, as expeditions do. Off it, you're on your own.
+- **Pits and moulins.** Round holes: meltwater moulins on the bare lower glacier,
+  snow-covered pits higher up. They work like crevasses.
+- **The bergschrund.** The big crevasse where the glacier pulls away from the foot of
+  the Abruzzi Spur, bridged where the trail crosses it. An ice cavern sits in it.
+- **Seracs.** The **Bottleneck serac**, a hanging ice cliff at about 8,400 m, hangs over
+  the couloir and the Traverse. Ice breaks off it at any hour (more in the afternoon)
+  and bounces down the fall line, which runs through the Bottleneck. Smaller ice towers
+  stand where the glaciers break over steep steps. You can't walk through either.
+  Serac icefall is separate from rockfall, which stays off.
+
+  ![The Bottleneck serac](docs/screenshots/bottleneck-serac.png)
+- **Cornices and snow overhangs** grow out over the drop on ridge crests: on the
+  summit ridge, the edge of the Shoulder, and above the Black Pyramid and House's
+  Chimney. The snow stands out past the rock; walk out onto it and it can break off
+  and throw you down the far side. The further out, the likelier.
+- **Snow caves** below Camp 3 and on the Shoulder, and the ice cavern in the
+  bergschrund: out of the wind, and resting in one heals nearly as fast as a camp.
+- **Technical sections.** **House's Chimney** (a 30 m crack of steep rock below Camp 2),
+  the **Black Pyramid** (broken dark rock and ice from Camp 2 to Camp 3), the
+  **Bottleneck** and the **Traverse** slow you and make unroped slips much more likely.
+- **Cols.** The Negrotto Col (6,250 m), Savoia Saddle (6,666 m) and Windy Gap (6,233 m)
+  are named where the saddles in the elevation data match their heights. The HUD's
+  Place line shows where you are.
+
 ## Camps and climber
 
 - **Base Camp** is a spread of expedition compounds on the glacier. Each has a mess
@@ -195,9 +240,11 @@ and curvature:
 ```
 index.html            HUD and start screen markup
 src/main.js           scene, camera, game loop, key bindings
-src/data/             route.json (camps, fixed-rope lines), tuning.json (all movement numbers)
-src/sim/              paceModel.js, climberBody.js, hazards.js (loose rock, rockfall, snow trail): pure rules, no graphics
-src/world/            heightmap.js, terrain.js (mesh + shader), fixedRopes.js, sky.js, hazardMeshes.js,
+src/data/             route.json (camps, fixed-rope lines), tuning.json (all movement numbers),
+                      features.json (named crevasses, seracs, cornices, caves, technical sections, cols)
+src/sim/              paceModel.js, climberBody.js, hazards.js (loose rock, rockfall, snow trail),
+                      terrainFeatures.js (crevasses, bridges, seracs, cornices, caves): pure rules, no graphics
+src/world/            heightmap.js, terrain.js (mesh + shader), fixedRopes.js, sky.js, hazardMeshes.js, featureMeshes.js,
                       camps.js (layouts), campProps.js (tents, flags, gear), propBatch.js
 src/player/           climber.js (movement, ropes, falls, health), climberModel.js, ragdoll.js, breathAudio.js, input.js
 src/ui/hud.js         HUD, minimap, breath ring, vision vignette
