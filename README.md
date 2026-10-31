@@ -41,7 +41,7 @@ https://ruisbasement-code.github.io/k2/.
 | Shift | Push the pace: faster, but stamina drains much quicker (and it helps little up high) |
 | C | Clip into / unclip from a fixed rope (within 5 m) |
 | Space (hold) | Self-arrest when you start sliding |
-| P | Probe the snow ahead for hidden crevasses (takes 20 mountain seconds) |
+| X | Probe the snow ahead for hidden crevasses (takes 20 mountain seconds) |
 | R | After dying: be rescued to the highest camp you reached |
 | Mouse (click to capture), wheel | Look around, zoom |
 | V | First / third person |
@@ -190,7 +190,7 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
 - **Climbing out.** Face a wall and hold W. Without ice tools it's slow, exhausting
   and you can peel off back to the bottom (`Climber._iceTool()` is where an axe and
   crampons will plug in). You come out on the side you face.
-- **Probing (P).** Probe the snow in front of you to find hidden crevasses. Found ones
+- **Probing (X).** Probe the snow in front of you to find hidden crevasses. Found ones
   show as a dark line in the snow; the bridge can still give way.
 - **The wanded trail.** Bamboo wands with red flags mark a crevasse-free line from
   Base Camp to the foot of the Abruzzi Spur, as expeditions do. Off it, you're on your own.

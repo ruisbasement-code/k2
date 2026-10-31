@@ -89,7 +89,7 @@ input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
 input.on('KeyR', () => climber.rescue());
-input.on('KeyP', () => climber.probe());
+input.on('KeyX', () => climber.probe());
 input.on('KeyM', () => { audio.muted = !audio.muted; hud.showMessage(audio.muted ? 'Breathing muted' : 'Breathing on'); });
 
 teleport(0);

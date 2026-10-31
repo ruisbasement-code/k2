@@ -177,7 +177,7 @@
   "serac_tower_share": 0.3,
   "hole_depth_m": [8, 30],
 
-  "_bridges": "Each step on a hidden snow bridge can break it: bridge_collapse_per_step times (1.2 - its strength), times bridge_warm_mult in the warm afternoon (bridge_cold_mult in the frozen night and early morning; cross glaciers early). Pushing the pace stamps harder. A slide over one breaks it slide_bridge_break of the time. Probing (P) finds hidden crevasses within probe_reach_m in front of you and takes probe_seconds of mountain time.",
+  "_bridges": "Each step on a hidden snow bridge can break it: bridge_collapse_per_step times (1.2 - its strength), times bridge_warm_mult in the warm afternoon (bridge_cold_mult in the frozen night and early morning; cross glaciers early). Pushing the pace stamps harder. A slide over one breaks it slide_bridge_break of the time. Probing (X) finds hidden crevasses within probe_reach_m in front of you and takes probe_seconds of mountain time.",
   "bridge_collapse_per_step": 0.18,
   "bridge_warm_mult": 2.2,
   "bridge_cold_mult": 0.35,

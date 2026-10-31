@@ -108,7 +108,7 @@ export class Hud {
     if (c.clipped) return 'Clipped in: move freely. The rope speeds you along it and catches slips. C unclips.';
     if (c.ropeDistance() < CLIP_RANGE) return 'Fixed rope here. Press C to clip in.';
     if (c.features && this.hm.glacierAt(c.position.x, c.position.z) > 0.4 && c.features.trailDistance(c.position.x, c.position.z) > 15)
-      return 'Off the wanded trail: hidden crevasses. Probe ahead with P, and cross early while the snow is frozen.';
+      return 'Off the wanded trail: hidden crevasses. Probe ahead with X, and cross early while the snow is frozen.';
     if (c.slope > tuning.climb_start_deg) return `Steep ${c.surface.label.toLowerCase()} and unroped: one slip and you slide.`;
     if (c.health < 50) return 'Injured. Rest to heal, faster in a camp.';
     if (body.stamina < 25) return 'Nearly spent. Stop and rest.';

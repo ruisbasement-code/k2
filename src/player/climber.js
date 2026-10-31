@@ -831,7 +831,7 @@ export class Climber {
       }
       if (!f.isKnown(h) && this._hollowWarned !== h.id && Math.random() < t.bridge_hollow_warning) {
         this._hollowWarned = h.id;
-        this.onMessage('The snow sounds hollow underfoot… Probe ahead with P.');
+        this.onMessage('The snow sounds hollow underfoot… Probe ahead with X.');
       }
     }
     const lip = f.corniceAt(x, z);
@@ -1011,7 +1011,7 @@ export class Climber {
   }
 
   /**
-   * Probe the snow ahead (P): finds hidden crevasses within reach in front of
+   * Probe the snow ahead (X): finds hidden crevasses within reach in front of
    * you, at the cost of a little time.
    */
   probe() {
@@ -1030,7 +1030,9 @@ export class Climber {
   _icefall(dt, dtM) {
     const f = this.features;
     if (!f || this.mode === Mode.FLY) return;
-    const fall = f.maybeIcefall(dtM, this.hour, this.position);
+    // With the weather system in, it decides when the serac calves (through
+    // features.releaseIcefall); without it, the serac keeps its own clock.
+    const fall = this.weather ? null : f.maybeIcefall(dtM, this.hour, this.position);
     if (fall && Math.hypot(this.position.x - fall.x, this.position.z - fall.z) < tuning.icefall_warn_m * 2) {
       this.shake = Math.max(this.shake, 0.4);
       this.onMessage(`A crack like a gunshot: the ${fall.name} is collapsing! Ice is coming down.`);
