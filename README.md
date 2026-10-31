@@ -72,7 +72,8 @@ room in a 45 L pack, and a heavier pack is slower and harder work.
   coping) and a paper topo map with the route and camps. Hold one up at a time.
 - **Climbing**: ice axe, crampons (without them, snow and ice are much more
   slippery), a 30 m rope with ice screws or snow pickets to protect a steep pitch,
-  trekking poles, an avalanche probe.
+  trekking poles (faster, easier walking on gentle ground; swap to the axe when it
+  steepens), an avalanche probe.
 - **Shelter**: a storm tent you can pitch anywhere not too steep, a bivy sack, a snow
   shovel for a snow cave, and a stove to cook in your own tent.
 - **Clothing**: a down suit, spare mitts and goggles keep the cold and frostbite off.
@@ -105,8 +106,10 @@ realistic pace still gets you somewhere. All the speeds below are in mountain ti
   your harness to a carabiner on the rope, hanging slack and lying on the snow until
   you reach its end or it catches a fall. You are not locked to
   the line: you move freely up to 8 m from it. Moving along the rope gets the jumar's
-  speed, the rope gently steers you back toward its line as you drift, it lets you
-  climb anything near it, and slips are rarer. If you do slip, the jumar locks and you
+  speed, the rope gently steers you back toward its line as you drift, it gets you up
+  rock of any steepness near it, and slips are rarer. On snow and ice the rope only
+  protects you: past 35° you still need the ice axe out, and past 40° you swing up
+  it click by click, though you can sit back on the rope between swings to rest. If you do slip, the jumar locks and you
   drop (and swing, if you were off to the side) until the rope comes tight; a hard
   jolt hurts. Fixed ropes are old: each time one takes a fall there is a small chance
   (about 2–5%) that the anchor rips out and you fall on, unroped. Reach either
@@ -163,7 +166,15 @@ come off. Ledges, easier ground and the fixed ropes let it recover. Holding Spac
 bites over half a second and stops you from up to 14 m/s on snow, but it mostly
 skates on hard ice. Arresting very fast can wrench it from your grip, and in a tumble
 you often lose it: it hangs on its leash until you grab it again, unless the leash
-snaps and it's gone. Camps have spares (G).
+snaps and it's gone. Camps have spares (G). The axe is big and blue in your hand,
+in third person and in your first person view, and strapped to your pack when stowed.
+
+**Trekking poles.** Packed at Base Camp, they come out in both hands (orange shafts,
+baskets and wrist straps) and take a hotbar slot to put them away or get them out
+again. On walking ground gentler than 20° they make you about 10% faster and 15% less
+tired. On steeper ground they skate: unroped past 25°, slips are three times as likely
+and you can only self-arrest with your hands. Getting the axe out (I) straps the poles
+to your pack.
 
 **Rock and ice fall** is built (`rockfall_enabled` in `tuning.json`) but switched off
 for now: loose holds still crumble, but send no rocks down.
