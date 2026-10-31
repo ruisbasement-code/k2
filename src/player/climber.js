@@ -54,7 +54,7 @@ import { Pack } from '../sim/pack.js';
 import { airAt } from '../sim/environment.js';
 import { SnowTrail, Rockfall, isLoose, ledgeAt } from '../sim/hazards.js';
 import { weatherTuning as W } from '../sim/weather.js';
-import { Avalanches, isSlabSlope } from '../sim/avalanche.js';
+import { Avalanches, isSlabSlope, slabLoad } from '../sim/avalanche.js';
 import { TerrainFeatures } from '../sim/terrainFeatures.js';
 
 const { tuning } = Pace;
@@ -838,7 +838,7 @@ export class Climber {
       this._noteCamp();
     }
     this._rocks(dt, dtM);
-    this._weatherStep(dt, dtM, wasFalling);
+    this._weatherStep(dt, dtM, wasFalling, !!input.arrest);
     this._icefall(dt, dtM);
     this.shake *= Math.exp(-dt * 2.5);
     this._axeStep(dt);
@@ -1371,7 +1371,7 @@ export class Climber {
    * Wind and debris move in real seconds; the chance of a slide or calving is per
    * mountain hour.
    */
-  _weatherStep(dt, dtM, wasFalling) {
+  _weatherStep(dt, dtM, wasFalling, arrest = false) {
     const w = this.weather;
     if (w) {
       w.update(this.mountainSeconds, dt);
@@ -1383,9 +1383,16 @@ export class Climber {
     const c = this.conditions;
     if (w && !this.dead && !fly) {
       if (!this.falling) this._wind(dt, c);
-      const natural = W.natural_per_hour * c.avalancheDanger ** 2;
+      // Slides come down somewhere above you now and then, far more often after
+      // storms and fresh snow; others pour down faces across the mountain.
+      const wind = { x: c.windX, z: c.windZ, slab: w.windSlab };
+      const natural = W.natural_per_hour * (W.natural_base + c.avalancheDanger ** 1.5);
       if (Math.random() < (natural * dtM) / 3600) {
-        const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour);
+        const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour, Math.random, { wind });
+        if (slide) this._announceSlide(slide);
+      }
+      if (Math.random() < (W.distant_per_hour * c.avalancheDanger * dtM) / 3600) {
+        const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour, Math.random, { wind, spread: W.distant_spread_m });
         if (slide) this._announceSlide(slide);
       }
       this._seracFall(dtM, c);
@@ -1395,20 +1402,44 @@ export class Climber {
       body.y += 0.9;
       const hit = this.avalanches.step(dt, this.dead || fly ? null : body);
       if (hit) this._caughtInAvalanche(hit);
-      // Debris carries you along with it.
+      // Debris carries you along with it. Holding Space you swim for the surface:
+      // the longer you fight, the less likely it buries you, and with luck you
+      // break out on top and can dig the axe in.
       if (this.falling && this.fall.avalanche) {
+        const f = this.fall;
         const blob = this.avalanches.nearestMoving(this.position, 20);
-        if (blob) this.velocity.lerp(blob.velocity, 1 - Math.exp(-dt * 1.5));
+        if (arrest) {
+          if (!f.swim) this.onMessage('Swimming hard for the surface!');
+          f.swim = (f.swim ?? 0) + dt;
+          if (f.phase === 'tumble' && f.swim > 1 && Math.random() < W.swim_surface_per_s * dt) {
+            this._settle();
+            this.onMessage('You fought your way to the top of the debris. Dig in!');
+          }
+        }
+        if (blob) this.velocity.lerp(blob.velocity, 1 - Math.exp(-dt * (f.arresting ? 0.4 : 1.5)));
       }
     }
-    if (wasFalling && !this.falling && !this.dead && this.fall?.avalanche) {
-      this.fall.avalanche = false;
-      if (Math.random() < W.burial_chance) {
-        this._hurt(W.burial_damage, 'You were buried by the avalanche.');
-        this.mountainSeconds += 1200;
-        if (!this.dead) this.onMessage(`Buried! It took twenty minutes to dig yourself out of the debris. Health ${Math.round(this.health)}.`);
-      }
+    if (wasFalling && !this.falling && !this.dead && this.fall?.avalanche) this._avalancheStops();
+  }
+
+  /** The debris stops and sets like concrete: on top, buried shallow, or buried deep. */
+  _avalancheStops() {
+    const f = this.fall;
+    f.avalanche = false;
+    const fought = Math.min((f.swim ?? 0) / W.swim_full_s, 1);
+    if (Math.random() >= W.burial_chance * (1 - W.swim_save * fought)) {
+      this.onMessage(fought > 0.3 ? 'You kept on top of the debris as it stopped. Lucky.' : 'The debris stopped with you on top. Lucky.');
+      return;
     }
+    if (Math.random() < W.deep_burial_chance * (1 - 0.5 * fought)) {
+      this._hurt(W.deep_burial_damage * (0.8 + 0.4 * Math.random()), 'You were buried deep in avalanche debris.');
+      this.mountainSeconds += 3600;
+      if (!this.dead) this.onMessage(`Buried deep! An hour clawing at the set snow before you broke out. Health ${Math.round(this.health)}.`);
+      return;
+    }
+    this._hurt(W.burial_damage * (0.5 + Math.random()), 'You were buried by the avalanche.');
+    this.mountainSeconds += 1200;
+    if (!this.dead) this.onMessage(`Buried! It took twenty minutes to dig yourself out of the debris. Health ${Math.round(this.health)}.`);
   }
 
   /** Strong wind pushes you downwind; a hard gust can throw you off steep ground. */
@@ -1442,7 +1473,8 @@ export class Climber {
   _maybeTriggerSlab() {
     const c = this.conditions;
     if (!c || !isSlabSlope(this.hm, this.position.x, this.position.z, this.hour)) return;
-    if (Math.random() >= W.trigger_per_step * c.avalancheDanger ** 2) return;
+    const load = slabLoad(this.hm, this.position.x, this.position.z, c.windX, c.windZ, this.weather?.windSlab ?? 0);
+    if (Math.random() >= W.trigger_per_step * c.avalancheDanger ** 1.5 * load) return;
     const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
     const g = Math.hypot(gx, gz) || 1;
     const [w0, w1] = W.slab_width_m;
@@ -1455,10 +1487,11 @@ export class Climber {
 
   _announceSlide(slide) {
     const d = slide.origin.distanceTo(this.position);
-    if (d > 1200) return;
+    if (d > W.distant_spread_m) return;
     this.shake = Math.max(this.shake, Math.min(1, 300 / d));
     const above = slide.origin.y > this.position.y + 20;
-    this.onMessage(above ? `Avalanche! A slope ${Math.round(d)} m above you has broken loose.` : `An avalanche thunders down ${Math.round(d)} m away.`);
+    if (d > 1200) this.onMessage(`A distant roar: an avalanche is pouring down a face ${(d / 1000).toFixed(1)} km away.`);
+    else this.onMessage(above ? `Avalanche! A slope ${Math.round(d)} m above you has broken loose. Get out of its path!` : `An avalanche thunders down ${Math.round(d)} m away.`);
   }
 
   /**
@@ -1500,7 +1533,7 @@ export class Climber {
     }
     if (!this.falling) {
       const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
-      this._startFall(gx, gz, 'Avalanche! You are swept away. Fight to stay on top!');
+      this._startFall(gx, gz, 'Avalanche! You are swept away. Hold Space to swim for the surface!');
     }
     this.velocity.copy(blob.velocity);
     this.fall.phase = 'tumble';
