@@ -102,6 +102,13 @@ describe('weather on the climber', async () => {
     expect(c.conditions.airC).toBeLessThan(0);
     expect(c.conditions.windChillC).toBeLessThanOrEqual(c.conditions.airC);
     expect(c.conditions.visibility).toBeGreaterThan(0);
+    // The survival systems' air hook, when present, follows the weather.
+    c.environment = {};
+    c.weather.force('storm');
+    c.update(FRAME, { x: 0, y: 0 });
+    expect(c.environment.airTempC).toBeCloseTo(c.conditions.airC, 5);
+    expect(c.environment.windMs).toBeCloseTo(c.conditions.wind, 5);
+    expect(c.environment.wet).toBeGreaterThan(0.5);
   });
 
   it('is pushed downwind in a storm, and slowed walking into it', () => {

@@ -47,7 +47,7 @@ https://ruisbasement-code.github.io/k2/.
 | T | Time speed: 1×, 5×, 10× (default), 20×, 60× |
 | 1 – 9 | Jump to Base Camp, ABC, Camps 1–4, Bottleneck, Summit, Broad Peak |
 | F | Scout fly (dev tool; E/Space up, Q down) |
-| G | Change the weather (dev tool): clear, cloudy, high winds, fog, snow, storm, whiteout |
+| N | Next weather (dev tool): clear, cloudy, high winds, fog, snow, storm, whiteout |
 | M | Mute breathing and wind |
 | Esc | Release the mouse |
 

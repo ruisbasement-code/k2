@@ -96,7 +96,7 @@ input.on('KeyM', () => {
   hud.showMessage(audio.muted ? 'Sound muted' : 'Sound on');
 });
 // Dev tool: step through the kinds of weather.
-input.on('KeyG', () => {
+input.on('KeyN', () => {
   const keys = Object.keys(weatherTuning.conditions);
   const next = keys[(keys.indexOf(climber.weather.current.key) + 1) % keys.length];
   climber.weather.force(next, 12);
