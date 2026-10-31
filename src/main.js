@@ -106,6 +106,7 @@ input.on('KeyP', () => climber.takeDex());
 input.on('KeyG', () => climber.resupply());
 input.on('KeyY', () => climber.cycleTurnaround());
 input.on('KeyX', () => climber.probe());
+input.on('KeyI', () => climber.toggleAxe());
 input.on('KeyM', () => {
   audio.muted = wind.muted = !audio.muted;
   hud.showMessage(audio.muted ? 'Sound muted' : 'Sound on');
@@ -212,6 +213,14 @@ function slideOrientation(c) {
   model.position.copy(c.position).addScaledVector(_U, -0.9).addScaledVector(_N, 0.2);
 }
 
+/** The axe in the hand only while it's drawn; on the pack when stowed; nowhere once lost. */
+function showAxe() {
+  const a = climber.axe;
+  const held = a.have && a.inHand && a.drawing <= 0;
+  if (model.axe) model.axe.visible = model.axe.visible && held;
+  if (model.stowedAxe) model.stowedAxe.visible = a.have && !held;
+}
+
 function animateModel(dt) {
   const c = climber;
   model.visible = !view.firstPerson;
@@ -225,6 +234,7 @@ function animateModel(dt) {
     // Sliding flat on the slope, the way the fall left you, digging in.
     slideOrientation(c);
     model.pose('slide', 0, false, 0);
+    showAxe();
     return;
   }
   // Sunk into the snow, and swaying a little on exposed ground or after a jolt.
@@ -252,6 +262,7 @@ function animateModel(dt) {
   // Ground rise in the direction the model faces, for fitting hands and feet to the slope.
   const rise = riseAlong(model.rotation.y);
   model.pose(pose, view.gait, c.moving, rise);
+  showAxe();
 }
 
 const _harness = new THREE.Vector3();

@@ -58,6 +58,8 @@ const { tuning } = Pace;
 const DEG = 180 / Math.PI;
 const _UP = new THREE.Vector3(0, 1, 0);
 const SNOW = new Set(['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier']);
+/** Ground an ice axe bites into. */
+const AXE_GROUND = new Set(['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier', 'ice']);
 
 export const Mode = { WALK: 'walk', CLIMB: 'climb', STEEP: 'steep', ROPE: 'rope', FALL: 'fall', HOLE: 'hole', DEAD: 'dead', FLY: 'fly' };
 const MODE_NAMES = {
@@ -167,6 +169,11 @@ export class Climber {
     this.gasping = false;
     /** Shake for the camera and body, 0..1, after a jolt or near miss. Real seconds. */
     this.shake = 0;
+    /**
+     * The ice axe: have (false once lost), inHand, drawing (seconds until it's out),
+     * dangling (seconds until you regrab it from its leash after losing your grip).
+     */
+    this.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
     this.trail = new SnowTrail();
     this.rockfall = new Rockfall(hm);
     /** The mountain's weather (sim/weather.js), or null for none. */
@@ -242,7 +249,56 @@ export class Climber {
 
   /** The steepest ground you can go up right now. */
   get maxClimbDeg() {
-    return this.clipped ? 90 : tuning.no_rope_max_deg;
+    if (this.clipped) return 90;
+    // Kicking steps and planting the axe gets you up steeper snow and ice.
+    if (this.axeReady && AXE_GROUND.has(this.surface?.key)) return tuning.axe_climb_max_deg;
+    return tuning.no_rope_max_deg;
+  }
+
+  /** The axe is in your hand and held, ready to use. */
+  get axeReady() {
+    const a = this.axe;
+    return a.have && a.inHand && a.drawing <= 0 && a.dangling <= 0;
+  }
+
+  /** Draw the axe from the pack or stow it. Drawing takes a moment, even mid-slide. */
+  toggleAxe() {
+    const a = this.axe;
+    if (!a.have) {
+      this.onMessage('You have no ice axe. Restock one at a camp (G).');
+      return;
+    }
+    if (a.inHand) {
+      a.inHand = false;
+      a.drawing = 0;
+      a.dangling = 0;
+      this.onMessage('Axe stowed on your pack.');
+    } else {
+      a.inHand = true;
+      a.drawing = tuning.axe_draw_s;
+      if (!this.falling) this.onMessage('Ice axe in hand: steeper snow and ice, and a real self-arrest.');
+    }
+  }
+
+  /** Time passing for the axe: drawing it, regrabbing it off the leash. Real seconds. */
+  _axeStep(dt) {
+    const a = this.axe;
+    if (a.drawing > 0) a.drawing = Math.max(0, a.drawing - dt);
+    if (a.dangling > 0) a.dangling = Math.max(0, a.dangling - dt * (this.tumbling ? 0 : 1));
+  }
+
+  /** The axe is wrenched out of your grip; the leash may hold it, or snap. */
+  _loseAxeGrip(why) {
+    const a = this.axe;
+    if (!this.axeReady) return;
+    if (Math.random() < tuning.axe_leash_snap) {
+      a.have = false;
+      a.inHand = false;
+      this.onMessage(`${why} The leash snapped and the axe is gone.`);
+    } else {
+      a.dangling = tuning.axe_regrab_s;
+      this.onMessage(`${why} It's hanging off your wrist leash. Grab it!`);
+    }
   }
 
   get falling() {
@@ -264,6 +320,7 @@ export class Climber {
     const camp = this.lastCamp;
     this.mode = Mode.WALK;
     this.placeAt(camp.x + 6, camp.z + 6, 0, 0);
+    this.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
     this.health = Math.min(40, this.maxHealth);
     this.body.stamina = 30;
     // Carried down and looked after on the way: the altitude illness eases, you are warmed and fed.
@@ -491,6 +548,10 @@ export class Climber {
       return false;
     }
     const took = this.pack.resupply(stores);
+    if (!this.axe.have) {
+      this.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
+      took.push('a spare ice axe');
+    }
     this.onMessage(took.length ? `Restocked at ${camp.name}: ${took.join(', ')}. Pack ${this.pack.kg.toFixed(1)} kg.` : `Nothing more to take at ${camp.name}.`);
     return took.length > 0;
   }
@@ -621,6 +682,9 @@ export class Climber {
     this._weatherStep(dt, dtM, wasFalling);
     this._icefall(dt, dtM);
     this.shake *= Math.exp(-dt * 2.5);
+    this._axeStep(dt);
+    // In a tumble the axe can be torn away at any moment.
+    if (this.tumbling && this.axeReady && Math.random() < tuning.axe_tumble_lose_per_s * dt) this._loseAxeGrip('Tumbling, you lost your grip on the axe.');
     if (this.dead) return;
     this._stepBody(dtM / 3600, this.effort);
     if (this.dead) return;
@@ -655,11 +719,14 @@ export class Climber {
     this.onLedge = !!ledgeAt(this.position.x, this.position.z, this.slope);
     this._noteFeatures();
     const footing = this._footingSlope(this.slope, this.onLedge);
+    // Crampons kicked in and the axe planted hold you on steep snow and ice.
+    const axeBites = this.axeReady && AXE_GROUND.has(this.surface.key);
+    const standLimit = axeBites ? Math.max(this.surface.stand_deg, tuning.axe_stand_deg) : this.surface.stand_deg;
     this.sink = this.surface.sink_m * (1 - this.packing);
     const clipped = this.clipped;
     // On steep ground, clipped in means jumaring.
     if (clipped && this.groundMode !== Mode.WALK) this.mode = Mode.ROPE;
-    if (!clipped && footing > this.surface.stand_deg) {
+    if (!clipped && footing > standLimit) {
       // Too steep for this surface to hold you without a rope.
       this._startFall(gx, gz, `Too steep to stand on ${this.surface.label.toLowerCase()}. You're sliding! Hold Space to self-arrest.`);
       return;
@@ -685,7 +752,7 @@ export class Climber {
         this.pace = 0;
       } else {
         const climbing = this.groundMode !== Mode.WALK;
-        let ground = this.surface.speed;
+        let ground = this.surface.speed * (axeBites && this.groundMode !== Mode.WALK ? t.axe_climb_speed : 1);
         if (this.surface.sink_m > 0) ground += (t.packed_speed - ground) * this.packing;
         target = Pace.groundSpeed(climbing, this.slope, grade, this.breathAltitude) * ground;
         if (rope) target = this._ropeAssist(target, dir, grade, rope);
@@ -711,7 +778,8 @@ export class Climber {
       this.blocked = true;
     }
     const climbing = this.groundMode !== Mode.WALK;
-    this.effort = wants && target > 0 ? Pace.effort(climbing, grade, this.pushing) * (1 + t.sink_effort * this.sink) * this.mods.effort : 0;
+    this.effort = wants && target > 0 ? Pace.effort(climbing, grade, this.pushing) * (1 + t.sink_effort * this.sink) * this.mods.effort
+      * (axeBites && climbing ? t.axe_climb_effort : 1) : 0;
     if (this.gasping) this.effort = 0.3;
     this.moving = this.pace > 0;
     this._breathPace(dtM, grade, climbing);
@@ -806,6 +874,8 @@ export class Climber {
       surface: this.surface.key, careless: this.pushing, turning, downhill: grade < -0.05,
     });
     if (SNOW.has(this.surface.key)) chance *= 1 - 0.5 * this.packing;
+    // Each step backed by a planted axe: a stumble is held before it becomes a slip.
+    if (this.axeReady && AXE_GROUND.has(this.surface.key)) chance *= t.axe_slip_mult;
     if (this.zone && !clipped) chance *= this.zone.slip;
     if (clipped) chance *= t.rope_slip_mult;
     chance *= this.mods.slip;
@@ -835,7 +905,8 @@ export class Climber {
   /** Unroped on very steep ground, any minute can be the one you slip. */
   _maybeSlip(dtM, gx, gz, moving) {
     if (this.clipped) return;
-    const perMin = Pace.slipChancePerMin(this.slope, this.pushing, this.surface.key, moving) * this.mods.slip;
+    let perMin = Pace.slipChancePerMin(this.slope, this.pushing, this.surface.key, moving) * this.mods.slip;
+    if (this.axeReady && AXE_GROUND.has(this.surface.key)) perMin *= tuning.axe_slip_mult;
     if (perMin <= 0) return;
     if (Math.random() < (perMin * dtM) / 60) {
       this._startFall(gx, gz, `You slipped on the ${this.surface.label.toLowerCase()}! Hold Space to self-arrest.`);
@@ -889,7 +960,12 @@ export class Climber {
    * will return a higher maxSpeed and grip here.
    */
   _arrestTool() {
-    return { name: 'hands', maxSpeed: tuning.self_arrest_below_m_s, grip: 1 };
+    const t = tuning;
+    if (!this.axeReady) return { name: 'hands', maxSpeed: t.self_arrest_below_m_s, grip: 1 };
+    // The pick bites over a moment; on hard ice it mostly skates.
+    const bite = Math.min((this.fall?.axeTime ?? 0) / t.axe_bite_s, 1);
+    const grip = this.surface?.key === 'ice' ? t.axe_ice_grip : t.axe_grip;
+    return { name: 'axe', maxSpeed: t.axe_arrest_below_m_s, grip: 1 + (grip - 1) * bite };
   }
 
   /** How well you can dig in, from how you are lying in the slide. */
@@ -965,8 +1041,17 @@ export class Climber {
           if (ledge) mu += t.ledge_friction;
           const tool = this._arrestTool();
           f.arresting = arrest && f.phase === 'slide' && !f.rope && speed < tool.maxSpeed;
-          if (f.arresting) mu += surface.arrest * tool.grip * this._arrestEffect();
-          else if (f.phase === 'slide' && speed > tool.maxSpeed) f.spin += speed * 0.08 * h;
+          if (f.arresting) {
+            mu += surface.arrest * tool.grip * this._arrestEffect();
+            if (tool.name === 'axe') {
+              f.axeTime = (f.axeTime ?? 0) + h;
+              // Too fast and the axe can be torn out of your hands.
+              if (speed > t.axe_rip_above_m_s && Math.random() < t.axe_rip_per_s * h) this._loseAxeGrip('The axe was wrenched from your grip!');
+            }
+          } else {
+            f.axeTime = 0;
+            if (f.phase === 'slide' && speed > tool.maxSpeed) f.spin += speed * 0.08 * h;
+          }
           // A sliding body ploughs through snow and loses speed with it.
           if (f.phase === 'slide') v.multiplyScalar(Math.max(0, 1 - surface.slide_drag * speed * h));
           const decel = mu * t.gravity * n.y * h;
@@ -1516,6 +1601,7 @@ export class Climber {
 
   _tumble(why = "You're tumbling out of control!") {
     if (this.fall.phase === 'tumble') return;
+    if (this.axeReady && Math.random() < 0.5) this._loseAxeGrip('Tumbling, you lost your grip on the axe.');
     this.fall.phase = 'tumble';
     this.fall.arresting = false;
     this.fall.contact = 0;

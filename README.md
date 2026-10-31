@@ -109,6 +109,14 @@ real face, so steep ground is dotted with small ledges, drawn into the terrain a
 narrow snowy steps with a shadow under the lip. You can stand on one where the slope around it is too steep, and a slide
 across one loses a lot of speed.
 
+**Ice axe.** Press **I** to draw it from your pack (it takes a second, even mid-slide)
+or stow it. In hand it lets you climb snow and ice up to 50° unroped (rock is no
+easier), slower and harder, with fewer slips. Holding Space in a slide, the pick
+bites over half a second and stops you from up to 14 m/s on snow, but it mostly
+skates on hard ice. Arresting very fast can wrench it from your grip, and in a tumble
+you often lose it: it hangs on its leash until you grab it again, unless the leash
+snaps and it's gone. Camps have spares (G).
+
 **Rock and ice fall** is built (`rockfall_enabled` in `tuning.json`) but switched off
 for now: loose holds still crumble, but send no rocks down.
 

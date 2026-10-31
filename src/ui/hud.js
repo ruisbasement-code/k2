@@ -77,6 +77,7 @@ export class Hud {
     $('vnow').textContent = signed(c.verticalNow) + ' m/h';
     $('vavg').textContent = signed(c.verticalAvg) + ' m/h';
     $('surface').textContent = this._surfaceText();
+    $('axe').textContent = this._axeText();
     $('place-row').hidden = !c.placeName;
     $('place').textContent = c.placeName;
     $('bps').textContent = c.breathsPerStep < 0.95 ? 'easy' : `${c.breathsPerStep.toFixed(1)} per step`;
@@ -176,7 +177,16 @@ export class Hud {
     if (ice?.some((r) => r.velocity.length() > 2 && r.position.distanceTo(c.position) < tuning.icefall_warn_m && r.position.y > c.position.y))
       return 'Serac ice coming down! Get out from under it.';
     if (c.blockedByIce) return 'A wall of ice. Find a way round.';
-    if (c.blocked) return 'Too steep to climb without a fixed rope';
+    if (c.falling && !c.tumbling && !c.fall.rope && c.axe.have && !c.axeReady) {
+      if (!c.axe.inHand) return 'Sliding! Press I to get your axe out, then hold Space to arrest.';
+      if (c.axe.dangling > 0) return 'Grabbing the axe off its leash…';
+      return 'Getting the axe out…';
+    }
+    if (c.blocked) {
+      const axeGround = ['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier', 'ice'].includes(c.surface.key);
+      if (axeGround && !c.axeReady && c.slope < tuning.axe_climb_max_deg && c.axe.have) return 'Too steep unroped. With the ice axe out (I) you could climb this.';
+      return 'Too steep to climb without a fixed rope';
+    }
     if (c.clipped) return 'Clipped in: move freely. The rope speeds you along it and catches slips. C unclips.';
     if (c.ropeDistance() < CLIP_RANGE) return 'Fixed rope here. Press C to clip in.';
     if (c.canSleep()) {
@@ -221,6 +231,15 @@ export class Hud {
     blur.style.setProperty('--inner', `${inner.toFixed(1)}%`);
     blur.style.setProperty('--blur', `${(6 * hurt + 4 * this.flash).toFixed(1)}px`);
     blur.style.opacity = hurt > 0.05 || this.flash > 0.05 ? 1 : 0;
+  }
+
+  _axeText() {
+    const a = this.climber.axe;
+    if (!a.have) return 'lost';
+    if (!a.inHand) return 'on pack (I)';
+    if (a.dangling > 0) return 'on its leash!';
+    if (a.drawing > 0) return 'drawing…';
+    return 'in hand';
   }
 
   _surfaceText() {
