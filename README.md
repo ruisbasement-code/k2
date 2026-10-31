@@ -40,6 +40,8 @@ https://ruisbasement-code.github.io/k2/.
 | W A S D | Move (relative to the camera) |
 | Shift | Push the pace: faster, but stamina drains much quicker (and it helps little up high) |
 | C | Clip into / unclip from a fixed rope (within 5 m) |
+| Space (hold) | Self-arrest when you start sliding |
+| R | After dying: be rescued to the highest camp you reached |
 | Mouse (click to capture), wheel | Look around, zoom |
 | V | First / third person |
 | T | Time speed: 1×, 5×, 10× (default), 20×, 60× |
@@ -53,19 +55,38 @@ https://ruisbasement-code.github.io/k2/.
 **Time.** The mountain clock runs faster than real time (10× by default), so a
 realistic pace still gets you somewhere. All the speeds below are in mountain time.
 
-**Terrain modes**, from the slope under your feet:
+**Slopes.** Fixed ropes are the only aid for now (gear comes later):
 
-- **Walking** below 30°. Speed follows Tobler's hiking function: about 5 km/h on
+- **Walking** below 25°. Speed follows Tobler's hiking function: about 5 km/h on
   the flat at sea level, much slower uphill.
-- **Climbing** from 30° to 45°: crampons and axe. Each metre costs a traverse time
-  plus the time to gain its height, so going straight up is slow and traversing is slower still.
-- **Very steep** above 45°. You can still climb unroped, but every minute carries a
-  chance of slipping and sliding 15 to 40 m. The chance grows with steepness,
-  tiredness and pushing the pace. Above 65° you cannot go up without a rope.
-- **On a fixed rope**: press **C** near the orange rope. W/S then moves you up or
-  down the rope (jumaring up, faster on the way down), with no risk of slipping.
-  There are two ropes: the Abruzzi Spur from Advanced Base Camp to Camp 4, and the
-  Bottleneck and Traverse from above Camp 4 to about 8,450 m. Grey stakes mark the anchors.
+- **Scrambling** from 25° to 35°: slow, tiring, and each minute carries a chance of
+  slipping that grows with the angle, pushing the pace, and how slippery the surface is.
+- **Above 35° only on a fixed rope.** Unroped, you can't go up it, and if you stand
+  on ground steeper than its surface can hold you, you start to slide.
+- **Fixed ropes**: press **C** within 5 m of the orange rope. You are not locked to
+  the line: you move freely up to 8 m from it. Moving along the rope gets the jumar's
+  speed, the rope gently steers you back toward its line as you drift, it lets you
+  climb anything near it, and it catches you instead of letting you slip. Reach either
+  end and you unclip. There are two ropes: the Abruzzi Spur from Advanced Base Camp to
+  Camp 4, and the Bottleneck and Traverse from above Camp 4 to about 8,450 m.
+
+**Surfaces** grip differently (`surfaces` in `tuning.json`): soft snow is slow going
+but grippy, firm snow holds you to 35°, rock to 37°, scree to 33°, glacier ice to 30°,
+and hard ice only to 27°. Ice slides the furthest and is the hardest to stop on.
+
+**Falls.** A slip or too-steep ground starts a slide. You pick up speed down the
+fall line, slowed by the surface's friction. Hold **Space** straight away to
+self-arrest: it works while you are still slow (under 8 m/s) and within about 2
+seconds, much better on snow than ice. Too fast, too late, or a hard hit, and you
+tumble out of control (a ragdoll) until the ground eases and friction stops you.
+Damage comes from how hard you hit the ground and from scraping over rock at speed,
+not from how far you fell, so a long slide on snow can hurt less than a short drop
+onto rock. Health heals slowly at rest and faster in a camp. At 0 you die, and **R**
+gets you rescued to the highest camp you reached, hours later and still hurt.
+
+**Day counter.** The top of the screen shows the expedition day, time and part of the
+day. The sun rises around 05:30, passes high in the south and sets around 19:00, and
+nights are dark. You start at 06:00 on day 1.
 
 **Altitude.** Pace is scaled by an altitude curve for an acclimatized climber without
 bottled oxygen. Steady pace while moving (`npm test` prints this table):
@@ -116,16 +137,16 @@ index.html            HUD and start screen markup
 src/main.js           scene, camera, game loop, key bindings
 src/data/             route.json (camps, fixed-rope lines), tuning.json (all movement numbers)
 src/sim/              paceModel.js, climberBody.js: pure rules, no graphics
-src/world/            heightmap.js, terrain.js (mesh + shader), fixedRopes.js, camps.js
-src/player/           climber.js (movement and ropes), climberModel.js, breathAudio.js, input.js
+src/world/            heightmap.js, terrain.js (mesh + shader), fixedRopes.js, camps.js, sky.js
+src/player/           climber.js (movement, ropes, falls, health), climberModel.js, ragdoll.js, breathAudio.js, input.js
 src/ui/hud.js         HUD, minimap, breath ring, vision vignette
 public/data/          the heightmap (float32) and its metadata
-tests/                Vitest: pace and stamina targets, simulated climbs, driving the climber
+tests/                Vitest: pace and stamina, simulated climbs, ropes, slopes, falls, death and rescue
 ```
 
 URL parameters set up a view for screenshots and testing, for example
 `http://localhost:5173/?start&place=3&rope&pitch=10&dist=8`
-(also `yaw=`, `fp`, `fly=<metres>`).
+(also `yaw=`, `fp`, `fly=<metres>`, `hour=<0-24>`).
 
 ## Data
 
