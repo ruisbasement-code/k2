@@ -91,7 +91,7 @@
 
   "_serac": "The hanging serac above the Bottleneck. Ice breaks off it now and then, most in the warmth of the day; the blocks come down the couloir. serac_grid is its place on the heightmap.",
   "serac_enabled": true,
-  "serac_grid": [327, 331],
+  "serac_grid": [323, 331],
   "serac_per_hour": 0.5,
   "serac_warm_mult": 3,
   "serac_near_m": 700,
