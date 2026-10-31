@@ -15,6 +15,9 @@ export class Hud {
     this.summitHeight = hm.heightAt(0, 0);
     this.messageTime = 0;
     this.slowTimer = 0;
+    this.lastHealth = climber.health;
+    /** Red flash from the latest hit, fading over a second. */
+    this.flash = 0;
     this._buildMinimap();
   }
 
@@ -42,6 +45,7 @@ export class Hud {
     v.style.setProperty('--inner', `${(55 - 35 * strain - 3 * fill * strain).toFixed(1)}%`);
     v.style.opacity = (0.25 + 0.7 * strain).toFixed(3);
 
+    this._injury(dt);
     $('health-fill').style.width = `${c.health}%`;
     $('stamina-fill').style.width = `${body.stamina}%`;
     $('stamina-fill').classList.toggle('low', body.exhausted || body.stamina < 25);
@@ -99,6 +103,30 @@ export class Hud {
     if (c.health < 50) return 'Injured. Rest to heal, faster in a camp.';
     if (body.stamina < 25) return 'Nearly spent. Stop and rest.';
     return '';
+  }
+
+  /**
+   * A red flash each time you are hurt, bigger for bigger hits. Below about 70%
+   * health the edge of the screen stays red and blurred, closing in as it drops.
+   */
+  _injury(dt) {
+    const c = this.climber;
+    const lost = this.lastHealth - c.health;
+    if (lost > 0.3) this.flash = Math.min(0.55, this.flash + 0.12 + lost / 40);
+    else if (c.health > this.lastHealth + 20) this.flash = 0; // rescued or healed in a jump
+    this.lastHealth = c.health;
+    this.flash *= Math.exp(-dt * 2.2);
+    const hurt = c.dead ? 1 : Math.min(Math.max((70 - c.health) / 70, 0), 1);
+    const inner = 70 - 50 * hurt; // the clear middle shrinks from 70% to 20%
+    const red = $('hurt');
+    red.style.setProperty('--inner', `${inner.toFixed(1)}%`);
+    red.style.setProperty('--red', (0.25 + 0.6 * hurt + this.flash).toFixed(3));
+    red.style.setProperty('--flash', (this.flash * 0.45).toFixed(3));
+    red.style.opacity = hurt > 0 || this.flash > 0.01 ? 1 : 0;
+    const blur = $('hurt-blur');
+    blur.style.setProperty('--inner', `${inner.toFixed(1)}%`);
+    blur.style.setProperty('--blur', `${(6 * hurt + 4 * this.flash).toFixed(1)}px`);
+    blur.style.opacity = hurt > 0.05 || this.flash > 0.05 ? 1 : 0;
   }
 
   _surfaceText() {
