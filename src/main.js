@@ -538,7 +538,7 @@ function frame(now) {
   }
   shelters.update(climber.tents);
   rockMesh.update();
-  featureMeshes.update(climber.position);
+  featureMeshes.update(climber.position, climber);
   animateModel(dt);
   updateTether(dt);
   detailPatch.userData.update(climber.position);

@@ -336,9 +336,12 @@
   "serac_fall_per_hour": 0.1,
   "icefall_warn_m": 400,
 
-  "_path_lights": "Lamp posts every path_light_every_m along the glacier trail from Base Camp, and a little closer up the rope to Camp 1. Groups further than path_light_draw_m from you aren't drawn.",
-  "path_light_every_m": 80,
+  "_path_lights": "Lamp posts every path_light_every_m along the glacier trail from Base Camp, and a little closer up the rope to Camp 1. You see them out to path_light_draw_m in clear weather; as visibility falls from path_light_clear_vis_m to path_light_storm_vis_m (or illness or injury blurs your vision) that closes in to path_light_near_m.",
+  "path_light_every_m": 160,
   "path_light_draw_m": 4000,
+  "path_light_near_m": 8,
+  "path_light_clear_vis_m": 1500,
+  "path_light_storm_vis_m": 300,
 
   "_caverns": "Resting in a snow cave or ice cavern heals at cavern_health_regen_per_hour, out of the wind.",
   "cavern_health_regen_per_hour": 22,
