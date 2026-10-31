@@ -40,8 +40,29 @@ export class Heightmap {
     return [(c - this.half) * this.cell, (r - this.half) * this.cell];
   }
 
-  /** Height of the rendered triangle surface at world (x, z). */
+  /**
+   * Height of the rendered triangle surface at world (x, z): the fine terrain
+   * (benches, ribs, outcrops, hummocks; see fineTerrain.js) where it is built,
+   * else the 31 m data.
+   */
   heightAt(x, z) {
+    const f = this.fine;
+    if (f) {
+      const fc = (x - f.x0) / f.step, fr = (z - f.z0) / f.step;
+      if (fc >= 0 && fr >= 0 && fc < f.n - 1 && fr < f.n - 1) {
+        const c = Math.floor(fc), r = Math.floor(fr);
+        const fx = fc - c, fz = fr - r;
+        const i = r * f.n + c, h = f.h, n = f.n;
+        const h00 = h[i], h01 = h[i + 1], h10 = h[i + n], h11 = h[i + n + 1];
+        if (fx + fz < 1) return h00 + (h01 - h00) * fx + (h10 - h00) * fz;
+        return h11 + (h10 - h11) * (1 - fx) + (h01 - h11) * (1 - fz);
+      }
+    }
+    return this.baseHeightAt(x, z);
+  }
+
+  /** Height of the 31 m data alone, without the fine terrain. */
+  baseHeightAt(x, z) {
     const n = this.n;
     const fc = Math.min(Math.max(x / this.cell + this.half, 0), n - 1.0001);
     const fr = Math.min(Math.max(z / this.cell + this.half, 0), n - 1.0001);
@@ -64,6 +85,14 @@ export class Heightmap {
     return [
       (this.heightAt(x + d, z) - this.heightAt(x - d, z)) / (2 * d),
       (this.heightAt(x, z + d) - this.heightAt(x, z - d)) / (2 * d),
+    ];
+  }
+
+  /** Gradient of the 31 m data alone. */
+  baseGradient(x, z, d = 12) {
+    return [
+      (this.baseHeightAt(x + d, z) - this.baseHeightAt(x - d, z)) / (2 * d),
+      (this.baseHeightAt(x, z + d) - this.baseHeightAt(x, z - d)) / (2 * d),
     ];
   }
 
@@ -92,8 +121,13 @@ export class Heightmap {
 
   /** How much (0 to 1) the ground at (x, z) is glacier: low, wide and flat. Matches the terrain shading. */
   glacierAt(x, z) {
-    const y = this.heightAt(x, z);
-    const [gx, gz] = this.gradient(x, z, 3 * this.cell);
+    return this.baseGlacierAt(x, z);
+  }
+
+  /** Glacier mask from the 31 m data (the fine terrain's hummocks don't change it). */
+  baseGlacierAt(x, z) {
+    const y = this.baseHeightAt(x, z);
+    const [gx, gz] = this.baseGradient(x, z, 3 * this.cell);
     const wide = (Math.atan(Math.hypot(gx, gz)) * 180) / Math.PI;
     return smooth(5650, 5250, y) * smooth(17, 8, wide);
   }

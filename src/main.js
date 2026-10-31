@@ -10,6 +10,7 @@ import './style.css';
 import route from './data/route.json';
 import { Heightmap } from './world/heightmap.js';
 import { createTerrain, createDetailPatch } from './world/terrain.js';
+import { buildFineTerrain } from './world/fineTerrain.js';
 import { TerrainDetail, campFlats } from './world/terrainDetail.js';
 import { FixedRopes } from './world/fixedRopes.js';
 import { createCamps } from './world/camps.js';
@@ -54,15 +55,20 @@ const sky = new Sky(scene);
 const params = new URLSearchParams(location.search);
 const loading = document.getElementById('loading');
 const hm = await Heightmap.load();
+// The mountain's benches, ribs, buttresses and glacier hummocks, before anything stands on it.
+buildFineTerrain(hm, route.places);
 const terrain = createTerrain(hm);
 scene.add(terrain);
 const ropes = new FixedRopes(hm, route.fixed_ropes);
 // The rocks, boulders and sastrugi you stand on, smooth at camps and along the ropes.
 hm.detail = new TerrainDetail(hm, campFlats(hm, route.places));
 for (const line of ropes.ropes) hm.detail.addCorridor(line);
+
 const detailPatch = createDetailPatch(hm);
 scene.add(detailPatch);
 const features = new TerrainFeatures(hm, featureDefs, { ropes, places: route.places });
+// The wanded trail across the glacier is trodden too.
+if (features.trail) hm.detail.addCorridor(features.trail.points);
 const featureMeshes = new FeatureMeshes(hm, features, terrain, ropes);
 scene.add(featureMeshes);
 scene.add(ropes.createMesh());

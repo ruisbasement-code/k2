@@ -69,8 +69,10 @@ describe('climber', () => {
 
   it('moves freely while clipped in, but only as far as the leash', () => {
     const c = new Climber(hm, ropes, route.places);
-    const [x, z] = at('Advanced Base Camp');
+    // Partway up the first rope, clear of the levelled camp at its foot.
+    const { x, z } = ropes.ropes[0][25];
     c.placeAt(x, z, 0, 0);
+    vi.spyOn(Math, 'random').mockReturnValue(0.99); // no slips on the way
     c.toggleClip();
     // Face along the rope, then walk sideways across it for a long time.
     const t = ropes.tangentAt(c.ropeId, c.ropeS);
@@ -142,7 +144,7 @@ describe('climber', () => {
   });
 
   it('turns a slip while scrambling into a slide down the slope', () => {
-    const spot = steepest(at('Base Camp'), tuning.climb_start_deg + 5, tuning.no_rope_max_deg);
+    const spot = steepest(at('Advanced Base Camp'), tuning.climb_start_deg + 5, tuning.no_rope_max_deg);
     const c = new Climber(hm, ropes, route.places);
     c.placeAt(spot.x, spot.z, spot.x, spot.z);
     const [gx, gz] = hm.gradient(spot.x, spot.z);
@@ -276,6 +278,8 @@ function steepest([cx, cz], lo, hi) {
   for (let dx = -400; dx <= 400; dx += 10) {
     for (let dz = -400; dz <= 400; dz += 10) {
       const s = hm.slopeDeg(cx + dx, cz + dz);
+      // On the mountainside, not the side of a hummock on the glacier.
+      if (hm.glacierAt(cx + dx, cz + dz) > 0.2) continue;
       if (s >= lo && s < hi && (!best || s > best.s)) best = { s, x: cx + dx, z: cz + dz };
     }
   }

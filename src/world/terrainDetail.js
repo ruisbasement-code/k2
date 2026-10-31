@@ -10,13 +10,13 @@
 import { smooth } from './heightmap.js';
 
 /** Stable 0..1 hash of an integer cell and a seed. */
-function hash(i, j, seed) {
+export function hash(i, j, seed) {
   let h = (i * 374761393 + j * 668265263 + seed * 2246822519) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-function vnoise(x, z, seed) {
+export function vnoise(x, z, seed) {
   const i = Math.floor(x), j = Math.floor(z);
   let fx = x - i, fz = z - j;
   fx = fx * fx * (3 - 2 * fx);
@@ -25,7 +25,7 @@ function vnoise(x, z, seed) {
   return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
 }
 
-function fbm(x, z, octaves, seed) {
+export function fbm(x, z, octaves, seed) {
   let v = 0, amp = 0.5, norm = 0;
   for (let o = 0; o < octaves; o++) {
     v += amp * vnoise(x, z, seed + o * 31);
@@ -41,7 +41,7 @@ function fbm(x, z, octaves, seed) {
  * Nearest jittered feature point in a grid of `size` m cells: the distances to the
  * nearest and second nearest, and the nearest one's cell (for a per-block value).
  */
-function cellular(x, z, size, seed) {
+export function cellular(x, z, size, seed) {
   const gx = x / size, gz = z / size;
   const ci = Math.floor(gx), cj = Math.floor(gz);
   let d1 = 9, d2 = 9, bi = 0, bj = 0;
@@ -116,8 +116,8 @@ export class TerrainDetail {
   at(x, z) {
     const { y, slope, glacier, camp } = this._ground(x, z);
     let flat = camp;
-    if (this.corridors.size) flat = Math.min(flat, smooth(1.2, 3.5, this._corridorDistance(x, z)));
-    if (flat <= 0) return 0.03;
+    const path = this.corridors.size ? this._corridorDistance(x, z) : 99;
+    if (path < 4) flat = Math.min(flat, smooth(1.2, 3.5, path));
 
     // Which ground this is, as smooth weights so the relief never jumps.
     const snow = smooth(4950, 5250, y) * smooth(50, 38, slope);
@@ -135,7 +135,16 @@ export class TerrainDetail {
       const stones = this._boulders(x, z, 3.0, 0.45, 0.35, 1.0, 47) + 0.1 * fbm(x * 0.8, z * 0.8, 2, 49);
       h += glacier * (rubble * stones + (1 - rubble) * ice);
     }
-    return 0.03 + h * flat;
+    // A layer of snow over snowy ground and the glaciers, with the trodden trench
+    // of the route down through it: boot-deep, a little banked up at its edges.
+    const cover = Math.min(1, snow * (1 - glacier) + glacier * 0.7);
+    let trench = 0;
+    if (cover > 0.01) {
+      const banks = path < 3 ? 0.12 * Math.exp(-(((path - 0.85) / 0.22) ** 2)) : 0;
+      const floor = path < 3 ? smooth(0.4, 0.8, path) : 1;
+      trench = cover * (0.25 * floor + banks);
+    }
+    return 0.03 + h * flat + trench * camp;
   }
 
   /**

@@ -76,7 +76,10 @@ export function createTerrain(hm) {
     // A circle around all of them, so the rest of the mountain skips the test.
     uHoleBounds: { value: new THREE.Vector4(0, 0, -1, 0) },
   };
-  const terrain = new THREE.Mesh(geo, terrainMaterial(false, holes));
+  // Where the fine terrain is built, it is drawn instead of this coarse surface.
+  const f = hm.fine;
+  const cut = f ? new THREE.Vector4(f.x0, f.z0, f.x0 + (f.n - 1) * f.step, f.z0 + (f.n - 1) * f.step) : null;
+  const terrain = new THREE.Mesh(geo, terrainMaterial(false, holes, cut));
   terrain.receiveShadow = true;
 
   // Low ground beyond the edge of the data, so the horizon is not a void.
@@ -87,6 +90,7 @@ export function createTerrain(hm) {
   outer.position.y = 4550;
   const group = new THREE.Group();
   group.add(terrain, outer);
+  if (f) group.add(createFineTerrain(hm, holes));
   /** Cut these open holes ({x, z, ux, uz, half, width, kind}) out of the surface, nearest first. */
   group.userData.setHoles = (list) => {
     const n = Math.min(list.length, MAX_TERRAIN_HOLES);
@@ -103,6 +107,101 @@ export function createTerrain(hm) {
     holes.uHoleBounds.value.set(cx, cz, r, 0);
   };
   return group;
+}
+
+/**
+ * The fine terrain (hm.fine): 500 m chunks, each drawn at four levels of detail by
+ * distance, with skirts hanging from their edges to hide cracks between levels.
+ */
+function createFineTerrain(hm, holes) {
+  const f = hm.fine;
+  const { n, step, h } = f;
+  const CH = 64;
+  const at = (i, j) => h[Math.min(Math.max(j, 0), n - 1) * n + Math.min(Math.max(i, 0), n - 1)];
+  // Normals and ground type for every post, once.
+  const nrm = new Float32Array(n * n * 3);
+  const surf = new Float32Array(n * n * 4);
+  const coarse = hm.cell;
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const k = j * n + i;
+      const x = f.x0 + i * step, z = f.z0 + j * step;
+      const gx = (at(i + 1, j) - at(i - 1, j)) / (2 * step);
+      const gz = (at(i, j + 1) - at(i, j - 1)) / (2 * step);
+      const len = Math.hypot(gx, 1, gz);
+      nrm[k * 3] = -gx / len;
+      nrm[k * 3 + 1] = 1 / len;
+      nrm[k * 3 + 2] = -gz / len;
+      const y = h[k];
+      const lapBig = (at(i + 8, j) + at(i - 8, j) + at(i, j + 8) + at(i, j - 8) - 4 * y) / (4 * coarse * coarse);
+      const lapSmall = (at(i + 2, j) + at(i - 2, j) + at(i, j + 2) + at(i, j - 2) - 4 * y) / (4 * coarse * coarse);
+      const glacier = hm.glacierAt(x, z);
+      surf[k * 4] = (Math.atan(Math.hypot(gx, gz)) * 180) / Math.PI / 90;
+      surf[k * 4 + 1] = glacier;
+      surf[k * 4 + 2] = Math.min(Math.max(0.5 + lapBig * 25 + lapSmall * 6, 0), 1);
+      surf[k * 4 + 3] = glacier > 0.01 ? moraineAt(x, z) : 0;
+    }
+  }
+  const mat = terrainMaterial(false, holes);
+  const group = new THREE.Group();
+  const chunks = (n - 1) / CH;
+  for (let cj = 0; cj < chunks; cj++) {
+    for (let ci = 0; ci < chunks; ci++) {
+      const lod = new THREE.LOD();
+      const ox = f.x0 + (ci + 0.5) * CH * step, oz = f.z0 + (cj + 0.5) * CH * step;
+      lod.position.set(ox, at(ci * CH + CH / 2, cj * CH + CH / 2), oz);
+      [[1, 0], [2, 650], [4, 1600], [8, 3600]].forEach(([stride, dist]) => {
+        const mesh = new THREE.Mesh(fineChunk(f, nrm, surf, ci * CH, cj * CH, CH, stride, lod.position), mat);
+        mesh.receiveShadow = true;
+        lod.addLevel(mesh, dist);
+      });
+      group.add(lod);
+    }
+  }
+  return group;
+}
+
+function fineChunk(f, nrm, surf, i0, j0, size, stride, origin) {
+  const m = size / stride + 1;
+  const skirt = 4 * (m - 1);
+  const count = m * m + skirt;
+  const pos = new Float32Array(count * 3), nr = new Float32Array(count * 3), sf = new Float32Array(count * 4);
+  const put = (v, i, j, drop) => {
+    const k = j * f.n + i;
+    pos[v * 3] = f.x0 + i * f.step - origin.x;
+    pos[v * 3 + 1] = f.h[k] - drop - origin.y;
+    pos[v * 3 + 2] = f.z0 + j * f.step - origin.z;
+    for (let q = 0; q < 3; q++) nr[v * 3 + q] = nrm[k * 3 + q];
+    for (let q = 0; q < 4; q++) sf[v * 4 + q] = surf[k * 4 + q];
+  };
+  for (let b = 0; b < m; b++) for (let a = 0; a < m; a++) put(b * m + a, i0 + a * stride, j0 + b * stride, 0);
+  // The border, walked round once, and a skirt hanging below it.
+  const ring = [];
+  for (let a = 0; a < m - 1; a++) ring.push([a, 0]);
+  for (let b = 0; b < m - 1; b++) ring.push([m - 1, b]);
+  for (let a = m - 1; a > 0; a--) ring.push([a, m - 1]);
+  for (let b = m - 1; b > 0; b--) ring.push([0, b]);
+  const drop = 3 + 4 * stride;
+  ring.forEach(([a, b], r) => put(m * m + r, i0 + a * stride, j0 + b * stride, drop));
+  const idx = [];
+  for (let b = 0; b < m - 1; b++) {
+    for (let a = 0; a < m - 1; a++) {
+      const p = b * m + a, q = p + 1, d = p + m, e = d + 1;
+      idx.push(p, d, q, q, d, e);
+    }
+  }
+  for (let r = 0; r < ring.length; r++) {
+    const [a0, b0] = ring[r], [a1, b1] = ring[(r + 1) % ring.length];
+    const top0 = b0 * m + a0, top1 = b1 * m + a1, low0 = m * m + r, low1 = m * m + ((r + 1) % ring.length);
+    idx.push(top0, low0, top1, top1, low0, low1, top0, top1, low0, top1, low1, low0);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nr, 3));
+  geo.setAttribute('surf', new THREE.BufferAttribute(sf, 4));
+  geo.setIndex(count > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
+  geo.computeBoundingSphere();
+  return geo;
 }
 
 /**
@@ -178,10 +277,13 @@ export function createDetailPatch(hm) {
   return mesh;
 }
 
-function terrainMaterial(flatGround, holes = null) {
+function terrainMaterial(flatGround, holes = null, cut = null) {
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 });
+  // Each variant needs its own shader program (three would otherwise share one).
+  mat.customProgramCacheKey = () => `terrain-${flatGround}-${!!holes}-${!!cut}`;
   mat.onBeforeCompile = (sh) => {
     if (holes) Object.assign(sh.uniforms, holes);
+    if (cut) sh.uniforms.uCut = { value: cut };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
 attribute vec4 surf;
@@ -196,11 +298,15 @@ vSurf = surf;`);
       .replace('#include <common>', `#include <common>
 ${flatGround ? '#define FLAT_GROUND' : ''}
 ${holes ? `#define TERRAIN_HOLES ${MAX_TERRAIN_HOLES}` : ''}
+${cut ? '#define CUT_RECT\nuniform vec4 uCut;' : ''}
 ${LEDGE_DEFINES()}
 ${TERRAIN_GLSL}`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
 #ifdef TERRAIN_HOLES
 if (inHole(vW.xz)) discard;
+#endif
+#ifdef CUT_RECT
+if (vW.x > uCut.x && vW.z > uCut.y && vW.x < uCut.z && vW.z < uCut.w) discard;
 #endif`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 TerrainSample ts = terrainSample(vW, normalize(vWN), vSurf, cameraPosition);
@@ -351,7 +457,8 @@ struct TerrainSample { vec3 albedo; float roughness; float bump; };
 TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   float dist = length(p - cam);
   float h = p.y;
-  float slope = degrees(acos(clamp(n.y, 0.0, 1.0)));
+  // Ground type follows the slope of the terrain, not of every boulder up close.
+  float slope = surf.x * 90.0;
   float glacier = surf.y;
   float hollow = surf.z - 0.5;
 
@@ -384,7 +491,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
 
   // Rock: dark gneiss and warm granite in banded strata; the Black Pyramid is darker.
   float strata = sin(h * 0.03 + medium * 9.0 + big * 5.0) * 0.5 + 0.5;
-  vec3 rock = mix(vec3(0.24, 0.23, 0.22), vec3(0.40, 0.35, 0.30), smoothstep(0.2, 0.9, strata) * 0.8 + medium * 0.2);
+  vec3 rock = mix(vec3(0.17, 0.165, 0.16), vec3(0.31, 0.28, 0.25), smoothstep(0.2, 0.9, strata) * 0.8 + medium * 0.2);
   rock = mix(rock, vec3(0.14, 0.13, 0.13), smoothstep(6800.0, 7400.0, h) * (1.0 - smoothstep(7400.0, 7700.0, h)) * 0.6);
   rock *= 0.85 + 0.3 * medium * mid + 0.25 * (fine - 0.5) * near;
   // Dark water and varnish streaks down the faces, pale lighter blocks between joints.
@@ -417,7 +524,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   bare *= 1.0 - smoothstep(0.35, 0.65, glacierSnow);
 
   // Snow collects in hollows and on slopes below ~50 degrees; wind strips ridges up high.
-  float snowSlope = smoothstep(55.0 + (big - 0.5) * 14.0, 40.0 + (big - 0.5) * 14.0, slope);
+  float snowSlope = smoothstep(58.0 + (big - 0.5) * 12.0, 46.0 + (big - 0.5) * 12.0, slope);
   float snowAlt = smoothstep(SNOWLINE - 300.0 + big * 500.0, SNOWLINE + 250.0 + big * 500.0, h);
   float wind = smoothstep(7000.0, 8000.0, h) * smoothstep(0.0, -0.25, hollow) * 0.5;
   float snowAmt = clamp(snowSlope * snowAlt + hollow * 0.8 * snowAlt - wind, 0.0, 1.0);

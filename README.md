@@ -134,11 +134,22 @@ real face, so steep ground is dotted with small ledges, drawn into the terrain a
 narrow snowy steps with a shadow under the lip. You can stand on one where the slope around it is too steep, and a slide
 across one loses a lot of speed.
 
+**Mountain shape.** The 31 m elevation data only gives the broad form of the
+mountain, so from the summit down to Base Camp the ground is rebuilt on a grid four
+times finer (`src/world/fineTerrain.js`): faces stepped into flatter benches and
+steep rock bands, ribs and gullies down the fall line, rock buttresses, levelled
+shoulders where the high camps sit, and on the glaciers big ice hummocks, moraine
+ridges and broken blocks. Everything stands on this ground (it's what
+`Heightmap.heightAt` returns), and it's drawn in 500 m chunks at four levels of
+detail by distance.
+
 **Close-up ground.** Around you the terrain is drawn in fine detail from the same
 relief you stand on (`src/world/terrainDetail.js`): jointed rock blocks on the faces,
 boulders on scree, moraine rubble stripes and ice hummocks on the glaciers, and
 wind-carved sastrugi on snow. It's solid: you walk over the boulders and a fall
-bounces off them. Camps and the fixed-rope lines are kept smooth.
+bounces off them. Camps and the fixed-rope lines are kept smooth. Snow lies a
+quarter of a metre deep, with the route trodden into a boot-deep trench up the
+ropes and along the wanded trail.
 
 **Ice axe.** Press **I** to draw it from your pack (it takes a second, even mid-slide)
 or stow it. In hand it lets you walk up snow and ice to 40° unroped (rock is no easier),

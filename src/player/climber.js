@@ -1783,6 +1783,14 @@ export class Climber {
     }
     this.position.addScaledVector(rope.toRope, (rope.distance - leash) / rope.distance);
     this.position.y = this._groundAt(this.position.x, this.position.z);
+    // On broken ground the drop back onto the ground can take you past the leash
+    // again; pull in a little more until it holds.
+    for (let k = 0; k < 4; k++) {
+      const again = this._ropeFrame();
+      if (again.distance <= leash + 0.05) break;
+      this.position.addScaledVector(again.toRope, Math.min(1, (again.distance - leash) / again.distance + 0.05));
+      this.position.y = this._groundAt(this.position.x, this.position.z);
+    }
   }
 
   _fly(dt, input) {

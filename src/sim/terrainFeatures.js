@@ -102,7 +102,7 @@ export class TerrainFeatures {
     let c = w(b.at);
     // Centre the bridged gap on the wanded trail, where it crosses.
     if (this.trail) c = nearestOnPoly(c.x, c.z, this.trail.points);
-    const [gx, gz] = hm.gradient(c.x, c.z, 20);
+    const [gx, gz] = hm.baseGradient(c.x, c.z, 20);
     const g = Math.hypot(gx, gz) || 1;
     // Along the contour, across the fall line.
     const ux = -gz / g, uz = gx / g;
@@ -125,7 +125,7 @@ export class TerrainFeatures {
     const len = Math.hypot(b.x - a.x, b.z - a.z);
     const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
     // Upslope, so the blocks sit above their base line and their face looks down the slope.
-    const [gx, gz] = hm.gradient((a.x + b.x) / 2, (a.z + b.z) / 2, 20);
+    const [gx, gz] = hm.baseGradient((a.x + b.x) / 2, (a.z + b.z) / 2, 20);
     let nx = -uz, nz = ux;
     if (nx * gx + nz * gz < 0) { nx = -nx; nz = -nz; }
     // Its ice cliff is only built (drawn and solid) when serac_blocks is on.
@@ -256,7 +256,7 @@ export class TerrainFeatures {
     const slope = hm.slopeDeg(x, z);
     const glacier = hm.glacierAt(x, z);
     const roll = hash(i, j, 3);
-    const [gx, gz] = hm.gradient(x, z, 20);
+    const [gx, gz] = hm.baseGradient(x, z, 20);
     const g = Math.hypot(gx, gz) || 1;
     // Across the flow: the ice cracks where it speeds up over a steeper step.
     const ux = -gz / g, uz = gx / g;

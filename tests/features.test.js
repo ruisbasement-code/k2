@@ -86,7 +86,7 @@ describe('where the features are', () => {
     const cracks = glacierHoles(f, (q) => q.kind === 'crevasse');
     let square = 0, counted = 0;
     for (const h of cracks) {
-      const [gx, gz] = hm.gradient(h.x, h.z, 60);
+      const [gx, gz] = hm.baseGradient(h.x, h.z, 60);
       const g = Math.hypot(gx, gz);
       if (g < 0.03) continue;
       counted++;
