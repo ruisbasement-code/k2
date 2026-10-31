@@ -1,0 +1,67 @@
+[gd_scene load_steps=12 format=3 uid="uid://b7k2main0001"]
+
+[ext_resource type="Script" path="res://main.gd" id="1_main"]
+[ext_resource type="Script" path="res://world/terrain.gd" id="2_terrain"]
+[ext_resource type="Script" path="res://world/fixed_ropes.gd" id="3_ropes"]
+[ext_resource type="Script" path="res://world/camps.gd" id="4_camps"]
+[ext_resource type="Script" path="res://player/climber.gd" id="5_climber"]
+[ext_resource type="Script" path="res://ui/hud.gd" id="6_hud"]
+[ext_resource type="Script" path="res://player/breath_audio.gd" id="7_breath"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
+sky_top_color = Color(0.15, 0.33, 0.62, 1)
+sky_horizon_color = Color(0.7, 0.78, 0.87, 1)
+ground_bottom_color = Color(0.36, 0.34, 0.32, 1)
+ground_horizon_color = Color(0.7, 0.78, 0.87, 1)
+sun_angle_max = 20.0
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_mat")
+
+[sub_resource type="Environment" id="env"]
+background_mode = 2
+sky = SubResource("sky")
+ambient_light_source = 3
+ambient_light_energy = 0.55
+ambient_light_sky_contribution = 0.6
+ambient_light_color = Color(0.75, 0.78, 0.82, 1)
+reflected_light_source = 2
+tonemap_mode = 2
+tonemap_white = 4.0
+tonemap_exposure = 0.92
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+light_color = Color(1, 0.95, 0.87, 1)
+light_energy = 1.25
+shadow_enabled = true
+directional_shadow_mode = 1
+directional_shadow_max_distance = 120.0
+
+[node name="Terrain" type="MeshInstance3D" parent="."]
+script = ExtResource("2_terrain")
+
+[node name="FixedRopes" type="Node3D" parent="."]
+script = ExtResource("3_ropes")
+
+[node name="Camps" type="Node3D" parent="."]
+script = ExtResource("4_camps")
+
+[node name="Climber" type="Node3D" parent="."]
+script = ExtResource("5_climber")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+fov = 65.0
+near = 0.1
+far = 120000.0
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("6_hud")
+
+[node name="BreathAudio" type="AudioStreamPlayer" parent="."]
+script = ExtResource("7_breath")

@@ -1,0 +1,16 @@
+{
+ "N": 641,
+ "cell": 31.25,
+ "lat0": 35.880694444444444,
+ "lon0": 76.51263888888889,
+ "mlat": 110956.79551181738,
+ "mlon": 90299.38404552448,
+ "base": 2000,
+ "scale": 8,
+ "png_min_m": 4600.0,
+ "png_max_m": 8600.0,
+ "extent_m": 20000.0,
+ "row0": "north",
+ "col0": "west",
+ "source": "Copernicus GLO-30 DSM tile N35 E076 (ESA, 2021 release)"
+}

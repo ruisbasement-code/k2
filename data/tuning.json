@@ -1,0 +1,56 @@
+{
+  "_note": "All movement and body numbers live here so the game can be tuned without touching code. Speeds are in mountain time.",
+
+  "climb_start_deg": 30,
+  "very_steep_deg": 45,
+  "no_rope_max_deg": 65,
+  "mode_hysteresis_deg": 1.5,
+
+  "tobler_kmh": 6.0,
+  "load_factor": 1.0,
+  "climb_traverse_kmh": 1.2,
+  "climb_vertical_m_per_h": [[30, 750], [45, 550], [60, 380], [75, 250], [90, 180]],
+  "downclimb_mult": 1.8,
+  "rope_up_bonus": 1.15,
+  "rope_down_bonus": 1.4,
+  "descent_altitude_exponent": 0.5,
+
+  "_altitude_pace": "Speed multiplier for an acclimatized climber without bottled oxygen.",
+  "altitude_pace": [[0, 1.0], [4000, 1.0], [5000, 0.95], [6000, 0.82], [6500, 0.72], [7000, 0.6], [7500, 0.47], [8000, 0.34], [8300, 0.25], [8611, 0.18]],
+
+  "push_speed_bonus": 0.35,
+  "push_effort": 1.6,
+  "effort_flat": 0.45,
+  "effort_uphill": 1.0,
+  "effort_uphill_full_grade": 0.45,
+  "effort_downhill": 0.5,
+  "effort_climb_min": 0.8,
+
+  "scale_height_m": 7990,
+  "reference_altitude": 5000,
+  "sustainable_effort": 0.7,
+  "drain_per_hour": 220,
+  "drain_o2_exponent": 1.75,
+  "recover_per_hour": 420,
+  "recover_o2_exponent": 3.5,
+  "cap_start_altitude": 7000,
+  "summit_stamina_cap": 60,
+  "exhausted_recover_to": 15,
+  "tired_below": 30,
+  "tired_speed": 0.45,
+
+  "slip_per_min_at_60deg": 0.04,
+  "slip_min_m": 15,
+  "slip_max_m": 40,
+  "slip_stamina_cost": 25,
+
+  "breath_rest": 12,
+  "breath_altitude": 12,
+  "breath_effort": 16,
+  "breath_tired": 8,
+  "breath_max": 60,
+
+  "time_scales": [1, 5, 10, 20, 60],
+  "default_time_scale": 10,
+  "start_hour": 5
+}
