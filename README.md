@@ -307,7 +307,9 @@ The 31 m elevation grid can't show what makes K2 dangerous up close, so these ar
 added on top of it (`src/sim/terrainFeatures.js`, placed in
 [`src/data/features.json`](src/data/features.json), numbers in `tuning.json`):
 
-- **Crevasses.** The glaciers crack across their flow where the ice steepens.
+- **Crevasses.** The glaciers crack across their flow where the ice steepens, in fields
+  of parallel cracks bowed the way the ice bends. Their walls are layered blue glacier ice
+  that fades to black with depth, with snow lips curling over the edge where there's snow.
   On the lower Godwin-Austen Glacier most are open and easy to see; higher up, most
   are **hidden under snow bridges**. Each step on a bridge can break it, much more
   likely in the warm afternoon than in the frozen night and early morning, so cross
@@ -319,20 +321,24 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
   crampons will plug in). You come out on the side you face.
 - **Probing (X).** Probe the snow in front of you to find hidden crevasses. Found ones
   show as a dark line in the snow; the bridge can still give way.
-- **The wanded trail.** Bamboo wands with red flags mark a crevasse-free line from
-  Base Camp to the foot of the Abruzzi Spur, as expeditions do. Off it, you're on your own.
+- **The path lights.** Lamp posts mark a crevasse-free line from Base Camp across the
+  glacier to the foot of the Abruzzi Spur, and on up beside the fixed rope to Camp 1. They
+  glow at night and through storms. Off the path, you're on your own.
 - **Pits and moulins.** Round holes: meltwater moulins on the bare lower glacier,
   snow-covered pits higher up. They work like crevasses.
 - **The bergschrund.** The big crevasse where the glacier pulls away from the foot of
   the Abruzzi Spur, bridged where the trail crosses it. An ice cavern sits in it.
 - **Seracs.** The **Bottleneck serac**, a hanging ice cliff at about 8,400 m, hangs over
   the couloir and the Traverse. Ice breaks off it at any hour (more in the afternoon)
-  and bounces down the fall line, which runs through the Bottleneck. Smaller ice towers
-  stand where the glaciers break over steep steps. You can't walk through either.
+  and bounces down the fall line, which runs through the Bottleneck: the less time you
+  spend under it, the better. It's drawn as one continuous ice cliff and you can't walk
+  through it. Ice towers on the glaciers are built but switched off for now
+  (`serac_tower_share`): they looked out of place.
   Serac icefall is separate from rockfall, which stays off.
 
   ![The Bottleneck serac](docs/screenshots/bottleneck-serac.png)
-- **Cornices and snow overhangs** grow out over the drop on ridge crests: on the
+- **Cornices and snow overhangs** (switched off for now with `cornices_enabled`: from a
+  distance their lips looked like stray white lines) grow out over the drop on ridge crests: on the
   summit ridge, the edge of the Shoulder, and above the Black Pyramid and House's
   Chimney. The snow stands out past the rock; walk out onto it and it can break off
   and throw you down the far side. The further out, the likelier.
@@ -341,6 +347,7 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
 - **Technical sections.** **House's Chimney** (a 30 m crack of steep rock below Camp 2),
   the **Black Pyramid** (broken dark rock and ice from Camp 2 to Camp 3), the
   **Bottleneck** and the **Traverse** slow you and make unroped slips much more likely.
+  They aren't drawn as extra rock (the scattered boulders looked out of place).
 - **Cols.** The Negrotto Col (6,250 m), Savoia Saddle (6,666 m) and Windy Gap (6,233 m)
   are named where the saddles in the elevation data match their heights. The HUD's
   Place line shows where you are.

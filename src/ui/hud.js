@@ -194,7 +194,7 @@ export class Hud {
       return plan.night ? 'Tent here. Z to sleep until morning, K to cook.' : `Tent here. Z for a ${plan.hours} h nap, K to cook.`;
     }
     if (c.features && this.hm.glacierAt(c.position.x, c.position.z) > 0.4 && c.features.trailDistance(c.position.x, c.position.z) > 15)
-      return 'Off the wanded trail: hidden crevasses. Probe ahead with X, and cross early while the snow is frozen.';
+      return 'Off the lit path: hidden crevasses. Probe ahead with X, and cross early while the snow is frozen.';
     if (c.slope > tuning.climb_start_deg) return `Steep ${c.surface.label.toLowerCase()} and unroped: one slip and you slide.`;
     const ph = c.phys;
     if (c.pastTurnaround) return `Past your ${c.turnaroundHour}:00 turnaround. Head down.`;
