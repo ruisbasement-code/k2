@@ -204,6 +204,7 @@ export class Hud {
       const w = c.conditions;
       const rough = (w && (w.visibility < 300 || w.gust > 15)) || c.hour >= tuning.night_from_hour || c.hour < 5 || body.exhausted || c.health < 50;
       if (sh && rough && !camp) acts.push(['Z', sh.label]);
+      else if (!sh && rough && !camp && ex.carriesTent()) alert ||= ex.pitchProblem()?.split(':')[0] ?? '';
     }
     if (camp && !ex.ownTentNearby()) acts.push(['G', camp.name === 'Base Camp' ? 'Gear up' : 'Restock']);
 

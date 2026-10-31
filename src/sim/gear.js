@@ -221,11 +221,79 @@ export class Expedition {
     if (c.nearestTent()) return null;
     const pack = this.pack;
     const steep = c.slope > tuning.shelter_max_deg && !c.onLedge;
-    const tent = pack.gear.has('tent_ul') ? 'tent_ul' : pack.gear.has('tent') ? 'tent' : null;
-    if (tent && !steep) return { kind: 'tent', item: tent, label: 'Pitch tent' };
+    const tent = this.carriesTent();
+    if (tent && !this.pitchProblem()) return { kind: 'tent', item: tent, label: 'Pitch tent' };
     if (pack.gear.has('shovel') && SNOW_ICE.has(c.surface?.key) && !ICE.has(c.surface?.key) && !steep) return { kind: 'cave', label: 'Dig snow cave' };
     if (pack.gear.has('bivy')) return { kind: 'sack', label: 'Bivouac' };
     return null;
+  }
+
+  /** The tent in your pack ('tent_ul' or 'tent'), or null. */
+  carriesTent() {
+    const g = this.pack.gear;
+    return g.has('tent_ul') ? 'tent_ul' : g.has('tent') ? 'tent' : null;
+  }
+
+  /**
+   * Why a tent won't go up where you stand, or null if the ground will take one.
+   * It needs a patch about the size of the tent that is close to level and fairly
+   * smooth (a ledge counts flatter, as it does underfoot), snow or scree to stake
+   * into, and no known crevasse, serac or cornice under or beside it. The camps
+   * are always good ground.
+   */
+  pitchProblem() {
+    const c = this.c;
+    if (c._campNearby()) return null;
+    const t = tuning;
+    const { x, z } = c.position;
+    const f = c.features;
+    if (f) {
+      if (f.corniceAt(x, z)) return 'On a cornice: it could break off';
+      const r = t.tent_crevasse_clear_m;
+      for (let k = 0; k < 9; k++) {
+        const a = (k / 8) * Math.PI * 2, d = k === 8 ? 0 : r;
+        const hit = f.holeAt(x + Math.cos(a) * d, z + Math.sin(a) * d) || (d && f.holeAt(x + Math.cos(a) * d / 2, z + Math.sin(a) * d / 2));
+        if (hit && f.isKnown(hit.hole)) return 'Too close to a crevasse';
+        if (f.seracAt(x + Math.cos(a) * d * 0.6, z + Math.sin(a) * d * 0.6)) return 'Ice blocks in the way';
+      }
+    }
+    const key = c.surface?.key;
+    if (!c.onLedge && key === 'rock') return 'Bare rock: the stakes won\'t hold';
+    if (!c.onLedge && key === 'ice') return 'Hard ice: no platform to stamp out';
+    const { tilt, bump } = this.footprint();
+    const relief = c.onLedge ? t.ledge_relief_deg : 0;
+    if (c.slope - relief > t.shelter_max_deg || tilt - relief > t.tent_max_tilt_deg) return 'Too steep to pitch a tent';
+    if (bump > t.tent_max_bump_m * (c.onLedge ? 2 : 1)) return 'Too rough and uneven to pitch';
+    return null;
+  }
+
+  /**
+   * The ground under a tent where you stand: the tilt in degrees of the plane
+   * that best fits it, and the most any point sticks up or dips from that plane.
+   */
+  footprint() {
+    const hm = this.c.hm;
+    const { x, z } = this.c.position;
+    const half = tuning.tent_footprint_m / 2, n = 5;
+    const pts = [];
+    let sum = 0, sxx = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const dx = -half + (2 * half * i) / (n - 1), dz = -half + (2 * half * j) / (n - 1);
+        const h = hm.groundAt(x + dx, z + dz);
+        pts.push([dx, dz, h]);
+        sum += h;
+        sxx += dx * dx;
+      }
+    }
+    // A square grid centred on you: the least-squares plane separates by axis.
+    const mean = sum / pts.length;
+    let sxh = 0, szh = 0;
+    for (const [dx, dz, h] of pts) { sxh += dx * (h - mean); szh += dz * (h - mean); }
+    const a = sxh / sxx, b = szh / sxx;
+    let bump = 0;
+    for (const [dx, dz, h] of pts) bump = Math.max(bump, Math.abs(h - mean - a * dx - b * dz));
+    return { tilt: Math.atan(Math.hypot(a, b)) * 180 / Math.PI, bump };
   }
 
   /** Put up a shelter where you stand: it joins the tents you can sleep in. */
