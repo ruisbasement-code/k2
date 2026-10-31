@@ -40,8 +40,13 @@ export class ClimberModel extends THREE.Group {
     }
   }
 
+  /** Limb pivots, for the ragdoll. */
+  get limbs() {
+    return [...this.legs, ...this.arms];
+  }
+
   /**
-   * @param mode 'walk' | 'climb' | 'rope' | 'rest' | 'fly'
+   * @param mode 'walk' | 'climb' | 'rope' | 'rest' | 'slide' | 'fly'
    * @param phase gait phase in radians
    * @param lean 0..1, how steep the ground ahead is
    */
@@ -66,6 +71,12 @@ export class ClimberModel extends THREE.Group {
         this.hips.rotation.x = -0.35;
         set(this.legs, 0.3 + sw * 0.4, 0.3 - sw * 0.4);
         set(this.arms, 2.6 + sw * 0.25, 1.3);
+        break;
+      case 'slide':
+        // Face-down against the slope, arms up digging in, feet kicking.
+        this.hips.rotation.x = -1.25;
+        set(this.legs, -0.3, -0.5);
+        set(this.arms, 2.9, 2.6);
         break;
       case 'rest':
         // Bent over, hands on knees, catching your breath.

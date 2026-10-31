@@ -5,11 +5,7 @@
 // z = curvature (above 0.5 is a hollow where snow collects, below is a ridge).
 
 import * as THREE from 'three';
-
-const smooth = (e0, e1, x) => {
-  const t = Math.min(Math.max((x - e0) / (e1 - e0), 0), 1);
-  return t * t * (3 - 2 * t);
-};
+import { smooth } from './heightmap.js';
 
 export function createTerrain(hm) {
   const { n, cell } = hm;

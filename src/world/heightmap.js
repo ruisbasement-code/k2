@@ -2,6 +2,12 @@
 // row 0 at the north edge. World space has x pointing east, z pointing south and
 // y in metres above sea level, with the origin at the grid centre (the summit).
 
+/** Smoothstep that also works with edges given high-to-low. */
+export function smooth(e0, e1, x) {
+  const t = Math.min(Math.max((x - e0) / (e1 - e0), 0), 1);
+  return t * t * (3 - 2 * t);
+}
+
 export class Heightmap {
   constructor(meta, heights) {
     this.meta = meta;
@@ -59,6 +65,20 @@ export class Heightmap {
       (this.heightAt(x + d, z) - this.heightAt(x - d, z)) / (2 * d),
       (this.heightAt(x, z + d) - this.heightAt(x, z - d)) / (2 * d),
     ];
+  }
+
+  /** Unit surface normal at world (x, z). */
+  normalAt(x, z, out) {
+    const [gx, gz] = this.gradient(x, z, 3);
+    return out.set(-gx, 1, -gz).normalize();
+  }
+
+  /** How much (0 to 1) the ground at (x, z) is glacier: low, wide and flat. Matches the terrain shading. */
+  glacierAt(x, z) {
+    const y = this.heightAt(x, z);
+    const [gx, gz] = this.gradient(x, z, 3 * this.cell);
+    const wide = (Math.atan(Math.hypot(gx, gz)) * 180) / Math.PI;
+    return smooth(5650, 5250, y) * smooth(17, 8, wide);
   }
 
   slopeDeg(x, z) {

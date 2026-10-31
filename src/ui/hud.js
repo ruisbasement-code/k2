@@ -2,6 +2,8 @@
 // the minimap and the darkening at the edge of vision.
 
 import { Mode, CLIP_RANGE } from '../player/climber.js';
+import { partOfDay } from '../world/sky.js';
+import { tuning } from '../sim/paceModel.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,6 +42,7 @@ export class Hud {
     v.style.setProperty('--inner', `${(55 - 35 * strain - 3 * fill * strain).toFixed(1)}%`);
     v.style.opacity = (0.25 + 0.7 * strain).toFixed(3);
 
+    $('health-fill').style.width = `${c.health}%`;
     $('stamina-fill').style.width = `${body.stamina}%`;
     $('stamina-fill').classList.toggle('low', body.exhausted || body.stamina < 25);
     $('stamina-cap').style.left = `${body.staminaCap(c.position.y)}%`;
@@ -53,7 +56,16 @@ export class Hud {
     $('slope').textContent = `${Math.round(c.slope)}°`;
     $('vnow').textContent = signed(c.verticalNow) + ' m/h';
     $('vavg').textContent = signed(c.verticalAvg) + ' m/h';
-    $('clock').textContent = `${c.clockText()}  ×${c.timeScale}`;
+    $('surface').textContent = c.surface.label;
+    $('day-num').textContent = `Day ${c.day}`;
+    $('day-time').textContent = c.clockText();
+    $('day-part').textContent = partOfDay(c.hour);
+    $('day-speed').textContent = `×${c.timeScale}`;
+    $('death').hidden = !c.dead;
+    if (c.dead) {
+      $('death-cause').textContent = c.deathCause;
+      $('death-camp').textContent = c.lastCamp?.name ?? 'Base Camp';
+    }
     const d = Math.hypot(c.position.x, c.position.y - this.summitHeight, c.position.z);
     $('dist').textContent = d > 1000 ? `${(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`;
     const word = body.breathRate < 22 ? 'calm' : body.breathRate < 38 ? 'heavy' : 'gasping';
@@ -65,11 +77,15 @@ export class Hud {
     const c = this.climber;
     const body = c.body;
     if (c.mode === Mode.FLY) return 'Scout fly: E/Space up, Q down, Shift fast. F to land.';
+    if (c.dead) return '';
+    if (c.tumbling) return 'Tumbling!';
+    if (c.falling) return c.fall.arresting ? 'Digging in… keep holding Space' : 'Sliding! Hold Space to self-arrest before you pick up speed.';
     if (body.exhausted) return 'Exhausted. Stand still and breathe.';
-    if (c.blocked) return 'Too steep to climb without a rope';
-    if (c.mode === Mode.ROPE) return 'Clipped in. W/S moves along the rope, C unclips.';
+    if (c.blocked) return 'Too steep to climb without a fixed rope';
+    if (c.clipped) return 'Clipped in: move freely. The rope speeds you along it and catches slips. C unclips.';
     if (c.ropeDistance() < CLIP_RANGE) return 'Fixed rope here. Press C to clip in.';
-    if (c.mode === Mode.STEEP) return 'Very steep and unroped: one slip and you slide.';
+    if (c.slope > tuning.climb_start_deg) return `Steep ${c.surface.label.toLowerCase()} and unroped: one slip and you slide.`;
+    if (c.health < 50) return 'Injured. Rest to heal, faster in a camp.';
     if (body.stamina < 25) return 'Nearly spent. Stop and rest.';
     return '';
   }

@@ -14,15 +14,19 @@
   <div class="big" id="alt">— m</div>
   <div class="row">Terrain <b id="terrain">—</b></div>
   <div class="row">Slope <b id="slope">—</b></div>
+  <div class="row">Surface <b id="surface">—</b></div>
   <div class="row">Vertical <b id="vnow">—</b></div>
   <div class="row">Avg (1 h) <b id="vavg">—</b></div>
-  <div class="row">Clock <b id="clock">—</b></div>
   <div class="row">To summit <b id="dist">—</b></div>
   <hr>
+  <div class="label">Health</div>
+  <div id="health" class="bar"><div id="health-fill"></div></div>
   <div class="label">Stamina</div>
-  <div id="stamina"><div id="stamina-fill"></div><div id="stamina-cap" title="The most you can recover at this altitude"></div></div>
+  <div id="stamina" class="bar"><div id="stamina-fill"></div><div id="stamina-cap" title="The most you can recover at this altitude"></div></div>
   <div id="breath"><div id="breath-dial"><div id="breath-ring"></div></div><span id="breath-text"></span></div>
 </div>
+
+<div id="day" class="panel"><b id="day-num">Day 1</b><span id="day-time">05:00</span><span id="day-part">Dawn</span><span id="day-speed">×10</span></div>
 
 <div id="map-panel" class="panel"><canvas id="map" width="340" height="340"></canvas></div>
 
@@ -30,7 +34,15 @@
 <div id="message"></div>
 <div id="keys">
   <kbd>WASD</kbd> move · <kbd>Shift</kbd> push pace · <kbd>C</kbd> clip/unclip rope · mouse look (click) · wheel zoom ·
-  <kbd>V</kbd> view · <kbd>T</kbd> time speed · <kbd>1</kbd>–<kbd>9</kbd> jump to camp · <kbd>F</kbd> scout fly · <kbd>M</kbd> mute
+  <kbd>V</kbd> view · <kbd>T</kbd> time speed · <kbd>1</kbd>–<kbd>9</kbd> jump to camp · <kbd>F</kbd> scout fly · <kbd>R</kbd> rescue · <kbd>M</kbd> mute
+</div>
+
+<div id="death" hidden>
+  <div class="card panel">
+    <h1>You died</h1>
+    <p id="death-cause"></p>
+    <p>Press <kbd>R</kbd> to be rescued to <b id="death-camp">Base Camp</b>. It takes hours, and you'll need to rest to heal.</p>
+  </div>
 </div>
 
 <div id="loading">Loading K2…</div>
@@ -38,7 +50,8 @@
   <div class="card panel">
     <h1>K2 Climbing</h1>
     <p>You're at Base Camp on the Godwin-Austen Glacier, 5,000 m. The real mountain, from satellite elevation data.</p>
-    <p>Below 30° you walk. Steeper, you climb, and over 45° an unroped slip sends you sliding, so clip into the fixed ropes with <kbd>C</kbd>. The air thins as you go: pace drops to under 100 m an hour near the summit, and your stamina drains faster and refills slower.</p>
+    <p>Unroped, you can't go up anything steeper than 30°, and from 22° a slip becomes a real fall, worst on ice. Clip into the fixed ropes with <kbd>C</kbd>: you can still move around, and the rope gets you up steep ground, speeds you along it and catches you if you slip.</p>
+    <p>The air thins as you go: pace drops to under 100 m an hour near the summit, and your stamina drains faster and refills slower. Hard falls cost health; lose it all and you die.</p>
     <p>The mountain clock runs 10× real time (<kbd>T</kbd> to change). Press <kbd>2</kbd> to jump to the foot of the ropes.</p>
     <button id="go">Start climbing</button>
   </div>

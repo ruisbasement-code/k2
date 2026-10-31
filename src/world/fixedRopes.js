@@ -64,20 +64,33 @@ export class FixedRopes {
     return out.subVectors(this.ropes[rope][i + 1], this.ropes[rope][i]).normalize();
   }
 
-  /** Nearest rope to p: {rope, s, distance}. rope is -1 when there are none. */
+  /** Nearest rope to p: {rope, s, distance, point}. rope is -1 when there are none. */
   nearest(p) {
-    let best = { rope: -1, s: 0, distance: Infinity };
+    let best = { rope: -1, s: 0, distance: Infinity, point: null };
+    for (let r = 0; r < this.ropes.length; r++) {
+      const near = this.nearestOn(r, p);
+      if (near.distance < best.distance) best = near;
+    }
+    return best;
+  }
+
+  /** Nearest point on one rope to p: {rope, s, distance, point}. */
+  nearestOn(rope, p) {
+    const pts = this.ropes[rope];
     const ab = new THREE.Vector3(), ap = new THREE.Vector3(), q = new THREE.Vector3();
-    this.ropes.forEach((pts, r) => {
-      for (let i = 0; i < pts.length - 1; i++) {
-        ab.subVectors(pts[i + 1], pts[i]);
-        ap.subVectors(p, pts[i]);
-        const t = Math.min(Math.max(ap.dot(ab) / Math.max(ab.lengthSq(), 1e-4), 0), 1);
-        q.copy(pts[i]).addScaledVector(ab, t);
-        const d = p.distanceTo(q);
-        if (d < best.distance) best = { rope: r, s: this.lengths[r][i] + ab.length() * t, distance: d };
+    let best = { rope, s: 0, distance: Infinity, point: new THREE.Vector3() };
+    for (let i = 0; i < pts.length - 1; i++) {
+      ab.subVectors(pts[i + 1], pts[i]);
+      ap.subVectors(p, pts[i]);
+      const t = Math.min(Math.max(ap.dot(ab) / Math.max(ab.lengthSq(), 1e-4), 0), 1);
+      q.copy(pts[i]).addScaledVector(ab, t);
+      const d = p.distanceTo(q);
+      if (d < best.distance) {
+        best.s = this.lengths[rope][i] + ab.length() * t;
+        best.distance = d;
+        best.point.copy(q);
       }
-    });
+    }
     return best;
   }
 

@@ -16,7 +16,16 @@ canvas#c { display: block; width: 100vw; height: 100vh; }
 #hud .row b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 #hud hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0 6px; }
 #hud .label { color: var(--muted); margin-bottom: 4px; }
-#stamina { position: relative; height: 12px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+#hud .bar { position: relative; height: 12px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); overflow: hidden; margin-bottom: 6px; }
+#health-fill { height: 100%; background: #e2575b; border-radius: 4px; }
+#day { top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: baseline; padding: 8px 14px; font-variant-numeric: tabular-nums; }
+#day-num { font-size: 18px; }
+#day-time { font-size: 18px; font-weight: 600; }
+#day-part, #day-speed { color: var(--muted); }
+#death { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(40, 0, 0, 0.45); }
+#death[hidden] { display: none; }
+#death .card { position: static; max-width: 420px; padding: 18px 22px; }
+#death h1 { margin: 0 0 6px; font-size: 24px; }
 #stamina-fill { height: 100%; background: var(--ok); border-radius: 4px; }
 #stamina-fill.low { background: var(--low); }
 #stamina-cap { position: absolute; top: 0; width: 2px; height: 100%; margin-left: -1px; background: #fff; }

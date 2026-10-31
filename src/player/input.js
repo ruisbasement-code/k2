@@ -8,6 +8,7 @@ export const BINDINGS = {
   push: ['ShiftLeft', 'ShiftRight'],
   up: ['KeyE', 'Space'],
   down: ['KeyQ'],
+  arrest: ['Space'],
 };
 
 export class Input {
@@ -50,7 +51,7 @@ export class Input {
     let y = (this.held('forward') ? 1 : 0) - (this.held('back') ? 1 : 0);
     const len = Math.hypot(x, y);
     if (len > 1) { x /= len; y /= len; }
-    return { x, y, push: this.held('push'), up: this.held('up'), down: this.held('down') };
+    return { x, y, push: this.held('push'), up: this.held('up'), down: this.held('down'), arrest: this.held('arrest') };
   }
 
   /** Mouse movement and wheel since the last call. */

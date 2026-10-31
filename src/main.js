@@ -2,7 +2,7 @@
 // puts the climber at Base Camp and runs the game loop.
 //
 // For screenshots and testing, URL parameters set up a view, e.g.
-// ?place=3&rope&yaw=200&pitch=10&dist=8&fp&fly=600&start
+// ?place=3&rope&yaw=200&pitch=10&dist=8&fp&fly=600&hour=18&start
 
 import * as THREE from 'three';
 import './style.css';
@@ -11,15 +11,16 @@ import { Heightmap } from './world/heightmap.js';
 import { createTerrain } from './world/terrain.js';
 import { FixedRopes } from './world/fixedRopes.js';
 import { createCamps } from './world/camps.js';
-import { Climber, Mode } from './player/climber.js';
+import { Climber, Mode, CLIP_RANGE } from './player/climber.js';
+import { tuning } from './sim/paceModel.js';
 import { ClimberModel } from './player/climberModel.js';
 import { BreathAudio } from './player/breathAudio.js';
 import { Input } from './player/input.js';
+import { Ragdoll } from './player/ragdoll.js';
 import { Hud } from './ui/hud.js';
+import { Sky } from './world/sky.js';
 
 const EYE_HEIGHT = 1.65;
-const SUN_DIR = new THREE.Vector3(-0.55, 0.62, 0.55).normalize(); // afternoon sun from the south-west
-const FOG = new THREE.Color(0xb3c3d6);
 
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true });
@@ -31,30 +32,8 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(FOG, 0.000035);
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 150000);
-
-const sky = new THREE.Mesh(
-  new THREE.SphereGeometry(120000, 32, 16),
-  new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    fog: false,
-    uniforms: { top: { value: new THREE.Color(0x3d72c4) }, bot: { value: FOG } },
-    vertexShader: 'varying vec3 vp; void main(){ vp=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-    fragmentShader: 'uniform vec3 top,bot; varying vec3 vp; void main(){ float t=clamp(vp.y*2.2+.05,0.,1.); gl_FragColor=vec4(mix(bot,top,pow(t,.7)),1.); }',
-  }),
-);
-scene.add(sky);
-
-const sun = new THREE.DirectionalLight(0xfff1dc, 2.3);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 600 });
-sun.shadow.bias = -0.0004;
-sun.shadow.normalBias = 0.6;
-scene.add(sun, sun.target);
-scene.add(new THREE.HemisphereLight(0xbcd0ea, 0x5a4d40, 0.8));
+const sky = new Sky(scene);
 
 const params = new URLSearchParams(location.search);
 const loading = document.getElementById('loading');
@@ -64,9 +43,10 @@ const ropes = new FixedRopes(hm, route.fixed_ropes);
 scene.add(ropes.createMesh());
 scene.add(createCamps(hm, route.places));
 
-const climber = new Climber(hm, ropes);
+const climber = new Climber(hm, ropes, route.places);
 const model = new ClimberModel();
 scene.add(model);
+const ragdoll = new Ragdoll(model);
 const hud = new Hud(hm, climber, route.places);
 climber.onMessage = (t) => hud.showMessage(t);
 const audio = new BreathAudio(climber.body);
@@ -80,6 +60,8 @@ function teleport(i) {
   const [fx, fz] = p.name === 'Summit' ? [0, 1000] : [0, 0];
   climber.placeAt(x, z, fx, fz);
   hud.showMessage(`${p.name}: ${p.note}`);
+  // Camps on steep ground are only safe on the rope.
+  if (hm.slopeDeg(x, z) > tuning.climb_start_deg && climber.ropeDistance() < CLIP_RANGE) climber.toggleClip();
 }
 
 for (let i = 0; i < 9; i++) input.on(`Digit${i + 1}`, () => teleport(i));
@@ -87,6 +69,7 @@ input.on('KeyC', () => climber.toggleClip());
 input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
+input.on('KeyR', () => climber.rescue());
 input.on('KeyM', () => { audio.muted = !audio.muted; hud.showMessage(audio.muted ? 'Breathing muted' : 'Breathing on'); });
 
 teleport(0);
@@ -98,6 +81,7 @@ if (params.has('pitch')) view.pitch = (+params.get('pitch') * Math.PI) / 180;
 if (params.has('dist')) view.distance = +params.get('dist');
 if (params.has('fp')) view.firstPerson = true;
 if (params.has('fly')) { climber.toggleFly(); climber.position.y += +params.get('fly'); }
+if (params.has('hour')) climber.mountainSeconds = +params.get('hour') * 3600;
 
 loading.remove();
 const start = document.getElementById('start');
@@ -128,14 +112,25 @@ function updateCamera() {
     camera.position.y = Math.max(camera.position.y, hm.heightAt(camera.position.x, camera.position.z) + 0.6);
     camera.lookAt(_eye);
   }
-  sky.position.copy(camera.position);
-  sun.position.copy(p).addScaledVector(SUN_DIR, 300);
-  sun.target.position.copy(p);
+  sky.update(climber.hour, p, camera.position);
 }
 
 function animateModel(dt) {
   const c = climber;
+  model.visible = !view.firstPerson;
+  if (c.tumbling || c.dead) {
+    ragdoll.update(dt, c.position, c.velocity, c.dead);
+    return;
+  }
+  ragdoll.stop();
   model.position.copy(c.position);
+  if (c.falling) {
+    // Sliding: face into the slope, flat against it, digging in.
+    const [gx, gz] = hm.gradient(c.position.x, c.position.z);
+    model.rotation.y = Math.atan2(gx, gz);
+    model.pose('slide', 0, false, 0);
+    return;
+  }
   let diff = c.heading - model.rotation.y;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   model.rotation.y += diff * (1 - Math.exp(-dt * 10));
@@ -149,7 +144,6 @@ function animateModel(dt) {
     view.gait += (dt * c.body.breathRate / 60) * Math.PI * 2;
   }
   model.pose(pose, view.gait, c.moving, Math.min(c.slope / 30, 1));
-  model.visible = !view.firstPerson;
 }
 
 let last = performance.now();

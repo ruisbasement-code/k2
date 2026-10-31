@@ -100,9 +100,26 @@ export function effort(climbing, grade, push) {
   return e * (push ? tuning.push_effort : 1);
 }
 
-/** Chance per mountain minute of slipping when moving unroped on very steep ground. */
-export function slipChancePerMin(slopeDeg, stamina, push) {
-  const over = Math.max(0, slopeDeg - tuning.very_steep_deg) / (60 - tuning.very_steep_deg);
-  const tired = 1 + 2 * (1 - stamina / 100);
-  return tuning.slip_per_min_at_60deg * over * over * tired * (push ? 2 : 1);
+/**
+ * What the ground is made of, from altitude and slope. A simple version of what the
+ * terrain shader paints, without its noise: deep soft snow on gentle slopes, firm
+ * wind-packed snow on steeper ones, hard ice on steep faces high up, rock where
+ * nothing sticks, scree and glacier low down.
+ */
+export function surfaceAt(altitude, slopeDeg, glacier = 0) {
+  let key = 'rock';
+  if (glacier > 0.5) key = 'glacier';
+  else if (altitude < 5400 && slopeDeg < 32) key = 'scree';
+  else if (altitude > 5700 && slopeDeg >= 30 && slopeDeg < 55) key = 'ice';
+  else if (altitude > 4900 && slopeDeg < 20) key = 'soft_snow';
+  else if (altitude > 4900 && slopeDeg < 45) key = 'firm_snow';
+  return { key, ...tuning.surfaces[key] };
+}
+
+/** Chance per mountain minute of slipping when unroped on steep ground. */
+export function slipChancePerMin(slopeDeg, push, surface = 'firm_snow', moving = true) {
+  const over = Math.max(0, slopeDeg - tuning.climb_start_deg) / (tuning.no_rope_max_deg - tuning.climb_start_deg);
+  const s = tuning.surfaces[surface]?.slip ?? 1;
+  return tuning.slip_per_min_at_limit * Math.pow(over, 1.5) * (push ? 2 : 1) * s
+    * (moving ? 1 : tuning.slip_standing_mult);
 }
