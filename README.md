@@ -323,7 +323,9 @@ so the same `?seed=` gives the same season.
   throw you off steep unroped ground. **Feels like** is the wind chill.
 - **Visibility** follows the weather: 60 km on a clear day, tens of metres in fog, and only a
   few metres in a snowstorm or whiteout, where sky and snow merge into one grey. Storms are
-  common but mostly short (2 to 14 hours): about two days in three have one at some point.
+  common but mostly short (2 to 14 hours): about four days in five have one at some point,
+  and snow, storms, whiteouts or fog fill nearly half the time. The expedition starts after
+  recent snowfall, with only a few calm hours before the weather turns.
   In third person the fog starts at the climber, so you still see yourself.
   On cloudy days a cloud band sits between about 6,300 and 7,600 m, so you climb up into it
   and out above it. Fog and cloud drift through, so visibility comes and goes over minutes,
@@ -332,11 +334,16 @@ so the same `?seed=` gives the same season.
 - **Avalanches.** Snowfall builds up fresh snow, the wind drifts it into slabs, and both
   settle over a few days, faster when it's warm. The HUD shows the danger on the usual
   scale (Low, Moderate, Considerable, High, Extreme). Slabs break on snow slopes between
-  28° and 50°: natural slides start somewhere above you, and crossing a loaded slope can
-  break one under your feet. The debris pours down the fall line under a powder cloud.
-  If it reaches you, you're swept away tumbling and carried with it; on the rope it pours
-  over you and the rope holds. Half the time you end up buried and lose time and health
-  digging out.
+  28° and 50°, most often on 35-45° lee slopes the wind has loaded. Natural slides start
+  somewhere above you fairly often (about one an hour of mountain time when the danger is
+  high, far fewer on settled snow), others pour down faces across the mountain where you
+  can watch them, and crossing a loaded slope can break one under your feet. The debris
+  pours down the fall line under a powder cloud. If it reaches you, you're swept away
+  tumbling and carried with it; on the rope it pours over you and the rope holds. Hold
+  **Space** to swim for the surface: the longer you fight, the less likely you're buried,
+  and with luck you break out on top and can dig the axe in. When the debris stops you may
+  be on top, buried shallow (twenty minutes digging out) or buried deep (an hour, and a lot
+  of health).
 - **Serac fall.** Ice breaks off the hanging serac above the Bottleneck now and then, most
   in the warmth of the afternoon, and the blocks come down the couloir.
 - **Radio forecast.** In a camp a box under the clock gives the forecast for the next day
