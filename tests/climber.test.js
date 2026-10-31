@@ -23,6 +23,12 @@ function at(name) {
   return hm.gridToWorld(p.r, p.c);
 }
 
+/** Ice axe out and ready: the rope protects you, but on snow and ice you still climb with the axe. */
+function axeOut(c) {
+  c.toggleAxe();
+  c.axe.drawing = 0;
+}
+
 function run(c, seconds, input) {
   for (let t = 0; t < seconds; t += FRAME) c.update(FRAME, input);
 }
@@ -43,6 +49,7 @@ describe('climber', () => {
     const [x, z] = at('Advanced Base Camp');
     c.placeAt(x, z, 0, 0);
     c.toggleClip();
+    axeOut(c);
     expect(c.ropeId).toBe(0);
     const y0 = c.position.y;
     const clock0 = c.mountainSeconds;
@@ -51,6 +58,7 @@ describe('climber', () => {
     for (let t = 0; t < 20; t += FRAME) {
       const tan = ropes.tangentAt(c.ropeId, c.ropeS);
       c.yaw = Math.atan2(-tan.x, -tan.z);
+      if (c.onAxeWall) c.swingAxe();
       c.update(FRAME, { x: 0, y: 1 });
     }
     roll.mockRestore();
@@ -90,9 +98,10 @@ describe('climber', () => {
   it('drops you onto the rope when you slip clipped in, and the rope catches you', () => {
     const c = new Climber(hm, ropes, route.places);
     const pts = ropes.ropes[0];
-    const p = pts.find((q) => { const s = hm.slopeDeg(q.x, q.z); return s > 38 && s < 50; });
+    const p = pts.find((q) => { const s = hm.slopeDeg(q.x, q.z); return s > 36 && s < tuning.axe_climb_max_deg - 1; });
     c.placeAt(p.x, p.z, 0, 0);
     c.toggleClip();
+    axeOut(c);
     const [gx, gz] = hm.gradient(p.x, p.z);
     c.yaw = Math.atan2(-gx, -gz);
     const roll = vi.spyOn(Math, 'random').mockReturnValue(0);
@@ -113,9 +122,10 @@ describe('climber', () => {
   it('can rip the anchor out when the rope takes a fall', () => {
     const c = new Climber(hm, ropes, route.places);
     const pts = ropes.ropes[0];
-    const p = pts.find((q) => { const s = hm.slopeDeg(q.x, q.z); return s > 38 && s < 50; });
+    const p = pts.find((q) => { const s = hm.slopeDeg(q.x, q.z); return s > 36 && s < tuning.axe_climb_max_deg - 1; });
     c.placeAt(p.x, p.z, 0, 0);
     c.toggleClip();
+    axeOut(c);
     const [gx, gz] = hm.gradient(p.x, p.z);
     c.yaw = Math.atan2(-gx, -gz);
     let ripped = false;
@@ -241,7 +251,7 @@ describe('climber', () => {
     expect(c.mountainSeconds).toBe(clock + tuning.rescue_hours * 3600);
   });
 
-  it('cannot go up a 35° slope unroped, but can on the rope', () => {
+  it('cannot go up a 35° slope unroped, but can on the rope with the axe', () => {
     const c = new Climber(hm, ropes, route.places);
     const pts = ropes.ropes[0];
     // A rope point on ~35-45° ground.
@@ -249,18 +259,59 @@ describe('climber', () => {
     const p = pts[i];
     const climb = (clip) => {
       c.placeAt(p.x, p.z, 0, 0);
-      if (clip) c.toggleClip();
+      if (clip) { c.toggleClip(); axeOut(c); }
       const t = ropes.tangentAt(0, ropes.nearestOn(0, c.position).s);
       c.yaw = Math.atan2(-t.x, -t.z);
       const roll = vi.spyOn(Math, 'random').mockReturnValue(0.999999);
       const y0 = c.position.y;
-      run(c, 3, { x: 0, y: 1 });
+      for (let k = 0; k < 90; k++) {
+        if (c.onAxeWall) c.swingAxe();
+        c.update(FRAME, { x: 0, y: 1 });
+      }
       roll.mockRestore();
       return c.position.y - y0;
     };
     expect(climb(false)).toBeLessThanOrEqual(0.01);
     expect(c.blocked || c.falling).toBe(true);
     expect(climb(true)).toBeGreaterThan(0.5);
+  });
+
+  it('clipped in, still needs the axe on steep snow and ice: the rope only catches you', () => {
+    const c = new Climber(hm, ropes, route.places);
+    // The Bottleneck: steep ice on the summit-day rope.
+    const p = ropes.ropes[1].find((q) => q.y > 7900 && hm.slopeDeg(q.x, q.z) > tuning.axe_climb_max_deg + 2);
+    const climb = (axe, swing) => {
+      c.placeAt(p.x, p.z, 0, 0);
+      c.ropeId = -1;
+      c.toggleClip();
+      c.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
+      if (axe) axeOut(c);
+      c.grip = 100;
+      const t = ropes.tangentAt(c.ropeId, c.ropeS);
+      c.yaw = Math.atan2(-t.x, -t.z);
+      const roll = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+      const y0 = c.position.y;
+      for (let k = 0; k < 90; k++) {
+        if (swing && c.onAxeWall) c.swingAxe();
+        c.update(FRAME, { x: 0, y: 1 });
+      }
+      roll.mockRestore();
+      return c.position.y - y0;
+    };
+    // No axe: walking at the rope gets you nowhere.
+    expect(climb(false, false)).toBeLessThanOrEqual(0.05);
+    expect(c.blocked).toBe(true);
+    // Axe out but no swings: you hang on the rope, grip holding, going nowhere.
+    expect(climb(true, false)).toBeLessThanOrEqual(0.05);
+    expect(c.onAxeWall).toBe(true);
+    expect(c.grip).toBe(100);
+    // Swinging the axe takes you up.
+    expect(climb(true, true)).toBeGreaterThan(0.5);
+    // Spent on the wall: you come off, and the rope catches you.
+    c.grip = 0;
+    c.update(FRAME, { x: 0, y: 0 });
+    expect(c.falling).toBe(true);
+    expect(c.fall.rope).not.toBe(null);
   });
 
   it('counts expedition days', () => {
