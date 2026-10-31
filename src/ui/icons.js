@@ -27,6 +27,9 @@ const P = {
   dex: '<rect x="4" y="9" width="16" height="6" rx="3"/><path d="M12 9v6"/>',
   firstaid: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6V4h6v2M12 10v6M9 13h6"/>',
   warmers: '<rect x="6" y="5" width="12" height="14" rx="3"/><path d="M10 9c0 2 2 2 2 4s-2 2-2 4M14 9c0 2-2 2-2 4"/>',
+  flares: '<rect x="9" y="9" width="6" height="13" rx="1"/><path d="M9 13h6M12 9V6M12 2v1M8 4l1 1M16 4l-1 1M7 7h1M16 7h1"/>',
+  whistle: '<path d="M3 10h11a5 5 0 1 1-5 5v-2H3z"/><path d="M14 10V7h3M19 6l2-2"/>',
+  strobe: '<rect x="7" y="9" width="10" height="12" rx="2"/><circle cx="12" cy="15" r="2.5"/><path d="M12 2v3M5 4l2 3M19 4l-2 3"/>',
 };
 P.axe_tech = P.axe;
 P.crampons_pro = P.crampons;

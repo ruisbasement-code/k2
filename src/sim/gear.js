@@ -21,6 +21,8 @@ export const GEAR = {
   gps: { label: 'Wympr GPS', kg: 0.22, litres: 0.3, group: 'Devices', note: 'Satellite GPS: altitude, pace, weather and forecast.', where: 'pocket' },
   monitor: { label: 'Vitals monitor', kg: 0.12, litres: 0.2, group: 'Devices', note: 'Wrist pulse oximeter: food, water, warmth, oxygen and how your body is coping.', where: 'pocket' },
   map: { label: 'Topo map', kg: 0.1, litres: 0.1, group: 'Devices', note: 'Paper map of K2 and the Godwin-Austen Glacier, with the route and camps.', where: 'pocket' },
+  whistle: { label: 'Whistle', kg: 0.01, litres: 0.02, group: 'Signals', note: 'Three blasts: the distress call. Heard about a kilometre off in still air.', where: 'pocket' },
+  strobe: { label: 'Strobe light', kg: 0.08, litres: 0.1, group: 'Signals', note: 'Bright white flashes on your shoulder strap, seen kilometres away at night. Lasts about 60 h.', where: 'pocket' },
   radio: { label: 'Radio', kg: 0.3, litres: 0.4, group: 'Devices', note: 'Hear the weather forecast anywhere, not just in camp.', where: 'pocket' },
   axe: { label: 'Ice axe', kg: 0.6, litres: 2, group: 'Climbing', note: 'Climb steeper snow and ice, and self-arrest.', where: 'axe' },
   axe_tech: { label: 'Technical ice axe', kg: 0.5, litres: 2, group: 'Climbing', unlock: true, replaces: 'axe', note: 'Curved pick: holds better, fewer slips with it out.', where: 'axe' },
@@ -48,12 +50,13 @@ export const PACKS = {
 };
 
 /** Room each unit of a consumable takes, in litres. */
-export const CONSUMABLE_LITRES = { snack: 0.15, meal: 0.6, gas: 1, water: 1, oxygen: 5, dex: 0.02, firstaid: 1, warmers: 0.1 };
+export const CONSUMABLE_LITRES = { snack: 0.15, meal: 0.6, gas: 1, water: 1, oxygen: 5, dex: 0.02, firstaid: 1, warmers: 0.1, flares: 0.3 };
 
 /** Consumables beyond the camps' stores, packed only at Base Camp. */
 export const EXTRAS = {
   firstaid: { label: 'First-aid kit', kg: 0.3, heal: 25 },
   warmers: { label: 'Hand warmers', kg: 0.05, hours: 6 },
+  flares: { label: 'Signal flares', kg: 0.2 },
 };
 
 /** What the climber starts with outside the game (tests, the sim on its own). */
@@ -359,6 +362,35 @@ export class Expedition {
     return true;
   }
 
+  /**
+   * Fire a signal flare into the sky ahead of where you look. Works lying
+   * collapsed too: it's how you call for help. Returns the signal event
+   * (what multiplayer would send to others), or null.
+   */
+  flare() {
+    const c = this.c;
+    if (!this.pack.extra.flares || c.dead || !c.signals) return null;
+    this.pack.extra.flares--;
+    const w = c.conditions;
+    const wind = { x: (w?.windX ?? 0) * (w?.wind ?? 0), z: (w?.windZ ?? 0) * (w?.wind ?? 0) };
+    const p = c.position;
+    return c.signals.fireFlare({ x: p.x, y: p.y + (c.collapsed ? 0.4 : 1.6), z: p.z }, c.yaw, wind);
+  }
+
+  /** Three blasts on the whistle. Returns the event, or null. */
+  whistle() {
+    const c = this.c;
+    if (!this.pack.gear.has('whistle') || c.dead || !c.signals) return null;
+    return c.signals.blowWhistle(c.position);
+  }
+
+  /** Switch the strobe on or off. Returns the event, or null (no strobe, flat battery). */
+  strobe() {
+    const c = this.c;
+    if (!this.pack.gear.has('strobe') || c.dead || !c.signals) return null;
+    return c.signals.toggleStrobe(c.position);
+  }
+
   /** Each frame, after the climber has moved. */
   update() {
     const c = this.c;
@@ -366,6 +398,8 @@ export class Expedition {
     const dS = Math.max(0, c.mountainSeconds - this._lastSeconds);
     this._lastSeconds = c.mountainSeconds;
     this.warmerLeft = Math.max(0, this.warmerLeft - dS);
+    // A strobe left behind at Base Camp, or flashing on a dead climber, goes off.
+    if (c.signals?.strobeOn && (!pack.gear.has('strobe') || c.dead)) c.signals.toggleStrobe(c.position);
 
     // The axe and the pack agree: lose it on a fall and it's gone from the pack.
     const axeId = pack.gear.has('axe_tech') ? 'axe_tech' : pack.gear.has('axe') ? 'axe' : null;
