@@ -1,0 +1,18 @@
+{
+  "_note": "Grid positions (r = row from north, c = column from west) on the 641 x 641 heightmap. Camp positions are approximate and still need checking against a guidebook.",
+  "places": [
+    {"name": "Base Camp", "r": 479, "c": 340, "tents": 28, "note": "K2 Base Camp on the Godwin-Austen Glacier (~5,000 m)"},
+    {"name": "Advanced Base Camp", "r": 400, "c": 382, "tents": 6, "note": "Foot of the Abruzzi Spur, start of the fixed ropes (~5,350 m)"},
+    {"name": "Camp 1", "r": 379, "c": 366, "tents": 5, "note": "~6,050 m on the Abruzzi Spur"},
+    {"name": "Camp 2", "r": 368, "c": 354, "tents": 5, "note": "~6,700 m, above House's Chimney"},
+    {"name": "Camp 3", "r": 351, "c": 358, "tents": 4, "note": "~7,200 m, top of the Black Pyramid"},
+    {"name": "Camp 4", "r": 342, "c": 348, "tents": 6, "note": "~7,600 m on the Shoulder"},
+    {"name": "Bottleneck", "r": 329, "c": 331, "tents": 0, "note": "~8,200 m, the couloir under the serac"},
+    {"name": "Summit", "r": 320, "c": 320, "tents": 0, "note": "K2 summit, 8,611 m"},
+    {"name": "Broad Peak", "r": 561, "c": 473, "tents": 0, "note": "Broad Peak summit area (8,051 m), for the view"}
+  ],
+  "fixed_ropes": [
+    {"name": "Abruzzi Spur ropes", "points": [[400, 382], [379, 366], [368, 354], [351, 358], [342, 348]]},
+    {"name": "Bottleneck and Traverse ropes", "points": [[336, 340], [333, 336], [329, 331], [326, 327], [324, 325]]}
+  ]
+}
