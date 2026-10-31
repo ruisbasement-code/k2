@@ -82,7 +82,8 @@ realistic pace still gets you somewhere. All the speeds below are in mountain ti
   speed, the rope gently steers you back toward its line as you drift, it lets you
   climb anything near it, and slips are rarer. If you do slip, the jumar locks and you
   drop (and swing, if you were off to the side) until the rope comes tight; a hard
-  jolt hurts. Reach either
+  jolt hurts. Fixed ropes are old: each time one takes a fall there is a small chance
+  (about 2–5%) that the anchor rips out and you fall on, unroped. Reach either
   end and you unclip. There are two ropes: the Abruzzi Spur from Advanced Base Camp to
   Camp 4, and the Bottleneck and Traverse from above Camp 4 to about 8,450 m.
 

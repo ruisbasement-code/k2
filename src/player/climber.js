@@ -1027,6 +1027,14 @@ export class Climber {
     p.copy(anchor).addScaledVector(d, length);
     p.y = Math.max(p.y, this.hm.heightAt(p.x, p.z));
     const out = v.dot(d);
+    // The first real jolt tests the anchor: old fixed ropes sometimes fail.
+    if (out > 0.5 && !this.fall.rope.tested) {
+      this.fall.rope.tested = true;
+      if (Math.random() < t.rope_fail_chance + t.rope_fail_per_m_s * out) {
+        this._ropeFails();
+        return false;
+      }
+    }
     if (out > 0) {
       v.addScaledVector(d, -out);
       if (out > t.rope_safe_jolt_m_s) {
@@ -1040,7 +1048,17 @@ export class Climber {
     return true;
   }
 
-  _caughtByRope() {
+  /** The anchor rips out (or the old rope parts): the fall carries on unroped. */
+  _ropeFails() {
+    const name = this.ropes.names[this.fall.rope.id];
+    this.fall.rope = null;
+    this.fall.phase = 'slide';
+    this.fall.time = 0;
+    this.shake = 1;
+    this.onMessage(`The anchor on the ${name} ripped out! You're falling unroped. Hold Space to self-arrest!`);
+  }
+
+    _caughtByRope() {
     const { id } = this.fall.rope;
     this.velocity.set(0, 0, 0);
     this.position.y = this.hm.heightAt(this.position.x, this.position.z);
