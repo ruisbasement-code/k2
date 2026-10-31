@@ -53,6 +53,9 @@ export class Physiology {
   core = tuning.core_normal_c;
   /** Frostbite in hands and feet, 0..1 (0.9 is deep and permanent). */
   frostbite = 0;
+  /** Gear: a down suit multiplies insulation; mitts, goggles and warmers slow frostbite. */
+  insulationMult = 1;
+  frostbiteMult = 1;
   /** The altitude the body is used to, metres. */
   acclimatized = tuning.acclimatized_start_m;
   /** Altitude illnesses, 0..1 (1 is death for HACE and HAPE). */
@@ -125,7 +128,7 @@ export class Physiology {
 
     // Warmth.
     const outside = sheltered ? air.airTempC + t.tent_warmth_c : air.feelsLikeC;
-    const insulation = sleeping ? t.sleeping_bag_insulation : t.insulation * (1 - 0.4 * clamp(air.wet ?? 0, 0, 1));
+    const insulation = (sleeping ? t.sleeping_bag_insulation : t.insulation * (1 - 0.4 * clamp(air.wet ?? 0, 0, 1))) * this.insulationMult;
     let heat = t.heat_rest + t.heat_effort * effort + (this.shivering ? t.heat_shiver : 0);
     if (this.food <= 0) heat *= 0.6;
     const loss = (this.core - outside) / insulation;
@@ -134,7 +137,7 @@ export class Physiology {
     // Frostbite.
     if (!sheltered && air.feelsLikeC < t.frostbite_from_c) {
       const k = (this.core < t.hypothermia_mild_c ? 2 : 1) * (this.hydration < 50 ? 1.3 : 1)
-        * (eff > 7000 ? 1.5 : 1) * (effort < 0.2 ? 1.3 : 1);
+        * (eff > 7000 ? 1.5 : 1) * (effort < 0.2 ? 1.3 : 1) * this.frostbiteMult;
       this.frostbite += ((t.frostbite_from_c - air.feelsLikeC) / 30) * t.frostbite_per_h * k * dtH;
     } else if (sheltered || air.feelsLikeC > -10) {
       this.frostbite = Math.max(0, this.frostbite - t.frostbite_heal_per_h * dtH);

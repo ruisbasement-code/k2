@@ -3,6 +3,7 @@
 // Weights are real, and a heavier pack is slower and harder work.
 
 import { tuning } from './paceModel.js';
+import { DEFAULT_GEAR, PACKS, CONSUMABLE_LITRES, gearKg, gearLitres } from './gear.js';
 
 export const ITEMS = ['snack', 'meal', 'gas', 'water', 'oxygen', 'dex'];
 
@@ -16,6 +17,12 @@ export class Pack {
   /** Litres of oxygen left in each bottle you carry; the first one is on the mask. */
   bottles = [];
   dex = 0;
+  /** Gear by id (see GEAR in gear.js): devices, axe, crampons, tent... */
+  gear = new Set(DEFAULT_GEAR);
+  /** Which pack: sets how many litres fit. */
+  size = 'pack45';
+  /** First-aid kits and hand warmers, packed at Base Camp. */
+  extra = { firstaid: 0, warmers: 0 };
 
   /** How many of an item you have, in the units camps stock it (canisters for gas, bottles for oxygen). */
   count(item) {
@@ -28,7 +35,20 @@ export class Pack {
     const p = tuning.pack;
     return p.base_kg + this.snack * p.snack.kg + this.meal * p.meal.kg
       + this.count('gas') * p.gas.kg + this.water * p.water.kg_per_l + this.dex * p.dex.kg
-      + this.bottles.reduce((sum, l) => sum + p.oxygen.shell_kg + l * p.oxygen.kg_per_l, 0);
+      + this.bottles.reduce((sum, l) => sum + p.oxygen.shell_kg + l * p.oxygen.kg_per_l, 0)
+      + gearKg(this);
+  }
+
+  /** How many litres the pack holds. */
+  get capacity() {
+    return PACKS[this.size].litres;
+  }
+
+  /** Litres taken by everything in it. */
+  get litres() {
+    const L = CONSUMABLE_LITRES;
+    return this.snack * L.snack + this.meal * L.meal + this.count('gas') * L.gas + this.water * L.water
+      + this.bottles.length * L.oxygen + this.dex * L.dex + gearLitres(this);
   }
 
   /** Litres of oxygen in all bottles. */
@@ -48,6 +68,8 @@ export class Pack {
       let want = Math.max(0, loadout[item] - have);
       const left = stores[item] ?? 0;
       if (left >= 0) want = Math.min(want, left);
+      // Only what fits in the pack.
+      want = Math.min(want, Math.max(0, this.capacity - this.litres) / CONSUMABLE_LITRES[item]);
       if (want <= 0) continue;
       if (item !== 'water') want = Math.floor(want);
       if (want <= 0) continue;

@@ -35,30 +35,53 @@ https://ruisbasement-code.github.io/k2/.
 
 ### Controls
 
+The screen stays clean: keys show up only when they do something where you are
+(Z to sleep by a tent, C by a fixed rope, Space when you slide). **Esc** pauses and
+lists every control (`src/ui/controls.js`), with the sound switch.
+
 | Key | Action |
 | --- | --- |
-| W A S D | Move (relative to the camera) |
-| Shift | Push the pace: faster, but stamina drains much quicker (and it helps little up high) |
-| C | Clip into / unclip from a fixed rope (within 5 m) |
+| W A S D, Shift | Move, push the pace |
 | Space (hold) | Self-arrest when you start sliding |
-| Z | Sleep in a camp tent (stand next to one): until morning at night, a 2 h nap in the day |
-| K | Cook in a camp tent: melt snow to fill your bottles, drink, and eat a hot meal (1.5 h) |
-| B | Eat a snack bar |
-| H | Drink from your water bottle |
-| O | Oxygen flow: off, 0.5, 1, 2, 3, 4 L/min |
-| P | Take dexamethasone (holds off AMS and HACE for 12 h) |
-| G | Restock your pack from the camp you're in |
-| Y | Turnaround time: 12:00 to 16:00 |
-| X | Probe the snow ahead for hidden crevasses (takes 20 mountain seconds) |
-| R | After dying: be rescued to the highest camp you reached |
-| Mouse (click to capture), wheel | Look around, zoom |
-| V | First / third person |
-| T | Time speed: 1×, 5×, 10× (default), 20×, 60× |
-| 1 – 9 | Jump to Base Camp, ABC, Camps 1–4, Bottleneck, Summit, Broad Peak |
-| F | Scout fly (dev tool; E/Space up, Q down) |
-| N | Next weather (dev tool): clear, cloudy, high winds, fog, snow, storm, whiteout |
-| M | Mute breathing and wind |
-| Esc | Release the mouse |
+| C | Clip into / unclip from a fixed rope (within 5 m) |
+| E | Place an ice screw or snow picket on steep ground (needs the rope) |
+| I | Draw / stow the ice axe |
+| X | Probe ahead for hidden crevasses (needs a probe or an axe) |
+| Tab | Inventory: click a device to hold it, a supply to use it |
+| G | Gear up at Base Camp · restock at a camp · strike your own tent |
+| J / U / M | Hold the Wympr GPS / the vitals monitor / the map |
+| Z | Sleep in a tent; away from camp, pitch your tent, dig a snow cave or bivouac |
+| K | Cook in a tent (your own needs your stove) |
+| B / H / O / P | Eat / drink / oxygen flow / dexamethasone |
+| Y | Turnaround time |
+| R | After dying: be rescued (twice as fast with the GPS) |
+| Mouse, wheel, V, T | Look, zoom, first / third person, time speed |
+| 1 – 9, F, N | Dev: jump to a camp, scout fly, next weather |
+
+### Gear
+
+You start at Base Camp with food and water and nothing else: the store opens when
+you press Start (and again with G at Base Camp). Everything has a weight and takes
+room in a 45 L pack, and a heavier pack is slower and harder work.
+
+- **Devices**: the Wympr GPS (altitude, pace, weather, the forecast in camp or with
+  the radio), the vitals monitor (food, water, warmth, oxygen, how your body is
+  coping) and a paper topo map with the route and camps. Hold one up at a time.
+- **Climbing**: ice axe, crampons (without them, snow and ice are much more
+  slippery), a 30 m rope with ice screws or snow pickets to protect a steep pitch,
+  trekking poles, an avalanche probe.
+- **Shelter**: a storm tent you can pitch anywhere not too steep, a bivy sack, a snow
+  shovel for a snow cave, and a stove to cook in your own tent.
+- **Clothing**: a down suit, spare mitts and goggles keep the cold and frostbite off.
+- **Supplies**: snacks, meals, gas, water, oxygen, dex, first-aid kits, hand warmers.
+
+Pitching a tent, digging a cave, placing a screw or picket and lighting the stove
+are short hands-on jobs (timing, alternating keys, pumping), harder in wind and cold,
+with frostbite or when hurt.
+
+Summit and get back to Base Camp alive to unlock better gear: a technical axe,
+steel-front crampons, an ultralight tent and a 70 L pack. The unlock is saved in the
+browser (`?unlock` turns it on for testing, `?kit` starts with the basic devices).
 
 ## How movement works
 

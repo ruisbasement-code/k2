@@ -28,6 +28,11 @@ import { WindAudio } from './player/windAudio.js';
 import { TerrainFeatures } from './sim/terrainFeatures.js';
 import { FeatureMeshes } from './world/featureMeshes.js';
 import featureDefs from './data/features.json';
+import { Expedition, GEAR, difficulty, hasGear } from './sim/gear.js';
+import { Inventory } from './ui/inventory.js';
+import { Minigame } from './ui/minigame.js';
+import { ControlsMenu } from './ui/controls.js';
+import { ShelterMeshes } from './world/shelters.js';
 
 const EYE_HEIGHT = 1.65;
 
@@ -73,7 +78,20 @@ scene.add(avalancheMesh);
 const model = new ClimberModel();
 scene.add(model);
 const ragdoll = new Ragdoll(model);
-const hud = new Hud(hm, climber, route.places);
+const summitPlace = route.places.find((p) => p.name === 'Summit');
+const [summitX, summitZ] = summitPlace ? hm.gridToWorld(summitPlace.r, summitPlace.c) : [0, 0];
+const expedition = new Expedition(climber, {
+  unlocked: params.has('unlock') || load('k2.unlocked') === '1',
+  summitHeight: hm.heightAt(summitX, summitZ),
+  summit: { x: summitX, z: summitZ },
+});
+expedition.onUnlock = () => {
+  save('k2.unlocked', '1');
+  hud.showMessage('Summit gear unlocked at Base Camp');
+};
+const shelters = new ShelterMeshes(hm);
+scene.add(shelters);
+const hud = new Hud(hm, climber, route.places, expedition);
 climber.onMessage = (t) => hud.showMessage(t);
 const audio = new BreathAudio(climber.body);
 const wind = new WindAudio();
@@ -86,7 +104,7 @@ function teleport(i) {
   const [x, z] = hm.gridToWorld(p.r, p.c);
   const [fx, fz] = p.name === 'Summit' ? [0, 1000] : [0, 0];
   climber.placeAt(x, z, fx, fz);
-  hud.showMessage(`${p.name}: ${p.note}`);
+  hud.showMessage(p.name);
   // Camps on steep ground are only safe on the rope.
   if (hm.slopeDeg(x, z) > tuning.climb_start_deg && climber.ropeDistance() < CLIP_RANGE) climber.toggleClip();
 }
@@ -97,20 +115,24 @@ input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
 input.on('KeyR', () => climber.rescue());
-input.on('KeyZ', () => { if (climber.sleep()) hud.showSleep(); });
-input.on('KeyK', () => { if (climber.cook()) hud.showSleep(); });
+input.on('KeyZ', () => shelterOrSleep());
+input.on('KeyK', () => cook());
 input.on('KeyB', () => climber.eat());
 input.on('KeyH', () => climber.drink());
 input.on('KeyO', () => climber.cycleOxygen());
 input.on('KeyP', () => climber.takeDex());
-input.on('KeyG', () => climber.resupply());
+input.on('KeyG', () => gearUp());
 input.on('KeyY', () => climber.cycleTurnaround());
-input.on('KeyX', () => climber.probe());
-input.on('KeyI', () => climber.toggleAxe());
-input.on('KeyM', () => {
-  audio.muted = wind.muted = !audio.muted;
-  hud.showMessage(audio.muted ? 'Sound muted' : 'Sound on');
+input.on('KeyX', () => {
+  if (!hasGear(climber.pack, 'probe') && !climber.axe.have) hud.showMessage('Nothing to probe with');
+  else climber.probe();
 });
+input.on('KeyI', () => climber.toggleAxe());
+input.on('KeyE', () => protect());
+input.on('KeyJ', () => holdDevice('gps'));
+input.on('KeyU', () => holdDevice('monitor'));
+input.on('KeyM', () => holdDevice('map'));
+input.on('Tab', () => (inventory.open ? inventory.hide() : openInventory(false)));
 // Dev tool: step through the kinds of weather.
 input.on('KeyN', () => {
   const keys = Object.keys(weatherTuning.conditions);
@@ -119,8 +141,160 @@ input.on('KeyN', () => {
   hud.showMessage(`Weather: ${weatherTuning.conditions[next].label}`);
 });
 
+// ---- Gear, shelter and the jobs that need cold hands ----
+
+const minigame = new Minigame(document.getElementById('mini'));
+const inventory = new Inventory(document.getElementById('inventory'), expedition, {
+  held: () => hud.held,
+  hold: (id) => holdDevice(id),
+  use: (item) => {
+    const use = {
+      snack: () => climber.eat(),
+      water: () => climber.drink(),
+      oxygen: () => climber.cycleOxygen(),
+      dex: () => climber.takeDex(),
+      meal: () => hud.showMessage('Cook meals in a tent (K)'),
+      gas: () => hud.showMessage('Gas is for the stove (K)'),
+      firstaid: () => {
+        const healed = expedition.firstAid();
+        hud.showMessage(healed ? `Patched up: +${Math.round(healed)} health` : 'Nothing to patch up');
+      },
+      warmers: () => { if (expedition.warmer()) hud.showMessage('Hand warmers in your mitts'); },
+    }[item];
+    use?.();
+    inventory.render();
+  },
+});
+inventory.onClose = () => relock();
+
+function openInventory(store) {
+  if (minigame.busy) return;
+  release();
+  inventory.show(store);
+}
+
+function holdDevice(id) {
+  if (!climber.pack.gear.has(id)) {
+    hud.showMessage(`No ${GEAR[id].label.toLowerCase()}: pack one at Base Camp`);
+    return;
+  }
+  hud.hold(id);
+  inventory.render();
+}
+
+/** G: strike your tent, gear up at Base Camp, or restock at another camp. */
+function gearUp() {
+  const own = expedition.ownTentNearby();
+  if (own) {
+    expedition.strike(own);
+    hud.showMessage('Tent packed away');
+    return;
+  }
+  if (climber._campNearby()?.name === 'Base Camp') openInventory(true);
+  else climber.resupply();
+}
+
+/** A job done with your hands: the climber stops while you do it. */
+async function job(kind) {
+  input.keys = {};
+  return minigame.start(kind, difficulty(climber));
+}
+
+/** Z: sleep in a tent here, or make a shelter from what you carry. */
+async function shelterOrSleep() {
+  if (minigame.busy) return;
+  if (climber.canSleep()) {
+    const tent = climber.nearestTent();
+    if (climber.sleep()) hud.showSleep();
+    if (tent?.own === 'sack') expedition.removeShelter(tent);
+    return;
+  }
+  const option = expedition.shelterOption();
+  if (!option) {
+    if (climber.mode !== Mode.FLY && !climber.falling && !climber.dead) hud.showMessage('No tent here');
+    return;
+  }
+  if (option.kind === 'sack') {
+    const s = expedition.makeShelter(option);
+    if (climber.sleep()) hud.showSleep();
+    expedition.removeShelter(s);
+    return;
+  }
+  if (await job(option.kind === 'tent' ? 'tent' : 'cave')) {
+    expedition.makeShelter(option);
+    hud.showMessage(option.kind === 'tent' ? 'Tent pitched' : 'Snow cave dug');
+  } else {
+    climber.mountainSeconds += 10 * 60;
+    hud.showMessage(option.kind === 'tent' ? 'The wind fights you. Try again' : 'The walls slumped. Try again');
+  }
+}
+
+/** K: cook in a tent; in your own shelter you need your stove, and to light it. */
+async function cook() {
+  if (minigame.busy) return;
+  const tent = climber.canSleep() && climber.nearestTent();
+  if (tent?.own) {
+    if (tent.own === 'sack') return hud.showMessage('No cooking in a bivy sack');
+    if (!climber.pack.gear.has('stove')) return hud.showMessage('No stove');
+    if (climber.pack.gasBrews < 1) return climber.cook();
+    if (!(await job('stove'))) return hud.showMessage("The stove won't light");
+  }
+  if (climber.cook()) hud.showSleep();
+}
+
+/** E: place an ice screw or snow picket and clip the rope to it. */
+async function protect() {
+  if (minigame.busy || climber.mode === Mode.FLY) return;
+  const p = expedition.canProtect();
+  if (!p.kind) {
+    if (p.why) hud.showMessage(p.why[0].toUpperCase() + p.why.slice(1));
+    return;
+  }
+  if (await job(p.kind)) {
+    expedition.protect(p.kind);
+    hud.showMessage(p.kind === 'screw' ? 'Screw in, rope clipped' : 'Picket in, rope clipped');
+  } else hud.showMessage(p.kind === 'screw' ? "The screw won't bite" : "The picket won't hold");
+}
+
+// ---- Pause menu and the mouse ----
+
+let muted = false;
+const menu = new ControlsMenu(document.getElementById('menu'), {
+  isMuted: () => muted,
+  onMute: () => { muted = audio.muted = wind.muted = !muted; },
+});
+menu.onClose = () => relock();
+let releasing = false;
+let lostLockAt = -1e9;
+function release() {
+  if (document.pointerLockElement) {
+    releasing = true;
+    document.exitPointerLock();
+  }
+}
+function relock() {
+  if (!menu.open && !inventory.open && !document.getElementById('start')) canvas.requestPointerLock?.();
+}
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement) return;
+  lostLockAt = performance.now();
+  if (releasing) { releasing = false; return; }
+  if (!inventory.open && !minigame.busy && !document.getElementById('start')) menu.show();
+});
+addEventListener('keydown', (e) => {
+  if (e.code === 'Tab') e.preventDefault();
+  if (e.code !== 'Escape' || e.repeat || minigame.busy) return;
+  if (performance.now() - lostLockAt < 300) return; // the same Esc that freed the mouse
+  if (inventory.open) inventory.hide();
+  else if (menu.open) menu.hide();
+  else if (!document.getElementById('start')) menu.show();
+});
+
 teleport(0);
-hud.showMessage('K2 Base Camp, 5,000 m. The fixed ropes start at Advanced Base Camp (2).');
+// You gear up at Base Camp: the pack starts with food and water, and no gear.
+climber.pack.gear.clear();
+climber.axe = { have: false, inHand: false, drawing: 0, dangling: 0 };
+if (params.has('kit')) for (const id of ['gps', 'monitor', 'map', 'axe', 'crampons']) expedition.toggle(id);
 if (params.has('place')) teleport(+params.get('place'));
 if (params.has('rope')) climber.toggleClip();
 if (params.has('yaw')) climber.yaw = (+params.get('yaw') * Math.PI) / 180;
@@ -139,7 +313,8 @@ document.getElementById('go').onclick = () => {
   start.remove();
   audio.start();
   wind.start();
-  canvas.requestPointerLock?.();
+  // First stop: the Base Camp store, to gear up.
+  openInventory(true);
 };
 if (params.has('start')) start.remove();
 
@@ -298,7 +473,13 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   view.time += dt;
-  climber.update(dt, input.movement());
+  // Paused in the menu; standing still while busy with your hands or your pack.
+  if (!menu.open) {
+    const still = minigame.busy || inventory.open;
+    climber.update(dt, still ? { x: 0, y: 0, push: false, up: false, down: false, arrest: false } : input.movement());
+    expedition.update();
+  }
+  shelters.update(climber.tents);
   rockMesh.update();
   featureMeshes.update(climber.position);
   animateModel(dt);
@@ -321,4 +502,12 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__k2 = { climber, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather };
+window.__k2 = { climber, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
+
+/** Browser storage can be missing or blocked; the game runs without it. */
+function load(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function save(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* not saved */ }
+}

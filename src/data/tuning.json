@@ -191,7 +191,7 @@
   "pack_speed_per_kg": 0.012,
   "pack_effort_per_kg": 0.014,
   "pack": {
-    "base_kg": 8.5,
+    "base_kg": 8.1,
     "snack": {"label": "Snack bars", "kg": 0.08, "kcal": 250},
     "meal": {"label": "Freeze-dried meals", "kg": 0.15, "kcal": 700},
     "gas": {"label": "Gas canisters", "kg": 0.35, "brews": 4},
@@ -209,6 +209,11 @@
     "Camp 3": {"snack": 6, "meal": 2, "gas": 2, "water": -1, "oxygen": 4, "dex": 2},
     "Camp 4": {"snack": 6, "meal": 2, "gas": 2, "water": -1, "oxygen": 6, "dex": 2}
   },
+  "_gear": "Gear packed at Base Camp (src/sim/gear.js). Shelters can't go on ground steeper than shelter_max_deg unless on a ledge. Without crampons, every slip chance on snow and ice is multiplied by no_crampons_slip.",
+  "shelter_max_deg": 38,
+  "pitch_minutes": 20,
+  "cave_dig_hours": 1.5,
+  "no_crampons_slip": 1.8,
   "cook_hours": 1.5,
 
   "o2_flows": [0, 0.5, 1, 2, 3, 4],

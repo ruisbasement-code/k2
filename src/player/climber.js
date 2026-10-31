@@ -334,8 +334,10 @@ export class Climber {
     ph.hydration = Math.max(ph.hydration, 50);
     ph.food = Math.max(ph.food, 40);
     this.body.exhausted = false;
-    this.mountainSeconds += tuning.rescue_hours * 3600;
-    this.onMessage(`Rescued and carried to ${camp.name} after ${tuning.rescue_hours} hours. Rest here to heal.`);
+    // A satellite messenger brings help sooner.
+    const hours = tuning.rescue_hours * (this.rescueHoursMult ?? 1);
+    this.mountainSeconds += hours * 3600;
+    this.onMessage(`Rescued and carried to ${camp.name} after ${hours} hours. Rest here to heal.`);
   }
 
   /** The most health you can heal back to: 100 less any permanent injuries. */
@@ -1531,9 +1533,14 @@ export class Climber {
     if (p.y >= rim - 0.05) this._leaveHole();
   }
 
-  /** What you climb ice with. Bare hands and boots for now; an ice axe and crampons later. */
+  /** What you climb ice with: the axe and crampons, and a rope with screws to hang off. */
   _iceTool() {
-    return { name: 'hands', climb: 1, slip: 1 };
+    const g = this.pack.gear;
+    let climb = 1, slip = 1, name = 'hands';
+    if (this.axeReady) { climb *= 1.8; slip *= 0.5; name = 'axe'; }
+    if (g.has('crampons') || g.has('crampons_pro')) { climb *= 1.4; slip *= 0.7; }
+    if (g.has('rope') && g.has('screws')) { climb *= 1.3; slip *= 0.3; name = 'rope'; }
+    return { name, climb, slip };
   }
 
   /** Over the lip, onto the side you were facing. */
