@@ -77,6 +77,13 @@ room in a 45 L pack, and a heavier pack is slower and harder work.
   shovel for a snow cave, and a stove to cook in your own tent.
 - **Clothing**: a down suit, spare mitts and goggles keep the cold and frostbite off.
 - **Supplies**: snacks, meals, gas, water, oxygen, dex, first-aid kits, hand warmers.
+- **Signals**: hand-fired red flares (pack space, about 40 s alight, seen for
+  kilometres through cloud and snow), a whistle (three blasts, heard about a
+  kilometre off) and a strobe for your shoulder strap. Use them from the hotbar (1-9)
+  or the pack, even lying collapsed, when they move to the front of the hotbar.
+  Every signal is also a small JSON event on `climber.signals` (`onEvent`), and
+  `receive(event, age)` draws another player's flare on the same path, ready for
+  multiplayer. `?signals` in the URL packs some to try.
 
 Pitching a tent, digging a cave, placing a screw or picket and lighting the stove
 are short hands-on jobs (timing, alternating keys, pumping), harder in wind and cold,

@@ -20,6 +20,7 @@ export const CONTROLS = [
     [['U'], 'Hold the vitals monitor'],
     [['M'], 'Hold the map'],
     [['L'], 'Headlamp: off, on, high beam, red'],
+    [['1', '9'], 'Signal flare, strobe or whistle from the hotbar: call for help, even collapsed'],
   ]],
   ['Survive', [
     [['Z'], 'Sleep in a tent · pitch a tent, dig a cave or bivouac'],

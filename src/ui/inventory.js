@@ -8,14 +8,18 @@ import { icon } from './icons.js';
 
 export const DEVICES = ['gps', 'monitor', 'map'];
 
-/** Hotbar order: what you'd reach for, first nine you carry get keys 1 to 9. */
-const HOTBAR = ['gps', 'monitor', 'map', 'axe', 'snack', 'water', 'oxygen', 'firstaid', 'dex', 'warmers', 'radio'];
+/** Signalling gear: used from the hotbar or the pack, even lying collapsed. */
+export const SIGNALS = ['flares', 'strobe', 'whistle'];
 
-/** The items on the hotbar right now, [{id, label, count}]. */
+/** Hotbar order: what you'd reach for, first nine you carry get keys 1 to 9. */
+const HOTBAR = ['gps', 'monitor', 'map', 'axe', 'snack', 'water', 'oxygen', 'firstaid', 'flares', 'strobe', 'whistle', 'dex', 'warmers', 'radio'];
+
+/** The items on the hotbar right now, [{id, label, count}]. Collapsed, the signals come first. */
 export function hotbarItems(climber) {
   const p = climber.pack;
   const out = [];
-  for (const id of HOTBAR) {
+  const order = climber.collapsed ? [...SIGNALS, ...HOTBAR.filter((id) => !SIGNALS.includes(id))] : HOTBAR;
+  for (const id of order) {
     if (id === 'axe') { if (climber.axe.have) out.push({ id: p.gear.has('axe_tech') ? 'axe_tech' : 'axe', label: 'Ice axe' }); continue; }
     if (GEAR[id]) { if (p.gear.has(id) && id !== 'radio') out.push({ id, label: GEAR[id].label }); continue; }
     const n = id in EXTRAS ? p.extra[id] : id === 'water' ? p.water : p.count(id);
@@ -57,7 +61,7 @@ function layout(items, cols, rows) {
   return { placed, rows: Math.max(rows, grid.length) };
 }
 
-const SUPPLY_LABEL = { snack: 'Snack bars', meal: 'Meals', water: 'Water', gas: 'Gas', oxygen: 'Oxygen', dex: 'Dex', firstaid: 'First aid', warmers: 'Hand warmers' };
+const SUPPLY_LABEL = { snack: 'Snack bars', meal: 'Meals', water: 'Water', gas: 'Gas', oxygen: 'Oxygen', dex: 'Dex', firstaid: 'First aid', warmers: 'Hand warmers', flares: 'Signal flares' };
 
 const SUPPLIES = [
   ['snack', 'Snack bars', 'B'],
@@ -68,6 +72,7 @@ const SUPPLIES = [
   ['dex', 'Dex', 'P'],
   ['firstaid', 'First aid', ''],
   ['warmers', 'Hand warmers', ''],
+  ['flares', 'Signal flares', ''],
 ];
 
 export class Inventory {
@@ -115,7 +120,8 @@ export class Inventory {
       const g = id && GEAR[id];
       if (!g) return `<div class="slot empty"><span class="where">${where}</span></div>`;
       const dev = DEVICES.includes(id);
-      return `<button class="slot g-${g.group.toLowerCase()}${held === id ? ' on' : ''}" ${dev ? `data-hold="${id}"` : ''} ${this.store ? `data-gear="${id}"` : ''} title="${g.label}: ${g.note}">
+      const use = SIGNALS.includes(id) ? `data-use="${id}"` : '';
+      return `<button class="slot g-${g.group.toLowerCase()}${held === id ? ' on' : ''}" ${dev ? `data-hold="${id}"` : use} ${this.store ? `data-gear="${id}"` : ''} title="${g.label}: ${g.note}">
         ${icon(id)}<span class="where">${held === id ? 'in hand' : where}</span></button>`;
     };
     const wornId = (w) => [...p.gear].find((id) => GEAR[id]?.where === w);
@@ -143,7 +149,7 @@ export class Inventory {
       const litres = id === 'water' ? n * CONSUMABLE_LITRES.water : n * CONSUMABLE_LITRES[id];
       const [w, h] = shapeFor(id, litres);
       const count = id === 'water' ? `${n.toFixed(1)} L` : id === 'gas' ? `${p.gasBrews}` : `×${n}`;
-      items.push({ id, w, h, label, count, cls: 'g-supply', attr: `data-use="${id}"`, title: label });
+      items.push({ id, w, h, label, count, cls: id === 'flares' ? 'g-signals' : 'g-supply', attr: `data-use="${id}"`, title: label });
     }
     const cols = COLS[p.size] ?? 9;
     const rows = Math.ceil(cap / cols);

@@ -36,6 +36,8 @@ import { Expedition, GEAR, difficulty, hasGear } from './sim/gear.js';
 import { Inventory, hotbarItems } from './ui/inventory.js';
 import { Minigame } from './ui/minigame.js';
 import { ControlsMenu } from './ui/controls.js';
+import { Signals, flareSeenM, compassPoint } from './sim/signals.js';
+import { SignalView, playWhistle } from './world/signalView.js';
 import { ShelterMeshes } from './world/shelters.js';
 
 const EYE_HEIGHT = 1.65;
@@ -97,6 +99,11 @@ const model = new ClimberModel();
 scene.add(model);
 const ragdoll = new Ragdoll(model);
 const headlamp = new Headlamp(scene);
+// Flares, whistle and strobe. Every signal is also an event on climber.signals
+// (onEvent) that multiplayer can send to other players, who pass it to receive().
+climber.signals = new Signals('You');
+const signalView = new SignalView();
+scene.add(signalView);
 const summitPlace = route.places.find((p) => p.name === 'Summit');
 const [summitX, summitZ] = summitPlace ? hm.gridToWorld(summitPlace.r, summitPlace.c) : [0, 0];
 const expedition = new Expedition(climber, {
@@ -185,6 +192,20 @@ const inventory = new Inventory(document.getElementById('inventory'), expedition
         hud.showMessage(healed ? `Patched up: +${Math.round(healed)} health` : 'Nothing to patch up');
       },
       warmers: () => { if (expedition.warmer()) hud.showMessage('Hand warmers in your mitts'); },
+      flares: () => {
+        if (!expedition.flare()) return;
+        const km = flareSeenM(climber.conditions?.visibility) / 1000;
+        hud.showMessage(`Flare away: seen up to ${km.toFixed(km < 10 ? 1 : 0)} km off in this weather`);
+      },
+      whistle: () => {
+        if (!expedition.whistle()) return;
+        playWhistle(audio.ctx, muted);
+        hud.showMessage('Three blasts on the whistle');
+      },
+      strobe: () => {
+        if (!expedition.strobe()) return hud.showMessage('The strobe battery is flat');
+        hud.showMessage(climber.signals.strobeOn ? `Strobe on (${Math.round(climber.signals.strobeHours)} h of battery)` : 'Strobe off');
+      },
     }[item];
     use?.();
     inventory.render();
@@ -332,6 +353,11 @@ teleport(0);
 climber.pack.gear.clear();
 climber.axe = { have: false, inHand: false, drawing: 0, dangling: 0 };
 if (params.has('kit')) for (const id of ['gps', 'monitor', 'map', 'axe', 'crampons']) expedition.toggle(id);
+// ?signals: a pack with flares, a whistle and a strobe, for trying them out.
+if (params.has('signals')) {
+  for (const id of ['whistle', 'strobe']) expedition.toggle(id);
+  climber.pack.extra.flares = 3;
+}
 if (params.has('place')) teleport(+params.get('place'));
 if (params.has('rope')) climber.toggleClip();
 if (params.has('yaw')) climber.yaw = (+params.get('yaw') * Math.PI) / 180;
@@ -548,6 +574,24 @@ function updateTether(dt) {
   tether.update(dt, _harness, _clip, length, _ropeDir);
 }
 
+/**
+ * Other climbers' signals you can make out from here (multiplayer, later): say
+ * once which way and how far each new one is.
+ */
+const noticed = new Set();
+function noticeSignals() {
+  const c = climber;
+  for (const s of c.signals.noticedFrom(c.position, { visibility: c.conditions?.visibility, wind: c.conditions?.wind, ignore: c.signals.who })) {
+    const key = s.kind === 'whistle' ? `whistle@${Math.round(c.signals.whistle.at)}` : s.id;
+    if (noticed.has(key)) continue;
+    noticed.add(key);
+    const where = `${compassPoint(s.bearing)}, ${s.distance < 1000 ? `${Math.round(s.distance / 10) * 10} m` : `${(s.distance / 1000).toFixed(1)} km`}`;
+    hud.showMessage({ flare: `A red flare goes up to the ${where} off`, strobe: `A strobe flashing to the ${where} off`, whistle: `A whistle, three blasts, to the ${where}` }[s.kind]);
+  }
+  // A strobe that stops can be noticed again when it starts once more.
+  for (const key of noticed) if (key.startsWith('strobe:') && !c.signals.strobes.has(key.slice(7))) noticed.delete(key);
+}
+
 let last = performance.now();
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
@@ -561,9 +605,13 @@ function frame(now) {
   if (climber.dead && document.pointerLockElement) release(); // free the mouse for the respawn button
   if (!menu.open) {
     const still = minigame.busy || inventory.open;
+    const before = climber.mountainSeconds;
     climber.update(dt, still ? { x: 0, y: 0, push: false, up: false, down: false, arrest: false } : input.movement());
     expedition.update();
+    climber.signals.update(dt, climber.mountainSeconds - before, climber.position);
+    noticeSignals();
   }
+  signalView.update(climber.signals, view.time);
   shelters.update(climber.tents);
   rockMesh.update();
   featureMeshes.update(climber.position, climber);
@@ -589,7 +637,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__k2 = { climber, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
+window.__k2 = { climber, signals: climber.signals, signalView, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
 
 /** Read and clear a one-off flag that survives a reload. */
 function takeFlag(key) {
