@@ -95,7 +95,7 @@ describe('climber', () => {
     c.yaw = Math.atan2(-gx, -gz);
     const roll = vi.spyOn(Math, 'random').mockReturnValue(0);
     c.update(FRAME, { x: 0, y: 1, push: true });
-    roll.mockRestore();
+    roll.mockReturnValue(0.99); // the anchor holds
     expect(c.falling).toBe(true);
     expect(c.fall.rope).not.toBe(null);
     const y0 = c.fall.startY;
@@ -105,6 +105,28 @@ describe('climber', () => {
     expect(c.dead).toBe(false);
     // Caught within the rope's reach, not slid down the face.
     expect(y0 - c.position.y).toBeLessThan(tuning.rope_slack_m + 4);
+    roll.mockRestore();
+  });
+
+  it('can rip the anchor out when the rope takes a fall', () => {
+    const c = new Climber(hm, ropes, route.places);
+    const pts = ropes.ropes[0];
+    const p = pts.find((q) => { const s = hm.slopeDeg(q.x, q.z); return s > 38 && s < 50; });
+    c.placeAt(p.x, p.z, 0, 0);
+    c.toggleClip();
+    const [gx, gz] = hm.gradient(p.x, p.z);
+    c.yaw = Math.atan2(-gx, -gz);
+    let ripped = false;
+    c.onMessage = (t) => { if (/ripped out/.test(t)) ripped = true; };
+    const roll = vi.spyOn(Math, 'random').mockReturnValue(0); // every chance comes up
+    c.update(FRAME, { x: 0, y: 1, push: true });
+    c.health = 1e9;
+    run(c, 3, { x: 0, y: 0 });
+    roll.mockRestore();
+    expect(ripped).toBe(true);
+    expect(c.clipped).toBe(false);
+    expect(c.falling && c.fall.rope).toBeFalsy();
+    expect(tuning.rope_fail_chance).toBeLessThan(0.05);
   });
 
   it('slides instead of climbing ground steeper than 35° unroped', () => {
