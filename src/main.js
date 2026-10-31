@@ -19,6 +19,7 @@ import { Input } from './player/input.js';
 import { Ragdoll } from './player/ragdoll.js';
 import { Hud } from './ui/hud.js';
 import { Sky } from './world/sky.js';
+import { RockfallMesh, FootprintMesh } from './world/hazardMeshes.js';
 
 const EYE_HEIGHT = 1.65;
 
@@ -44,6 +45,11 @@ scene.add(ropes.createMesh());
 scene.add(createCamps(hm, route.places));
 
 const climber = new Climber(hm, ropes, route.places);
+const rockMesh = new RockfallMesh(climber.rockfall);
+scene.add(rockMesh);
+const prints = new FootprintMesh(hm, tuning.max_footprints);
+scene.add(prints);
+climber.trail.onPrint = (p) => prints.add(p);
 const model = new ClimberModel();
 scene.add(model);
 const ragdoll = new Ragdoll(model);
@@ -51,7 +57,7 @@ const hud = new Hud(hm, climber, route.places);
 climber.onMessage = (t) => hud.showMessage(t);
 const audio = new BreathAudio(climber.body);
 const input = new Input(canvas);
-const view = { pitch: -0.2, distance: 7, firstPerson: false, gait: 0 };
+const view = { pitch: -0.2, distance: 7, firstPerson: false, gait: 0, time: 0 };
 
 function teleport(i) {
   const p = route.places[i];
@@ -112,7 +118,50 @@ function updateCamera() {
     camera.position.y = Math.max(camera.position.y, hm.heightAt(camera.position.x, camera.position.z) + 0.6);
     camera.lookAt(_eye);
   }
+  sway(camera);
   sky.update(climber.hour, p, camera.position);
+}
+
+/**
+ * Exposure and balance: on steep ground the view drifts and tilts a little with
+ * your breathing, and a jolt (a slip, a crumbling hold, a rock) shakes it.
+ */
+function sway(cam) {
+  const c = climber;
+  if (c.mode === Mode.FLY) return;
+  const t = view.time;
+  const exposure = Math.min(Math.max((c.slope - 25) / 30, 0), 1) * (c.falling ? 0 : 1);
+  const breath = Math.sin(c.body.breathPhase * Math.PI * 2);
+  const roll = exposure * (0.012 * Math.sin(t * 0.7) + 0.006 * breath)
+    + c.shake * 0.05 * Math.sin(t * 37) * Math.sin(t * 23);
+  cam.rotateZ(roll);
+  cam.rotateX(c.shake * 0.03 * Math.sin(t * 41) + exposure * 0.004 * breath);
+}
+
+const _basis = new THREE.Matrix4();
+const _X = new THREE.Vector3();
+const _U = new THREE.Vector3();
+const _Z = new THREE.Vector3();
+const _N = new THREE.Vector3();
+
+/** Lay the body flat on the slope: head up or down the fall line, on its front or back. */
+function slideOrientation(c) {
+  const [gx, gz] = hm.gradient(c.position.x, c.position.z);
+  hm.normalAt(c.position.x, c.position.z, _N);
+  // Up the slope, along the surface.
+  _U.set(gx, gx * gx + gz * gz, gz);
+  if (_U.lengthSq() < 1e-8) _U.set(0, 0, -1);
+  _U.normalize();
+  const { head, back } = c.fall.orient;
+  if (head) _U.negate();
+  // The model faces -z: on the front, -z points into the slope.
+  _Z.copy(_N).multiplyScalar(back ? -1 : 1);
+  _X.crossVectors(_U, _Z).normalize();
+  _Z.crossVectors(_X, _U);
+  _basis.makeBasis(_X, _U, _Z);
+  model.quaternion.setFromRotationMatrix(_basis);
+  // The model's pivot is at its feet: put the middle of the body on the ground point.
+  model.position.copy(c.position).addScaledVector(_U, -0.9).addScaledVector(_N, 0.2);
 }
 
 function animateModel(dt) {
@@ -125,12 +174,15 @@ function animateModel(dt) {
   ragdoll.stop();
   model.position.copy(c.position);
   if (c.falling) {
-    // Sliding: face into the slope, flat against it, digging in.
-    const [gx, gz] = hm.gradient(c.position.x, c.position.z);
-    model.rotation.y = Math.atan2(gx, gz);
+    // Sliding flat on the slope, the way the fall left you, digging in.
+    slideOrientation(c);
     model.pose('slide', 0, false, 0);
     return;
   }
+  // Sunk into the snow, and swaying a little on exposed ground or after a jolt.
+  model.position.y -= c.sink * 0.8;
+  const exposure = Math.min(Math.max((c.slope - 25) / 30, 0), 1);
+  model.rotation.set(0, model.rotation.y, exposure * 0.03 * Math.sin(view.time * 0.9) + c.shake * 0.12 * Math.sin(view.time * 29));
   let diff = c.heading - model.rotation.y;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   model.rotation.y += diff * (1 - Math.exp(-dt * 10));
@@ -150,7 +202,9 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
+  view.time += dt;
   climber.update(dt, input.movement());
+  rockMesh.update();
   animateModel(dt);
   updateCamera();
   audio.update();

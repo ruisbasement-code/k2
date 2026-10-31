@@ -56,7 +56,8 @@ export class Hud {
     $('slope').textContent = `${Math.round(c.slope)}°`;
     $('vnow').textContent = signed(c.verticalNow) + ' m/h';
     $('vavg').textContent = signed(c.verticalAvg) + ' m/h';
-    $('surface').textContent = c.surface.label;
+    $('surface').textContent = this._surfaceText();
+    $('bps').textContent = c.breathsPerStep < 0.95 ? 'easy' : `${c.breathsPerStep.toFixed(1)} per step`;
     $('day-num').textContent = `Day ${c.day}`;
     $('day-time').textContent = c.clockText();
     $('day-part').textContent = partOfDay(c.hour);
@@ -79,8 +80,17 @@ export class Hud {
     if (c.mode === Mode.FLY) return 'Scout fly: E/Space up, Q down, Shift fast. F to land.';
     if (c.dead) return '';
     if (c.tumbling) return 'Tumbling!';
-    if (c.falling) return c.fall.arresting ? 'Digging in… keep holding Space' : 'Sliding! Hold Space to self-arrest before you pick up speed.';
+    if (c.falling && c.fall.rope) return 'Falling onto the rope…';
+    if (c.falling) {
+      if (c.fall.arresting) return 'Digging in… keep holding Space';
+      const o = c.fall.orient;
+      if (o.back || o.head) return `Sliding ${c.slideHow()}! Hold Space: roll onto your front and swing your feet downhill.`;
+      return 'Sliding! Hold Space to self-arrest before you pick up speed.';
+    }
     if (body.exhausted) return 'Exhausted. Stand still and breathe.';
+    if (c.gasping) return 'Gasping. Stand and breathe until it settles. Shift rushes your breaths.';
+    if (c.rockfall.rocks.some((r) => r.velocity.length() > 2 && r.position.distanceTo(c.position) < tuning.rock_warn_m && r.position.y > c.position.y))
+      return 'Rocks coming down! Get out of the fall line.';
     if (c.blocked) return 'Too steep to climb without a fixed rope';
     if (c.clipped) return 'Clipped in: move freely. The rope speeds you along it and catches slips. C unclips.';
     if (c.ropeDistance() < CLIP_RANGE) return 'Fixed rope here. Press C to clip in.';
@@ -88,6 +98,15 @@ export class Hud {
     if (c.health < 50) return 'Injured. Rest to heal, faster in a camp.';
     if (body.stamina < 25) return 'Nearly spent. Stop and rest.';
     return '';
+  }
+
+  _surfaceText() {
+    const c = this.climber;
+    let text = c.surface.label;
+    if (c.sink > 0.25) text += ', knee-deep';
+    else if (c.sink > 0.1) text += ', ankle-deep';
+    if (c.packing > 0) text += ', trodden';
+    return text;
   }
 
   _buildMinimap() {

@@ -10,6 +10,10 @@ import { FixedRopes } from '../src/world/fixedRopes.js';
 import route from '../src/data/route.json';
 import { loadHeightmap } from './helpers.js';
 
+// Natural rockfall is random; the tests that want it turn it back on.
+const naturalRockfall = tuning.rockfall_per_min;
+tuning.rockfall_per_min = 0;
+
 const hm = loadHeightmap();
 const ropes = new FixedRopes(hm, route.fixed_ropes);
 const FRAME = 1 / 30;
@@ -43,11 +47,13 @@ describe('climber', () => {
     const y0 = c.position.y;
     const clock0 = c.mountainSeconds;
     const stamina0 = c.body.stamina;
+    const roll = vi.spyOn(Math, 'random').mockReturnValue(0.5); // no slips
     for (let t = 0; t < 20; t += FRAME) {
       const tan = ropes.tangentAt(c.ropeId, c.ropeS);
       c.yaw = Math.atan2(-tan.x, -tan.z);
       c.update(FRAME, { x: 0, y: 1 });
     }
+    roll.mockRestore();
     const rate = (c.position.y - y0) / ((c.mountainSeconds - clock0) / 3600);
     expect(rate).toBeGreaterThan(250);
     expect(rate).toBeLessThan(500);
@@ -79,15 +85,26 @@ describe('climber', () => {
     expect(furthest).toBeLessThan(tuning.rope_leash_m + 1);
   });
 
-  it('catches you on the rope instead of letting you slip', () => {
+  it('drops you onto the rope when you slip clipped in, and the rope catches you', () => {
     const c = new Climber(hm, ropes, route.places);
-    const [x, z] = at('Camp 1');
-    c.placeAt(x, z, 0, 0);
+    const pts = ropes.ropes[0];
+    const p = pts.find((q) => { const s = hm.slopeDeg(q.x, q.z); return s > 38 && s < 50; });
+    c.placeAt(p.x, p.z, 0, 0);
     c.toggleClip();
+    const [gx, gz] = hm.gradient(p.x, p.z);
+    c.yaw = Math.atan2(-gx, -gz);
     const roll = vi.spyOn(Math, 'random').mockReturnValue(0);
-    run(c, 5, { x: 0, y: 1, push: true });
+    c.update(FRAME, { x: 0, y: 1, push: true });
     roll.mockRestore();
-    expect(c.falling || c.dead).toBe(false);
+    expect(c.falling).toBe(true);
+    expect(c.fall.rope).not.toBe(null);
+    const y0 = c.fall.startY;
+    run(c, 6, { x: 0, y: 0 });
+    expect(c.falling).toBe(false);
+    expect(c.clipped).toBe(true);
+    expect(c.dead).toBe(false);
+    // Caught within the rope's reach, not slid down the face.
+    expect(y0 - c.position.y).toBeLessThan(tuning.rope_slack_m + 4);
   });
 
   it('slides instead of climbing ground steeper than 35° unroped', () => {

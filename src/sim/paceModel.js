@@ -106,13 +106,29 @@ export function effort(climbing, grade, push) {
  * wind-packed snow on steeper ones, hard ice on steep faces high up, rock where
  * nothing sticks, scree and glacier low down.
  */
-export function surfaceAt(altitude, slopeDeg, glacier = 0) {
+/**
+ * How warm the afternoon sun has made the snow, 0 (frozen) to 1 (soft), at an hour
+ * of the day and altitude. High up it never softens.
+ */
+export function sunWarmth(hour, altitude) {
+  if (hour == null || altitude > tuning.soften_below_m) return 0;
+  const k = 1 - Math.abs(hour - tuning.sun_peak_hour) / tuning.sun_soft_hours;
+  return Math.min(Math.max(k, 0), 1);
+}
+
+/**
+ * The ground underfoot. Open snow slopes are wind crust up high, powder on the flat
+ * and firm snow between; afternoon sun turns low snow to slush.
+ */
+export function surfaceAt(altitude, slopeDeg, glacier = 0, hour = null) {
   let key = 'rock';
   if (glacier > 0.5) key = 'glacier';
   else if (altitude < 5400 && slopeDeg < 32) key = 'scree';
   else if (altitude > 5700 && slopeDeg >= 30 && slopeDeg < 55) key = 'ice';
   else if (altitude > 4900 && slopeDeg < 20) key = 'soft_snow';
   else if (altitude > 4900 && slopeDeg < 45) key = 'firm_snow';
+  if (altitude > tuning.crust_above_m && (key === 'firm_snow' || (key === 'soft_snow' && slopeDeg > 8))) key = 'crust';
+  if ((key === 'firm_snow' || key === 'soft_snow') && sunWarmth(hour, altitude) > 0.5) key = 'slush';
   return { key, ...tuning.surfaces[key] };
 }
 
@@ -122,4 +138,28 @@ export function slipChancePerMin(slopeDeg, push, surface = 'firm_snow', moving =
   const s = tuning.surfaces[surface]?.slip ?? 1;
   return tuning.slip_per_min_at_limit * Math.pow(over, 1.5) * (push ? 2 : 1) * s
     * (moving ? 1 : tuning.slip_standing_mult);
+}
+
+/**
+ * Chance of slipping on one step on steep unroped ground (or on the rope, scaled
+ * down). Careless steps and steps down are riskier.
+ */
+export function slipChancePerStep(slopeDeg, { surface = 'firm_snow', careless = false, turning = false, downhill = false } = {}) {
+  const over = Math.max(0, slopeDeg - tuning.climb_start_deg) / (tuning.no_rope_max_deg - tuning.climb_start_deg);
+  const s = tuning.surfaces[surface]?.slip ?? 1;
+  return tuning.slip_per_step_at_limit * Math.pow(over, 1.5) * s
+    * (careless ? tuning.careless_step_mult : 1)
+    * (turning ? tuning.turn_step_mult : 1)
+    * (downhill ? tuning.descent_slip_mult : 1);
+}
+
+/** Chance per mountain minute of tripping while going downhill. */
+export function tripChancePerMin(slopeDeg, push) {
+  const over = Math.max(0, slopeDeg - tuning.trip_start_deg) / (tuning.climb_start_deg - tuning.trip_start_deg);
+  return tuning.trip_per_min_at_climb_start * over * over * (push ? 1 : tuning.trip_careful_mult);
+}
+
+/** Breaths a climber needs for each step uphill at this altitude. */
+export function breathsPerStep(altitude) {
+  return curve(tuning.breaths_per_step, altitude);
 }
