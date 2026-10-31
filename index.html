@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>K2 Climbing</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='20' fill='%231d3557'/%3E%3Cpath d='M8 112 L52 40 L64 52 L78 22 L120 112 Z' fill='%236c757d'/%3E%3Cpath d='M78 22 L90 48 L82 44 L74 54 L64 52 Z' fill='%23f1f5f9'/%3E%3C/svg%3E">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vignette"></div>
+
+<div id="hud" class="panel">
+  <div class="big" id="alt">— m</div>
+  <div class="row">Terrain <b id="terrain">—</b></div>
+  <div class="row">Slope <b id="slope">—</b></div>
+  <div class="row">Vertical <b id="vnow">—</b></div>
+  <div class="row">Avg (1 h) <b id="vavg">—</b></div>
+  <div class="row">Clock <b id="clock">—</b></div>
+  <div class="row">To summit <b id="dist">—</b></div>
+  <hr>
+  <div class="label">Stamina</div>
+  <div id="stamina"><div id="stamina-fill"></div><div id="stamina-cap" title="The most you can recover at this altitude"></div></div>
+  <div id="breath"><div id="breath-dial"><div id="breath-ring"></div></div><span id="breath-text"></span></div>
+</div>
+
+<div id="map-panel" class="panel"><canvas id="map" width="340" height="340"></canvas></div>
+
+<div id="prompt"></div>
+<div id="message"></div>
+<div id="keys">
+  <kbd>WASD</kbd> move · <kbd>Shift</kbd> push pace · <kbd>C</kbd> clip/unclip rope · mouse look (click) · wheel zoom ·
+  <kbd>V</kbd> view · <kbd>T</kbd> time speed · <kbd>1</kbd>–<kbd>9</kbd> jump to camp · <kbd>F</kbd> scout fly · <kbd>M</kbd> mute
+</div>
+
+<div id="loading">Loading K2…</div>
+<div id="start">
+  <div class="card panel">
+    <h1>K2 Climbing</h1>
+    <p>You're at Base Camp on the Godwin-Austen Glacier, 5,000 m. The real mountain, from satellite elevation data.</p>
+    <p>Below 30° you walk. Steeper, you climb, and over 45° an unroped slip sends you sliding, so clip into the fixed ropes with <kbd>C</kbd>. The air thins as you go: pace drops to under 100 m an hour near the summit, and your stamina drains faster and refills slower.</p>
+    <p>The mountain clock runs 10× real time (<kbd>T</kbd> to change). Press <kbd>2</kbd> to jump to the foot of the ropes.</p>
+    <button id="go">Start climbing</button>
+  </div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
