@@ -1,8 +1,8 @@
 // The weather timeline, temperature, wind, visibility and the snowpack.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { Weather, windChill, weatherTuning as W } from '../src/sim/weather.js';
+import { Weather, windChill, mulberry32, weatherTuning as W } from '../src/sim/weather.js';
 import { loadHeightmap } from './helpers.js';
 
 const hm = loadHeightmap();
@@ -184,7 +184,11 @@ describe('weather on the climber', async () => {
     expect(c.health).toBeLessThan(h0);
   });
 
+  afterEach(() => vi.restoreAllMocks());
+
   it('lets ice fall from the serac when you are under the Bottleneck', () => {
+    // A fixed sequence of chances, so the calving (and anything else) always plays out the same.
+    vi.spyOn(Math, 'random').mockImplementation(mulberry32(42));
     const c = new Climber(hm, ropes, route.places);
     c.weather = new Weather(2, c.mountainSeconds);
     // Acclimatized, so altitude illness can't end the wait before the ice comes down.
@@ -204,6 +208,7 @@ describe('weather on the climber', async () => {
   });
 
   it('calves the terrain features\' Bottleneck serac when they are present', async () => {
+    vi.spyOn(Math, 'random').mockImplementation(mulberry32(42));
     const { TerrainFeatures } = await import('../src/sim/terrainFeatures.js');
     const defs = (await import('../src/data/features.json')).default;
     const features = new TerrainFeatures(hm, defs, { ropes, places: route.places });
