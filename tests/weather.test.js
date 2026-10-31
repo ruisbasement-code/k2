@@ -187,6 +187,8 @@ describe('weather on the climber', async () => {
   it('lets ice fall from the serac when you are under the Bottleneck', () => {
     const c = new Climber(hm, ropes, route.places);
     c.weather = new Weather(2, c.mountainSeconds);
+    // Acclimatized, so altitude illness can't end the wait before the ice comes down.
+    c.phys.acclimatized = 8611;
     const [x, z] = at('Bottleneck');
     c.placeAt(x, z, 0, 0);
     c.toggleClip();
@@ -207,6 +209,8 @@ describe('weather on the climber', async () => {
     const features = new TerrainFeatures(hm, defs, { ropes, places: route.places });
     const c = new Climber(hm, ropes, route.places, features);
     c.weather = new Weather(2, c.mountainSeconds);
+    // Acclimatized, so altitude illness can't end the wait before the ice comes down.
+    c.phys.acclimatized = 8611;
     const [x, z] = at('Bottleneck');
     c.placeAt(x, z, 0, 0);
     c.toggleClip();
