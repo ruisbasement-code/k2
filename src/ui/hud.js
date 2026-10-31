@@ -54,10 +54,11 @@ export class Hud {
     v.style.setProperty('--inner', `${(55 - 35 * strain - 3 * fill * strain).toFixed(1)}%`);
     v.style.opacity = (0.25 + 0.7 * strain).toFixed(3);
 
-    this._injury(dt);
+    const hurtFilter = this._injury(dt);
     const blur = c.mods.blur;
     this.canvas ??= document.getElementById('c');
-    this.canvas.style.filter = blur > 0.05 ? `blur(${(blur * 2.5).toFixed(2)}px) saturate(${(1 - blur * 0.5).toFixed(2)})` : '';
+    const sick = blur > 0.05 ? `blur(${(blur * 2.5).toFixed(2)}px) saturate(${(1 - blur * 0.5).toFixed(2)})` : '';
+    this.canvas.style.filter = [sick, hurtFilter].filter(Boolean).join(' ');
     $('health-fill').style.width = `${c.health}%`;
     $('health-cap').style.left = `${c.maxHealth}%`;
     $('health-cap').hidden = c.maxHealth >= 100;
@@ -230,17 +231,26 @@ export class Hud {
     else if (c.health > this.lastHealth + 20) this.flash = 0; // rescued or healed in a jump
     this.lastHealth = c.health;
     this.flash *= Math.exp(-dt * 2.2);
-    const hurt = c.dead ? 1 : Math.min(Math.max((70 - c.health) / 70, 0), 1);
-    const inner = 70 - 50 * hurt; // the clear middle shrinks from 70% to 20%
+    // Vision closes in from 80 health down: red, dark, blurred edges, and near
+    // death a narrow, pulsing tunnel with everything dim and grey.
+    const hurt = c.dead ? 1 : Math.min(Math.max((80 - c.health) / 75, 0), 1);
+    const deep = hurt * hurt;
+    this.beat = (this.beat ?? 0) + dt * (1.2 + 1.6 * hurt);
+    const pulse = deep * 0.5 * (1 + Math.sin(this.beat * Math.PI * 2)) * 0.5;
+    const inner = Math.max(2, 65 - 60 * hurt - 6 * pulse); // the clear middle shrinks from 65% to a few %
     const red = $('hurt');
     red.style.setProperty('--inner', `${inner.toFixed(1)}%`);
-    red.style.setProperty('--red', (0.25 + 0.6 * hurt + this.flash).toFixed(3));
+    red.style.setProperty('--red', Math.min(1, 0.3 + 0.7 * hurt + this.flash).toFixed(3));
+    red.style.setProperty('--dark', Math.min(0.97, 0.9 * deep + 0.15 * pulse).toFixed(3));
     red.style.setProperty('--flash', (this.flash * 0.45).toFixed(3));
     red.style.opacity = hurt > 0 || this.flash > 0.01 ? 1 : 0;
     const blur = $('hurt-blur');
-    blur.style.setProperty('--inner', `${inner.toFixed(1)}%`);
-    blur.style.setProperty('--blur', `${(6 * hurt + 4 * this.flash).toFixed(1)}px`);
+    blur.style.setProperty('--inner', `${Math.max(0, inner - 10).toFixed(1)}%`);
+    blur.style.setProperty('--blur', `${(14 * hurt + 4 * this.flash).toFixed(1)}px`);
     blur.style.opacity = hurt > 0.05 || this.flash > 0.05 ? 1 : 0;
+    // The whole view dims, loses colour and goes soft as well.
+    if (hurt < 0.02) return '';
+    return `blur(${(2.2 * deep).toFixed(2)}px) brightness(${(1 - 0.55 * deep).toFixed(2)}) saturate(${(1 - 0.8 * hurt).toFixed(2)}) contrast(${(1 - 0.25 * deep).toFixed(2)})`;
   }
 
   _axeText() {

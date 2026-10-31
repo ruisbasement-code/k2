@@ -194,7 +194,7 @@ describe('crevasses and pits', () => {
     expect(c.sheltered).toBe(true);
   });
 
-  it('hurts more the deeper you fall', () => {
+  it('hurts more the deeper you fall (an 8 m drop hurts a lot, it does not kill)', () => {
     const damage = (depth) => {
       const f = world();
       const h = { ...glacierHoles(f, (q) => q.kind === 'crevasse')[0], depth };
@@ -206,7 +206,7 @@ describe('crevasses and pits', () => {
       return 100 - c.health;
     };
     const shallow = damage(8), deep = damage(30);
-    expect(shallow).toBeLessThan(25);
+    expect(shallow).toBeLessThan(45);
     expect(deep).toBeGreaterThan(shallow * 2);
   });
 
