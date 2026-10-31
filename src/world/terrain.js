@@ -253,7 +253,7 @@ export function createDetailPatch(hm) {
         const fade = smooth(half, half - 10, edge);
         const base = hm.heightAt(x, z);
         pos[i * 3] = x;
-        pos[i * 3 + 1] = base + (fade > 0 ? hm.detail.at(x, z) * fade : 0.02);
+        pos[i * 3 + 1] = base + (fade > 0 ? hm.detail.at(x, z, true) * fade : 0.02);
         pos[i * 3 + 2] = z;
         if ((r & 3) === 0 && (c & 3) === 0) {
           const glacier = hm.glacierAt(x, z);
@@ -474,9 +474,10 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   vec2 downDir = length(n.xz) > 0.02 ? normalize(n.xz) : vec2(0.0, 1.0);
   vec2 across = vec2(-downDir.y, downDir.x);
   float acrossM = dot(p.xz, across);
-  float alongM = dot(p.xz, downDir);
+  // Distance down the face, counting the drop too, so cliffs don't stretch the streaks.
+  float alongM = dot(p.xz, downDir) - p.y;
   // Thin streaks: varied across the slope, stretched 15x down it.
-  float streaks = fbm(vec2(acrossM * 0.35, alongM * 0.023 + p.y * 0.02), 4);
+  float streaks = fbm(vec2(acrossM * 0.35, alongM * 0.023), 4);
   // Finer streaks only close up, faded out before they get small enough to shimmer.
   float closeUp = 1.0 - smoothstep(25.0, 90.0, dist);
   float streaksNear = closeUp > 0.0 ? mix(0.5, fbm(vec2(acrossM * 0.55, alongM * 0.05), 3), closeUp) : 0.5;
@@ -515,8 +516,8 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   vec3 glacierIce = mix(vec3(0.52, 0.66, 0.77), vec3(0.80, 0.86, 0.91), smoothstep(0.3, 0.75, medium));
   glacierIce = mix(glacierIce, vec3(0.45, 0.42, 0.38), smoothstep(0.55, 0.75, flowStreak) * 0.45);
   float iceCracks = near > 0.0 ? cracks(p + 3.1, vec3(0.0, 1.0, 0.0), 0.35) * near : 0.0;
-  glacierIce = mix(glacierIce, vec3(0.32, 0.45, 0.58), iceCracks * 0.5);
-  float glacierSnow = clamp(smoothstep(5250.0, 5550.0, h + (big - 0.5) * 300.0) + max(hollow, 0.0) * 1.5
+  glacierIce = mix(glacierIce, vec3(0.45, 0.56, 0.66), iceCracks * 0.22);
+  float glacierSnow = clamp(smoothstep(4950.0, 5250.0, h + (big - 0.5) * 300.0) + max(hollow, 0.0) * 1.5
     + (fine - 0.5) * 0.4 * near - 0.6 * moraine, 0.0, 1.0);
   float bare = 1.0 - moraine;
   vec3 glacierCol = mix(rubble, glacierIce, bare);

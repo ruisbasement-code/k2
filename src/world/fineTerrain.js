@@ -116,7 +116,7 @@ function relief(hm, x, z, y, camps) {
     const d = Math.hypot(x - c.x, z - c.z);
     if (d > c.flat + c.fade) continue;
     const w = smooth(c.flat + c.fade, c.flat, d);
-    off = c.base ? off * (1 - 0.7 * w) : off + (c.y - y - off) * w;
+    off = c.base ? off * (1 - 0.7 * w) : off + (c.y - y - off) * w * 0.8;
   }
   return off;
 }

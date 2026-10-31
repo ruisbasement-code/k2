@@ -11,6 +11,7 @@ import route from './data/route.json';
 import { Heightmap } from './world/heightmap.js';
 import { createTerrain, createDetailPatch } from './world/terrain.js';
 import { buildFineTerrain } from './world/fineTerrain.js';
+import { GlacierBlocks } from './world/glacierBlocks.js';
 import { TerrainDetail, campFlats } from './world/terrainDetail.js';
 import { FixedRopes } from './world/fixedRopes.js';
 import { createCamps } from './world/camps.js';
@@ -69,6 +70,10 @@ scene.add(detailPatch);
 const features = new TerrainFeatures(hm, featureDefs, { ropes, places: route.places });
 // The wanded trail across the glacier is trodden too.
 if (features.trail) hm.detail.addCorridor(features.trail.points);
+// Broken ice blocks and boulders strewn over the glaciers, clear of crevasses and seracs.
+hm.detail.keepClear = (x, z) => !features.holesNear(x, z, 30).length && !features.seracsNear(x, z, 10).length;
+const glacierBlocks = new GlacierBlocks(hm);
+scene.add(glacierBlocks);
 const featureMeshes = new FeatureMeshes(hm, features, terrain, ropes);
 scene.add(featureMeshes);
 scene.add(ropes.createMesh());
@@ -537,6 +542,7 @@ function frame(now) {
   animateModel(dt);
   updateTether(dt);
   detailPatch.userData.update(climber.position);
+  glacierBlocks.update(camera.position);
   updateCamera();
   audio.update();
   wind.update(climber.conditions);

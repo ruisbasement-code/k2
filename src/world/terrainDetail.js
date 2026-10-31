@@ -69,6 +69,9 @@ export function moraineAt(x, z) {
 /** The highest any relief stands above the base surface, metres. */
 export const MAX_RELIEF = 1.3;
 
+/** Size of the cells the glacier's ice blocks and boulders are scattered in, metres. */
+export const BLOCK_CELL = 9;
+
 export class TerrainDetail {
   /** @param flats places where the ground stays smooth (camps): [{x, z, r}] */
   constructor(hm, flats = []) {
@@ -112,8 +115,55 @@ export class TerrainDetail {
     return best;
   }
 
-  /** Relief above the base surface at (x, z), metres; never below a few cm. */
-  at(x, z) {
+  /**
+   * The ice block or boulder in glacier cell (i, j) (BLOCK_CELL m cells), or null:
+   * {x, z, r, h, yaw, rock}. Big snow-capped blocks of broken ice and moraine
+   * boulders are strewn over the glaciers, kept off camps and the trodden trail.
+   * glacierBlocks.js draws exactly these.
+   */
+  block(i, j) {
+    const key = i * 100003 + j;
+    this._blockCache ??= new Map();
+    if (this._blockCache.has(key)) return this._blockCache.get(key);
+    let b = null;
+    const x = (i + 0.2 + 0.6 * hash(i, j, 201)) * BLOCK_CELL, z = (j + 0.2 + 0.6 * hash(i, j, 202)) * BLOCK_CELL;
+    const glacier = this.hm.glacierAt(x, z);
+    if (glacier > 0.4 && hash(i, j, 203) < 0.55 * glacier) {
+      const g = this._ground(x, z);
+      const path = this.corridors.size ? this._corridorDistance(x, z) : 99;
+      const clear = !this.keepClear || this.keepClear(x, z);
+      if (g.camp > 0.99 && path > 6 && clear) {
+        const rock = moraineAt(x, z) > 0.5;
+        const size = hash(i, j, 204);
+        const r = rock ? 0.6 + 1.6 * size * size : 1.0 + 2.6 * size * size;
+        b = { x, z, r, h: r * (0.55 + 0.5 * hash(i, j, 205)), yaw: hash(i, j, 206) * Math.PI * 2, rock, i, j };
+      }
+    }
+    if (this._blockCache.size > 100000) this._blockCache.clear();
+    this._blockCache.set(key, b);
+    return b;
+  }
+
+  /** Height of the ice blocks and boulders at (x, z), above the ground beneath them. */
+  _blocksAt(x, z) {
+    const ci = Math.floor(x / BLOCK_CELL), cj = Math.floor(z / BLOCK_CELL);
+    let top = 0;
+    for (let dj = -1; dj <= 1; dj++) {
+      for (let di = -1; di <= 1; di++) {
+        const b = this.block(ci + di, cj + dj);
+        if (!b) continue;
+        const d = Math.hypot(x - b.x, z - b.z) / b.r;
+        if (d < 1) top = Math.max(top, b.h * Math.sqrt(1 - d * d));
+      }
+    }
+    return top;
+  }
+
+  /**
+   * Relief above the base surface at (x, z), metres; never below a few cm. The
+   * glacier blocks count too unless drawing (they have their own meshes).
+   */
+  at(x, z, drawing = false) {
     const { y, slope, glacier, camp } = this._ground(x, z);
     let flat = camp;
     const path = this.corridors.size ? this._corridorDistance(x, z) : 99;
@@ -144,7 +194,9 @@ export class TerrainDetail {
       const floor = path < 3 ? smooth(0.4, 0.8, path) : 1;
       trench = cover * (0.25 * floor + banks);
     }
-    return 0.03 + h * flat + trench * camp;
+    const ground = 0.03 + h * flat + trench * camp;
+    if (drawing || glacier < 0.3) return ground;
+    return Math.max(ground, this._blocksAt(x, z) * 0.92);
   }
 
   /**
@@ -211,6 +263,6 @@ export class TerrainDetail {
 export function campFlats(hm, places) {
   return places.filter((p) => p.tents > 0).map((p) => {
     const [x, z] = hm.gridToWorld(p.r, p.c);
-    return { x, z, r: 35 };
+    return { x, z, r: p.tents > 10 ? 130 : 35 };
   });
 }

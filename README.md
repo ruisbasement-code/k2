@@ -139,7 +139,8 @@ mountain, so from the summit down to Base Camp the ground is rebuilt on a grid f
 times finer (`src/world/fineTerrain.js`): faces stepped into flatter benches and
 steep rock bands, ribs and gullies down the fall line, rock buttresses, levelled
 shoulders where the high camps sit, and on the glaciers big ice hummocks, moraine
-ridges and broken blocks. Everything stands on this ground (it's what
+ridges and broken blocks, strewn with snow-capped ice blocks and moraine boulders
+(`src/world/glacierBlocks.js`, drawn instanced and only near you). Everything stands on this ground (it's what
 `Heightmap.heightAt` returns), and it's drawn in 500 m chunks at four levels of
 detail by distance.
 
