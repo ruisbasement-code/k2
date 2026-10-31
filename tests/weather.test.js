@@ -56,9 +56,24 @@ describe('weather', () => {
     w.force('clear');
     expect(w.conditionsAt(hm, p, 10).visibility).toBeGreaterThan(5000);
     w.force('storm');
-    expect(w.conditionsAt(hm, p, 10).visibility).toBeLessThan(300);
+    expect(w.conditionsAt(hm, p, 10).visibility).toBeLessThan(20);
     w.force('whiteout');
-    expect(w.conditionsAt(hm, p, 10).visibility).toBeLessThan(40);
+    expect(w.conditionsAt(hm, p, 10).visibility).toBeLessThan(15);
+  });
+
+  it('has a storm on most days, but they pass', () => {
+    let days = 0, stormy = 0;
+    for (let seed = 1; seed <= 10; seed++) {
+      const w = new Weather(seed, 0);
+      w._extend(30 * DAY);
+      for (let d = 0; d < 30; d++) {
+        days++;
+        if (w.spells.some((s) => (s.key === 'storm' || s.key === 'whiteout') && s.start < (d + 1) * DAY && s.end > d * DAY)) stormy++;
+      }
+      expect(w.spells.filter((s) => s.key === 'storm').every((s) => s.end - s.start <= 14 * 3600)).toBe(true);
+    }
+    expect(stormy / days).toBeGreaterThan(0.4);
+    expect(stormy / days).toBeLessThan(0.9);
   });
 
   it('builds fresh snow in storms, which raises the avalanche danger, then settles', () => {

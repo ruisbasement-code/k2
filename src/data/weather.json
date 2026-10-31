@@ -8,17 +8,17 @@
     "windy":    {"label": "High winds",     "cloud": 0.15, "snow": 0.0, "visibility_m": 20000, "wind": 2.6, "temp": -3, "fade_min": 45, "hours": [4, 18]},
     "fog":      {"label": "Fog",            "cloud": 0.8,  "snow": 0.0, "visibility_m": 70,    "wind": 0.6, "temp": -1, "fade_min": 25, "hours": [2, 8]},
     "snow":     {"label": "Snowing",        "cloud": 0.9,  "snow": 0.35, "visibility_m": 900,  "wind": 1.2, "temp": -3, "fade_min": 45, "hours": [2, 10]},
-    "storm":    {"label": "Snowstorm",      "cloud": 1.0,  "snow": 1.0, "visibility_m": 90,    "wind": 2.8, "temp": -8, "fade_min": 30, "hours": [3, 30]},
-    "whiteout": {"label": "Whiteout",       "cloud": 1.0,  "snow": 0.6, "visibility_m": 12,    "wind": 1.9, "temp": -5, "fade_min": 8,  "hours": [0.5, 3]}
+    "storm":    {"label": "Snowstorm",      "cloud": 1.0,  "snow": 1.0, "visibility_m": 6,     "wind": 2.8, "temp": -8, "fade_min": 20, "hours": [2, 14]},
+    "whiteout": {"label": "Whiteout",       "cloud": 1.0,  "snow": 0.6, "visibility_m": 4,     "wind": 1.9, "temp": -5, "fade_min": 8,  "hours": [0.5, 3]}
   },
 
   "_transitions": "Chance of each next spell after the current one. Afternoon (afternoon_hours) adds afternoon_storm_bonus to the chance of snow and storm, as summer clouds build over the Karakoram after midday.",
   "transitions": {
-    "clear":    {"clear": 0.35, "cloudy": 0.35, "windy": 0.15, "fog": 0.1, "snow": 0.05},
-    "cloudy":   {"clear": 0.3, "cloudy": 0.1, "fog": 0.15, "snow": 0.3, "storm": 0.1, "whiteout": 0.05},
+    "clear":    {"clear": 0.35, "cloudy": 0.3, "windy": 0.15, "fog": 0.1, "snow": 0.05, "storm": 0.05},
+    "cloudy":   {"clear": 0.25, "cloudy": 0.05, "fog": 0.1, "snow": 0.25, "storm": 0.25, "whiteout": 0.1},
     "windy":    {"clear": 0.45, "cloudy": 0.3, "storm": 0.15, "windy": 0.1},
-    "fog":      {"clear": 0.3, "cloudy": 0.4, "snow": 0.15, "whiteout": 0.15},
-    "snow":     {"cloudy": 0.35, "storm": 0.25, "whiteout": 0.15, "clear": 0.15, "fog": 0.1},
+    "fog":      {"clear": 0.25, "cloudy": 0.35, "snow": 0.15, "whiteout": 0.25},
+    "snow":     {"cloudy": 0.25, "storm": 0.4, "whiteout": 0.15, "clear": 0.1, "fog": 0.1},
     "storm":    {"snow": 0.35, "cloudy": 0.3, "windy": 0.2, "whiteout": 0.15},
     "whiteout": {"snow": 0.4, "cloudy": 0.3, "storm": 0.2, "fog": 0.1}
   },

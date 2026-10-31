@@ -115,7 +115,10 @@ export class Sky {
       top.lerp(fog, thick);
       this.sun.castShadow = overcast < 0.85;
       // Exponential fog that leaves about 2% contrast at the visibility distance.
-      this.fog.density = Math.max(BASE_FOG_DENSITY, 1.98 / weather.visibility);
+      // Seen from behind, the climber stays in view: the fog starts closing in at
+      // your own position, so you still see only a few metres past yourself.
+      const seen = weather.visibility + 1.5 * playerPos.distanceTo(cameraPos);
+      this.fog.density = Math.max(BASE_FOG_DENSITY, 1.98 / seen);
     } else {
       this.fog.density = BASE_FOG_DENSITY;
     }

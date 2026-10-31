@@ -192,7 +192,7 @@ export class Hud {
     if (ph.hydration < 30) return 'Dehydrated. Drink (H), or melt snow in a tent (K).';
     if (ph.food < tuning.low_sugar_below) return 'Low on energy. Eat a snack (B).';
     const w = c.conditions;
-    if (w && w.visibility < 40) return 'Whiteout: you can barely see your feet. Stay on the rope or wait it out.';
+    if (w && w.visibility < 40) return `You can see ${Math.max(1, Math.round(w.visibility))} m. Stay on the rope or wait it out in a tent.`;
     if (w && w.gust > 22 && c.slope > tuning.climb_start_deg && !c.clipped) return 'Violent gusts on steep ground: clip in or get off the ridge.';
     if (c.health < 50) return 'Injured. Rest to heal, faster in a camp, or sleep in a tent.';
     if (body.stamina < 25) return 'Nearly spent. Stop and rest.';

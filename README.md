@@ -240,7 +240,7 @@ They show up on the conditions list and multiply into movement.
 
 The weather comes in spells: **clear**, **cloudy**, **high winds**, **fog**, **snowing**,
 **snowstorm** and **whiteout**. Each lasts from under an hour (a whiteout) to more than a day
-(a long clear window or a big storm), and the next one is picked from what usually follows,
+(a long clear window), and the next one is picked from what usually follows,
 with snow and storms much more likely to build in the afternoon. Most spells fade in over
 half an hour or more; a whiteout closes in within minutes. The weather is a seeded timeline,
 so the same `?seed=` gives the same season.
@@ -253,8 +253,10 @@ so the same `?seed=` gives the same season.
   seconds. It mostly blows from the west. Over about 40 km/h it pushes you downwind (a
   third as much on the rope), walking into it slows you, and gusts over about 85 km/h can
   throw you off steep unroped ground. **Feels like** is the wind chill.
-- **Visibility** follows the weather: 60 km on a clear day, under 200 m in a storm, tens of
-  metres in fog and about 10 m in a whiteout, where sky and snow merge into one grey.
+- **Visibility** follows the weather: 60 km on a clear day, tens of metres in fog, and only a
+  few metres in a snowstorm or whiteout, where sky and snow merge into one grey. Storms are
+  common but mostly short (2 to 14 hours): about two days in three have one at some point.
+  In third person the fog starts at the climber, so you still see yourself.
   On cloudy days a cloud band sits between about 6,300 and 7,600 m, so you climb up into it
   and out above it. Fog and cloud drift through, so visibility comes and goes over minutes,
   and strong wind lifts spindrift off the ridges. Falling and blowing snow streams past with
