@@ -182,6 +182,12 @@ export class Climber {
      * dangling (seconds until you regrab it from its leash after losing your grip).
      */
     this.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
+    /**
+     * Trekking poles (if packed): out in your hands or strapped to the pack. They
+     * help on gentle ground and skate on steep ground, where the axe belongs.
+     */
+    this.poles = { inHand: false };
+    this._polesWarned = false;
     /** Grip on the axe while hanging on a steep wall, 0..100. */
     this.grip = 100;
     /** On snow or ice too steep to walk, hanging on the axe between swings. */
@@ -265,9 +271,13 @@ export class Climber {
 
   /** The steepest ground you can go up right now. */
   get maxClimbDeg() {
-    if (this.clipped) return 90;
+    const snowIce = AXE_GROUND.has(this.surface?.key);
+    // The rope catches a fall, but on snow and ice it doesn't pull you up: you
+    // still kick steps and plant the axe, and swing up the steepest of it.
+    // On rock (and walls too steep to swing up) you jumar up the rope.
+    if (this.clipped && (!snowIce || this.slope > tuning.axe_wall_max_deg)) return 90;
     // Kicking steps and planting the axe gets you up steeper snow and ice.
-    if (this.axeReady && AXE_GROUND.has(this.surface?.key)) return tuning.axe_climb_max_deg;
+    if (this.axeReady && snowIce) return tuning.axe_climb_max_deg;
     return tuning.no_rope_max_deg;
   }
 
@@ -292,7 +302,55 @@ export class Climber {
     } else {
       a.inHand = true;
       a.drawing = tuning.axe_draw_s;
-      if (!this.falling) this.onMessage('Ice axe in hand: steeper snow and ice, and a real self-arrest.');
+      const swapped = this.poles.inHand;
+      this.poles.inHand = false;
+      if (!this.falling) this.onMessage(`${swapped ? 'Poles strapped to your pack. ' : ''}Ice axe in hand: steeper snow and ice, and a real self-arrest.`);
+    }
+  }
+
+  /** Trekking poles out and in your hands. */
+  get polesReady() {
+    return this.poles.inHand && this.pack.gear.has('poles');
+  }
+
+  /** Poles out on gentle ground: a quicker, easier stride. */
+  get polesHelp() {
+    return this.polesReady && this.groundMode === Mode.WALK && this.slope < tuning.poles_gentle_deg;
+  }
+
+  /** Poles out on steep ground, unroped: they skate where an axe would bite. */
+  get polesOnSteep() {
+    return this.polesReady && !this.clipped && this.slope > tuning.poles_steep_deg;
+  }
+
+  /** Take the trekking poles out (stowing the axe) or strap them to the pack. */
+  togglePoles() {
+    if (!this.pack.gear.has('poles')) {
+      this.onMessage('You have no trekking poles. Pack a pair at Base Camp.');
+      return;
+    }
+    if (this.poles.inHand) {
+      this.poles.inHand = false;
+      this.onMessage('Poles strapped to your pack.');
+      return;
+    }
+    const hadAxe = this.axe.inHand;
+    if (hadAxe) this.axe = { ...this.axe, inHand: false, drawing: 0, dangling: 0 };
+    this.poles.inHand = true;
+    this.onMessage(`${hadAxe ? 'Axe stowed. ' : ''}Trekking poles out: quicker and easier on gentle ground. Swap to the axe (I) before it gets steep.`);
+  }
+
+  /** Warn once each time you take poles onto steep ground. */
+  _notePoles() {
+    if (this.polesOnSteep) {
+      if (!this._polesWarned) {
+        this._polesWarned = true;
+        this.onMessage(this.axe.have
+          ? 'Your poles skate on ground this steep. Get the ice axe out (I) or you will slip.'
+          : 'Your poles skate on ground this steep. Tread very carefully.');
+      }
+    } else if (this.slope < tuning.poles_steep_deg - 3 || !this.polesReady) {
+      this._polesWarned = false;
     }
   }
 
@@ -337,9 +395,15 @@ export class Climber {
       this.position.addScaledVector(this._swingDir, t.axe_swing_m * step * Math.cos(slope));
       this.hm.clampInside(this.position);
       this.position.y = this._groundAt(this.position.x, this.position.z);
+      if (this.clipped) this._keepOnLeash();
       this.heading = Math.atan2(-gx, -gz); // facing into the slope
       this.moving = true;
       this.effort = t.push_effort;
+    } else if (this.clipped) {
+      // Clipped in, you can sit back on the rope between swings and get your breath back.
+      this.grip = Math.min(100, this.grip + t.axe_grip_regen_per_s * dt);
+      this.moving = false;
+      this.effort = 0;
     } else {
       // Hanging: arms and calves burn; more on steeper ground and when spent.
       const steep = 1 + (this.slope - 45) / 20;
@@ -349,7 +413,8 @@ export class Climber {
     }
     if (this.grip <= 0 || (this.body.exhausted && this._swing <= 0)) {
       this.grip = 0;
-      this._startFall(gx, gz, "Your grip gave out and you came off the wall! Hold Space to arrest with the axe.", { back: false, head: false });
+      if (this.clipped) this._startRopeFall('Your grip gave out and you came off the wall! The rope will catch you.');
+      else this._startFall(gx, gz, "Your grip gave out and you came off the wall! Hold Space to arrest with the axe.", { back: false, head: false });
     }
   }
 
@@ -877,6 +942,7 @@ export class Climber {
     // A small ledge underfoot gives you somewhere flatter to stand.
     this.onLedge = !!ledgeAt(this.position.x, this.position.z, this.slope);
     this._noteFeatures();
+    this._notePoles();
     const footing = this._footingSlope(this.slope, this.onLedge);
     // Crampons kicked in and the axe planted hold you on steep snow and ice.
     const axeBites = this.axeReady && AXE_GROUND.has(this.surface.key);
@@ -885,7 +951,8 @@ export class Climber {
     const clipped = this.clipped;
     // On steep ground, clipped in means jumaring.
     if (clipped && this.groundMode !== Mode.WALK) this.mode = Mode.ROPE;
-    this.onAxeWall = !clipped && axeBites && !this.onLedge
+    // Clipped in or not: the rope only protects you while you swing up.
+    this.onAxeWall = axeBites && !this.onLedge
       && this.slope >= tuning.axe_climb_max_deg && this.slope <= tuning.axe_wall_max_deg;
     if (this.onAxeWall) {
       this._axeWall(dtM, dt, gx, gz, input);
@@ -926,6 +993,7 @@ export class Climber {
         target = Pace.groundSpeed(climbing, this.slope, grade, this.breathAltitude) * ground;
         if (rope) target = this._ropeAssist(target, dir, grade, rope);
         target *= amount * this.body.speedFactor() * this.mods.speed;
+        if (this.polesHelp) target *= t.poles_speed;
         if (this.zone) target *= this.zone.speed;
         if (this.pushing) target *= Pace.pushFactor(this.breathAltitude);
         target *= this._windPace(dir);
@@ -948,7 +1016,7 @@ export class Climber {
     }
     const climbing = this.groundMode !== Mode.WALK;
     this.effort = wants && target > 0 ? Pace.effort(climbing, grade, this.pushing) * (1 + t.sink_effort * this.sink) * this.mods.effort
-      * (axeBites && climbing ? t.axe_climb_effort : 1) : 0;
+      * (axeBites && climbing ? t.axe_climb_effort : 1) * (this.polesHelp ? t.poles_effort : 1) : 0;
     if (this.gasping) this.effort = 0.3;
     this.moving = this.pace > 0;
     this._breathPace(dtM, grade, climbing);
@@ -1045,6 +1113,8 @@ export class Climber {
     if (SNOW.has(this.surface.key)) chance *= 1 - 0.5 * this.packing;
     // Each step backed by a planted axe: a stumble is held before it becomes a slip.
     if (this.axeReady && AXE_GROUND.has(this.surface.key)) chance *= t.axe_slip_mult;
+    // Leaning on poles that skate: a stumble becomes a slip.
+    if (this.polesOnSteep) chance *= t.poles_steep_slip_mult;
     if (this.zone && !clipped) chance *= this.zone.slip;
     if (clipped) chance *= t.rope_slip_mult;
     chance *= this.mods.slip;
@@ -1076,6 +1146,7 @@ export class Climber {
     if (this.clipped) return;
     let perMin = Pace.slipChancePerMin(this.slope, this.pushing, this.surface.key, moving) * this.mods.slip;
     if (this.axeReady && AXE_GROUND.has(this.surface.key)) perMin *= tuning.axe_slip_mult;
+    if (this.polesOnSteep) perMin *= tuning.poles_steep_slip_mult;
     if (perMin <= 0) return;
     if (Math.random() < (perMin * dtM) / 60) {
       this._startFall(gx, gz, `You slipped on the ${this.surface.label.toLowerCase()}! Hold Space to self-arrest.`);

@@ -198,6 +198,7 @@ function useSlot(i) {
   if (!it) return;
   if (['gps', 'monitor', 'map'].includes(it.id)) holdDevice(it.id);
   else if (it.id === 'axe' || it.id === 'axe_tech') climber.toggleAxe();
+  else if (it.id === 'poles') climber.togglePoles();
   else inventory.actions.use(it.id);
 }
 
@@ -462,10 +463,21 @@ function slideOrientation(c) {
   model.position.copy(c.position).addScaledVector(_U, -0.9).addScaledVector(_N, 0.2);
 }
 
+/** What's in the hands, for posing: the axe once drawn, or the trekking poles. */
+function heldGear() {
+  const a = climber.axe;
+  const poles = climber.pack.gear.has('poles');
+  model.held = {
+    axe: a.have && a.inHand && a.drawing <= 0,
+    poles: climber.polesReady,
+    stowedPoles: poles && !climber.polesReady,
+  };
+}
+
 /** The axe in the hand only while it's drawn; on the pack when stowed; nowhere once lost. */
 function showAxe() {
   const a = climber.axe;
-  const held = a.have && a.inHand && a.drawing <= 0;
+  const held = model.held.axe;
   if (model.axe) model.axe.visible = model.axe.visible && held;
   if (model.stowedAxe) model.stowedAxe.visible = a.have && !held;
 }
@@ -475,6 +487,7 @@ function animateModel(dt) {
   // In first person you see your own body (the head is hidden), unless scouting.
   model.visible = !(view.firstPerson && c.mode === Mode.FLY);
   model.firstPerson = view.firstPerson;
+  heldGear();
   if (c.tumbling || c.dead || c.collapsed) {
     ragdoll.update(dt, c.position, c.velocity, c.dead || !!c.collapsed);
     return;
