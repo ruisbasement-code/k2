@@ -379,6 +379,15 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
 
 ![The climber](docs/screenshots/climber.png)
 
+**First person** (V) puts the camera in the climber's head: look down to see your own
+mitts, legs and boots, and on steep ground your hands reaching up the slope.
+
+**Headlamp** (L) cycles through off, regular, high beam, red (keeps your night vision)
+and flashing. It lights where you look in first person and where your head points in
+third person, and the lens on the helmet glows in the lamp's colour.
+
+![Headlamp at night](docs/screenshots/headlamp-night.png)
+
 ## Project layout
 
 ```
