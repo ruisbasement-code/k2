@@ -185,4 +185,24 @@ describe('weather on the climber', async () => {
     expect(released).toBe(true);
     expect(c.mode).not.toBe(Mode.FLY);
   });
+
+  it('calves the terrain features\' Bottleneck serac when they are present', async () => {
+    const { TerrainFeatures } = await import('../src/sim/terrainFeatures.js');
+    const defs = (await import('../src/data/features.json')).default;
+    const features = new TerrainFeatures(hm, defs, { ropes, places: route.places });
+    const c = new Climber(hm, ropes, route.places, features);
+    c.weather = new Weather(2, c.mountainSeconds);
+    const [x, z] = at('Bottleneck');
+    c.placeAt(x, z, 0, 0);
+    c.toggleClip();
+    c.mountainSeconds = 14 * 3600;
+    c.timeScale = 60;
+    let released = false;
+    for (let i = 0; i < 4000 && !released; i++) {
+      c.update(FRAME, { x: 0, y: 0 });
+      released = features.icefall.rocks.length > 0;
+    }
+    expect(released).toBe(true);
+    expect(c.rockfall.rocks.some((r) => r.ice && r.size > 0.39)).toBe(false);
+  });
 });

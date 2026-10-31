@@ -25,6 +25,9 @@ import { Tether } from './world/tether.js';
 import { Weather, weatherTuning } from './sim/weather.js';
 import { Precipitation, AvalancheMesh } from './world/weatherView.js';
 import { WindAudio } from './player/windAudio.js';
+import { TerrainFeatures } from './sim/terrainFeatures.js';
+import { FeatureMeshes } from './world/featureMeshes.js';
+import featureDefs from './data/features.json';
 
 const EYE_HEIGHT = 1.65;
 
@@ -44,13 +47,17 @@ const sky = new Sky(scene);
 const params = new URLSearchParams(location.search);
 const loading = document.getElementById('loading');
 const hm = await Heightmap.load();
-scene.add(createTerrain(hm));
+const terrain = createTerrain(hm);
+scene.add(terrain);
 const ropes = new FixedRopes(hm, route.fixed_ropes);
+const features = new TerrainFeatures(hm, featureDefs, { ropes, places: route.places });
+const featureMeshes = new FeatureMeshes(hm, features, terrain, ropes);
+scene.add(featureMeshes);
 scene.add(ropes.createMesh());
 const camps = createCamps(hm, route.places, ropes);
 scene.add(camps);
 
-const climber = new Climber(hm, ropes, route.places);
+const climber = new Climber(hm, ropes, route.places, features);
 climber.tents = camps.userData.tents;
 const rockMesh = new RockfallMesh(climber.rockfall);
 scene.add(rockMesh);
@@ -100,6 +107,7 @@ input.on('KeyO', () => climber.cycleOxygen());
 input.on('KeyP', () => climber.takeDex());
 input.on('KeyG', () => climber.resupply());
 input.on('KeyY', () => climber.cycleTurnaround());
+input.on('KeyX', () => climber.probe());
 input.on('KeyM', () => {
   audio.muted = wind.muted = !audio.muted;
   hud.showMessage(audio.muted ? 'Sound muted' : 'Sound on');
@@ -225,7 +233,7 @@ function animateModel(dt) {
   model.position.y -= c.sink * 0.8;
   const exposure = Math.min(Math.max((c.slope - 25) / 30, 0), 1);
   model.rotation.set(0, model.rotation.y, exposure * 0.03 * Math.sin(view.time * 0.9) + c.shake * 0.12 * Math.sin(view.time * 29));
-  let pose = { climb: 'climb', steep: 'climb', rope: 'rope', fly: 'fly' }[c.mode] ?? 'walk';
+  let pose = { climb: 'climb', steep: 'climb', rope: 'rope', fly: 'fly', hole: 'climb' }[c.mode] ?? 'walk';
   const winded = c.body.stamina < c.body.staminaCap(c.breathAltitude) - 5 || c.body.exhausted;
   if (!c.moving && c.mode !== Mode.FLY && winded) pose = 'rest';
   // On steep ground (or a rope) you always face into the slope: backing down it
@@ -240,7 +248,7 @@ function animateModel(dt) {
   model.rotation.y += diff * (1 - Math.exp(-dt * 10));
   // Cadence is shown at a believable rate no matter how fast mountain time runs.
   // Backing down runs the climbing cycle in reverse.
-  const cadence = { walk: 5, climb: 3, steep: 3, rope: 2.5 }[c.mode] ?? 0;
+  const cadence = { walk: 5, climb: 3, steep: 3, rope: 2.5, hole: 2 }[c.mode] ?? 0;
   if (c.moving) view.gait += dt * cadence * (backing ? -1 : 1);
   if (pose === 'rest') view.gait += (dt * c.body.breathRate / 60) * Math.PI * 2;
   // Ground rise in the direction the model faces, for fitting hands and feet to the slope.
@@ -284,6 +292,7 @@ function frame(now) {
   climber.update(dt, input.movement());
   rockMesh.update();
   ledges.update(climber.position);
+  featureMeshes.update(climber.position);
   animateModel(dt);
   updateTether(dt);
   updateCamera();
@@ -304,4 +313,4 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__k2 = { climber, hm, ropes, teleport, view, tether, weather: climber.weather };
+window.__k2 = { climber, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather };

@@ -3,9 +3,15 @@
 // Each vertex carries surface data for the shader in a `surf` attribute:
 // x = slope (0 to 1 for 0 to 90 degrees), y = glacier mask,
 // z = curvature (above 0.5 is a hollow where snow collects, below is a ridge).
+//
+// Open crevasses and pits near the climber are cut out of the surface (see
+// setHoles), so you can see down into them and fall in.
 
 import * as THREE from 'three';
 import { smooth } from './heightmap.js';
+
+/** How many open holes the terrain shader can cut out at once. */
+export const MAX_TERRAIN_HOLES = 48;
 
 export function createTerrain(hm) {
   const { n, cell } = hm;
@@ -53,7 +59,12 @@ export function createTerrain(hm) {
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
   geo.computeBoundingSphere();
 
-  const terrain = new THREE.Mesh(geo, terrainMaterial(false));
+  const holes = {
+    uHoleA: { value: Array.from({ length: MAX_TERRAIN_HOLES }, () => new THREE.Vector4()) },
+    uHoleB: { value: Array.from({ length: MAX_TERRAIN_HOLES }, () => new THREE.Vector4()) },
+    uHoleCount: { value: 0 },
+  };
+  const terrain = new THREE.Mesh(geo, terrainMaterial(false, holes));
   terrain.receiveShadow = true;
 
   // Low ground beyond the edge of the data, so the horizon is not a void.
@@ -64,12 +75,23 @@ export function createTerrain(hm) {
   outer.position.y = 4550;
   const group = new THREE.Group();
   group.add(terrain, outer);
+  /** Cut these open holes ({x, z, ux, uz, half, width, kind}) out of the surface, nearest first. */
+  group.userData.setHoles = (list) => {
+    const n = Math.min(list.length, MAX_TERRAIN_HOLES);
+    for (let i = 0; i < n; i++) {
+      const h = list[i];
+      holes.uHoleA.value[i].set(h.x, h.z, h.ux, h.uz);
+      holes.uHoleB.value[i].set(h.half, h.width, h.kind === 'pit' || h.kind === 'moulin' ? 1 : 0, 0);
+    }
+    holes.uHoleCount.value = n;
+  };
   return group;
 }
 
-function terrainMaterial(flatGround) {
+function terrainMaterial(flatGround, holes = null) {
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 });
   mat.onBeforeCompile = (sh) => {
+    if (holes) Object.assign(sh.uniforms, holes);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
 attribute vec3 surf;
@@ -83,7 +105,12 @@ vSurf = surf;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 ${flatGround ? '#define FLAT_GROUND' : ''}
+${holes ? `#define TERRAIN_HOLES ${MAX_TERRAIN_HOLES}` : ''}
 ${TERRAIN_GLSL}`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+#ifdef TERRAIN_HOLES
+if (inHole(vW.xz)) discard;
+#endif`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 TerrainSample ts = terrainSample(vW, normalize(vWN), vSurf, cameraPosition);
 diffuseColor.rgb = ts.albedo;`)
@@ -150,6 +177,29 @@ vec3 perturbNormal(vec3 pos, vec3 n, float height) {
   vec3 grad = sign(det) * (dhdx * r1 + dhdy * r2);
   return normalize(abs(det) * n - grad);
 }
+
+#ifdef TERRAIN_HOLES
+uniform vec4 uHoleA[TERRAIN_HOLES];
+uniform vec4 uHoleB[TERRAIN_HOLES];
+uniform int uHoleCount;
+
+// Inside an open crevasse (a lens tapering to its ends) or pit (a circle)?
+bool inHole(vec2 p) {
+  for (int i = 0; i < TERRAIN_HOLES; i++) {
+    if (i >= uHoleCount) break;
+    vec4 a = uHoleA[i];
+    vec4 b = uHoleB[i];
+    vec2 d = p - a.xy;
+    float u = dot(d, a.zw);
+    if (abs(u) >= b.x) continue;
+    float v = dot(d, vec2(-a.w, a.z));
+    float t = u / b.x;
+    float w = b.z > 0.5 ? b.y * sqrt(1.0 - t * t) : b.y * sqrt(1.0 - t * t * t * t);
+    if (abs(v) < w) return true;
+  }
+  return false;
+}
+#endif
 
 struct TerrainSample { vec3 albedo; float roughness; float bump; };
 

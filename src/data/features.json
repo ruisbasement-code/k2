@@ -1,0 +1,46 @@
+{
+  "_note": "Hand-placed terrain features on the 641 x 641 grid (r = row from north, c = column from west). Crevasses, pits and small seracs on the glaciers are generated from the terrain (see sim/terrainFeatures.js); these are the named ones. Positions follow the real route as closely as the 31 m elevation model allows, and the cols are the saddles in the elevation data nearest their published heights.",
+
+  "_wand_trail": "Expeditions mark a safe line across the Godwin-Austen Glacier from Base Camp to the foot of the Abruzzi Spur with bamboo wands. Crevasses are kept clear of it; leave it and you are on your own.",
+  "wand_trail": {"name": "Wanded trail to Advanced Base Camp", "points": [[479, 340], [455, 353], [432, 365], [416, 374], [400, 382]], "clear_m": 12},
+
+  "_bergschrund": "The big crevasse where the glacier pulls away from the foot of the Abruzzi Spur. Bridged where the wanded trail crosses it.",
+  "bergschrunds": [
+    {"name": "Bergschrund under the Abruzzi Spur", "at": [413.5, 375.6], "length_m": 260, "width_m": 3.5, "depth_m": 28, "gap_m": 14}
+  ],
+
+  "_seracs": "Hanging ice cliffs. The Bottleneck serac hangs over the couloir and the Traverse at about 8,400 m; climbers pass beneath it for an hour or more. Its blocks break off at any hour.",
+  "seracs": [
+    {"name": "Bottleneck serac", "from": [325.3, 326.6], "to": [321.6, 330.4], "height_m": [35, 70], "depth_m": 26, "icefall": true}
+  ],
+
+  "_cornices": "Wind-built snow lips overhanging the lee side of ridge crests, on whichever side of the crest drops away (the lee hint picks the side when both do; the prevailing wind is westerly). 'overhang' is the same thing on the edge of a rock step. Walk out onto one and it can break off under you.",
+  "cornices": [
+    {"name": "Summit ridge cornice", "kind": "cornice", "from": [324, 325], "to": [320.5, 320.5], "width_m": [3, 7], "lee": [1, -0.4]},
+    {"name": "Shoulder cornice", "kind": "cornice", "from": [345, 351], "to": [337, 341], "width_m": [2.5, 6], "lee": [1, 0.3]},
+    {"name": "Snow overhang above the Black Pyramid", "kind": "overhang", "from": [354, 360], "to": [349, 355], "width_m": [2, 4], "lee": [1, 0.5]},
+    {"name": "Snow overhang above House's Chimney", "kind": "overhang", "from": [370.5, 357.8], "to": [368.3, 355.2], "width_m": [1.5, 3], "lee": [1, 0.2]}
+  ],
+
+  "_caverns": "Snow caves and ice caverns: out of the wind. Resting in one heals nearly as well as a camp.",
+  "caverns": [
+    {"name": "Ice cavern in the bergschrund", "near": [412.5, 377.5], "radius_m": 4},
+    {"name": "Snow cave below Camp 3", "near": [352.5, 359], "radius_m": 3.5},
+    {"name": "Snow cave on the Shoulder", "near": [341, 349.5], "radius_m": 3.5}
+  ],
+
+  "_zones": "Technical sections. speed multiplies your pace, slip your chance of slipping unroped.",
+  "zones": [
+    {"name": "House's Chimney", "note": "a 30 m crack of steep rock, the crux below Camp 2", "points": [[369.9, 356.0], [368.8, 354.8]], "radius_m": 8, "speed": 0.45, "slip": 2.5, "walls": true},
+    {"name": "Black Pyramid", "note": "steep, broken rock and ice from Camp 2 to Camp 3", "points": [[367.4, 354.2], [361, 355.8], [352.4, 357.7]], "radius_m": 70, "speed": 0.7, "slip": 1.8, "rocks": true},
+    {"name": "The Bottleneck", "note": "a steep ice couloir under the serac", "points": [[333, 336], [329, 331]], "radius_m": 35, "speed": 0.8, "slip": 1.6},
+    {"name": "The Traverse", "note": "steep ice under the serac, exposed all the way", "points": [[329, 331], [326, 327], [324, 325]], "radius_m": 30, "speed": 0.8, "slip": 1.8}
+  ],
+
+  "_cols": "Saddles between peaks. The wind funnels through them.",
+  "cols": [
+    {"name": "Negrotto Col", "at": [292, 224], "height_m": 6250, "radius_m": 450, "note": "at the foot of K2's West Ridge"},
+    {"name": "Savoia Saddle", "at": [301, 175], "height_m": 6666, "radius_m": 450, "note": "between K2 and Savoia Kangri"},
+    {"name": "Windy Gap", "at": [205, 406], "height_m": 6233, "radius_m": 450, "note": "between K2's northeast side and Skyang Kangri"}
+  ]
+}

@@ -31,6 +31,13 @@
 // `conditions` holds the weather where you are (temperature, wind chill, wind,
 // visibility, avalanche danger) for the HUD and the body's survival systems.
 //
+// The terrain features the elevation grid can't show live in TerrainFeatures:
+// step on a hidden snow bridge and it can give way, dropping you into the
+// crevasse, where you have to climb out; open crevasses and pits swallow you
+// (and a slide that runs into one); cornices break under you; seracs block the
+// way and shed ice; snow caves shelter you; House's Chimney and the Black Pyramid
+// are slow, technical ground.
+//
 // Movement is simulated in mountain time: the world clock runs timeScale times
 // faster than real time, so a realistic 400 m per hour still gets you somewhere.
 // This class has no rendering in it, so tests can drive it directly.
@@ -45,29 +52,41 @@ import { airAt } from '../sim/environment.js';
 import { SnowTrail, Rockfall, isLoose, ledgeAt } from '../sim/hazards.js';
 import { weatherTuning as W } from '../sim/weather.js';
 import { Avalanches, isSlabSlope } from '../sim/avalanche.js';
+import { TerrainFeatures } from '../sim/terrainFeatures.js';
 
 const { tuning } = Pace;
 const DEG = 180 / Math.PI;
 const _UP = new THREE.Vector3(0, 1, 0);
 const SNOW = new Set(['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier']);
 
-export const Mode = { WALK: 'walk', CLIMB: 'climb', STEEP: 'steep', ROPE: 'rope', FALL: 'fall', DEAD: 'dead', FLY: 'fly' };
+export const Mode = { WALK: 'walk', CLIMB: 'climb', STEEP: 'steep', ROPE: 'rope', FALL: 'fall', HOLE: 'hole', DEAD: 'dead', FLY: 'fly' };
 const MODE_NAMES = {
   walk: 'Walking',
   climb: 'Scrambling',
   steep: 'Very steep',
   rope: 'Climbing on the rope',
   fall: 'Falling!',
+  hole: 'In a crevasse',
   dead: 'Dead',
   fly: 'Scout fly',
 };
 export const CLIP_RANGE = 5;
 
 export class Climber {
-  /** @param places camps from route.json, for rescue and resting */
-  constructor(hm, ropes, places = []) {
+  /**
+   * @param places camps from route.json, for rescue and resting
+   * @param features TerrainFeatures (crevasses, cornices, seracs…), or null for bare terrain
+   */
+  constructor(hm, ropes, places = [], features = null) {
     this.hm = hm;
     this.ropes = ropes;
+    this.features = features;
+    /** The technical section, snow cave and named place you're in. */
+    this.zone = null;
+    this.sheltered = false;
+    this.placeName = '';
+    /** The crevasse or pit you're in: {hole, rim, bottom}. */
+    this.inHole = null;
     this.places = places.filter((p) => p.tents > 0).map((p) => {
       const [x, z] = hm.gridToWorld(p.r, p.c);
       return { name: p.name, x, z };
@@ -165,8 +184,9 @@ export class Climber {
 
   placeAt(x, z, faceX, faceZ) {
     this.unclip();
-    if (this.mode === Mode.FLY || this.mode === Mode.FALL || this.mode === Mode.DEAD) this.mode = Mode.WALK;
-    this.position.set(x, this.hm.heightAt(x, z), z);
+    if ([Mode.FLY, Mode.FALL, Mode.DEAD, Mode.HOLE].includes(this.mode)) this.mode = Mode.WALK;
+    this.position.set(x, this._groundAt(x, z), z);
+    this.inHole = null;
     this.velocity.set(0, 0, 0);
     this.pace = 0;
     this.stepPhase = 1;
@@ -190,7 +210,7 @@ export class Climber {
       this.onMessage('Unclipped from the fixed rope');
       return;
     }
-    if (this.mode === Mode.FLY || this.mode === Mode.FALL || this.mode === Mode.DEAD) return;
+    if ([Mode.FLY, Mode.FALL, Mode.DEAD, Mode.HOLE].includes(this.mode)) return;
     const near = this.ropes.nearest(this._ropeProbe());
     if (near.rope < 0 || near.distance > CLIP_RANGE) {
       this.onMessage('No fixed rope within reach');
@@ -205,6 +225,8 @@ export class Climber {
   toggleFly() {
     if (this.mode === Mode.DEAD) return;
     this.unclip();
+    this.inHole = null;
+    this.placeName = '';
     this.mode = this.mode === Mode.FLY ? Mode.WALK : Mode.FLY;
     if (this.mode === Mode.WALK) this.position.y = this.hm.heightAt(this.position.x, this.position.z);
   }
@@ -503,11 +525,13 @@ export class Climber {
   modeName() {
     if (this.falling) {
       if (this.fall.rope) return 'Falling on the rope!';
+      if (this.fall.hole) return 'Falling into a crevasse!';
       if (this.tumbling) return 'Tumbling!';
       if (this.fall.arresting) return 'Self-arresting';
       if (this.runaway) return 'Sliding out of control!';
       return `Sliding ${this.slideHow()}!`;
     }
+    if (this.mode === Mode.HOLE) return `In a ${this.inHole.hole.kind === 'crevasse' || this.inHole.hole.kind === 'bergschrund' ? 'crevasse' : this.inHole.hole.kind}, ${Math.max(0, Math.round(this.inHole.rim - this.position.y))} m down`;
     if (this.mode === Mode.DEAD || this.mode === Mode.FLY) return MODE_NAMES[this.mode];
     if (this.body.exhausted) return 'Exhausted';
     if (this.gasping) return 'Gasping for breath';
@@ -565,6 +589,7 @@ export class Climber {
     this.mountainSeconds += dtM;
     this.pushing = !!input.push;
     this.blocked = false;
+    this.blockedByIce = false;
     this.moving = false;
     const startY = this.position.y;
     const wasFalling = this.falling;
@@ -584,6 +609,9 @@ export class Climber {
     if (this.mode === Mode.FALL) {
       this._fallStep(dt, !!input.arrest);
       this.effort = 0.6;
+    } else if (this.mode === Mode.HOLE) {
+      this._climbOut(dtM, input);
+      this._heal(dtM);
     } else {
       this._moveOnGround(dtM, input, dt);
       this._heal(dtM);
@@ -591,6 +619,7 @@ export class Climber {
     }
     this._rocks(dt, dtM);
     this._weatherStep(dt, dtM, wasFalling);
+    this._icefall(dt, dtM);
     this.shake *= Math.exp(-dt * 2.5);
     if (this.dead) return;
     this._stepBody(dtM / 3600, this.effort);
@@ -624,6 +653,7 @@ export class Climber {
     this.packing = SNOW.has(this.surface.key) ? this.trail.packing(this.position.x, this.position.z) : 0;
     // A small ledge underfoot gives you somewhere flatter to stand.
     this.onLedge = !!ledgeAt(this.position.x, this.position.z, this.slope);
+    this._noteFeatures();
     const footing = this._footingSlope(this.slope, this.onLedge);
     this.sink = this.surface.sink_m * (1 - this.packing);
     const clipped = this.clipped;
@@ -660,6 +690,7 @@ export class Climber {
         target = Pace.groundSpeed(climbing, this.slope, grade, this.breathAltitude) * ground;
         if (rope) target = this._ropeAssist(target, dir, grade, rope);
         target *= amount * this.body.speedFactor() * this.mods.speed;
+        if (this.zone) target *= this.zone.speed;
         if (this.pushing) target *= Pace.pushFactor(this.breathAltitude);
         target *= this._windPace(dir);
       }
@@ -699,11 +730,20 @@ export class Climber {
     const pulse = climbing ? 1 - Math.cos(2 * Math.PI * this.stepPhase) : 1;
     const travel = this.pace * dtM;
     this.stepPhase = Math.min(this.stepPhase + travel / stepLen, 1);
+    const from = this.position.clone();
     this.position.addScaledVector(dir, travel * pulse);
     this.hm.clampInside(this.position);
-    this.position.y = this.hm.heightAt(this.position.x, this.position.z);
+    if (this.features?.seracAt(this.position.x, this.position.z)) {
+      // A wall of ice: no way through, find a way round.
+      this.position.copy(from);
+      this.pace = 0;
+      this.blocked = this.blockedByIce = true;
+      return;
+    }
+    this.position.y = this._groundAt(this.position.x, this.position.z);
     this.heading = Math.atan2(-dir.x, -dir.z);
     if (clipped) this._keepOnLeash();
+    if (this._intoOpenHole()) return;
     this._maybeTrip(dtM, gx, gz, grade);
   }
 
@@ -735,6 +775,7 @@ export class Climber {
   _placeStep(dir, grade, gx, gz) {
     const t = tuning;
     const p = this.position;
+    if (this.features && !this.clipped && this._stepHazards(gx, gz)) return true;
     if (SNOW.has(this.surface.key)) {
       this._leftFoot = !this._leftFoot;
       const side = this._leftFoot ? -0.14 : 0.14;
@@ -765,6 +806,7 @@ export class Climber {
       surface: this.surface.key, careless: this.pushing, turning, downhill: grade < -0.05,
     });
     if (SNOW.has(this.surface.key)) chance *= 1 - 0.5 * this.packing;
+    if (this.zone && !clipped) chance *= this.zone.slip;
     if (clipped) chance *= t.rope_slip_mult;
     chance *= this.mods.slip;
     if (Math.random() < chance) {
@@ -858,6 +900,10 @@ export class Climber {
 
   /** Gravity, bounces off the terrain, friction and self-arrest, in small real-time steps. */
   _fallStep(dt, arrest) {
+    if (this.fall.hole) {
+      this._holeFallStep(dt);
+      return;
+    }
     const t = tuning;
     const v = this.velocity;
     const p = this.position;
@@ -877,6 +923,7 @@ export class Climber {
       const before = p.clone();
       p.addScaledVector(v, h);
       this.hm.clampInside(p);
+      if (!f.rope && this._slideIntoHole(p)) return;
       const ground = this.hm.heightAt(p.x, p.z);
       const hitGround = p.y <= ground;
       // Skimming just above the slope still counts as on it; only a real drop is airborne.
@@ -1139,14 +1186,24 @@ export class Climber {
     this.onMessage(above ? `Avalanche! A slope ${Math.round(d)} m above you has broken loose.` : `An avalanche thunders down ${Math.round(d)} m away.`);
   }
 
-  /** Ice calves off the serac above the Bottleneck, most in the warm afternoon. */
+  /**
+   * Ice calves off the serac above the Bottleneck, most in the warm afternoon.
+   * With the terrain features in, the blocks come off their Bottleneck serac.
+   */
   _seracFall(dtM, c) {
     if (!W.serac_enabled) return;
-    const s = this.serac;
+    const icefall = this.features?.icefalls[0];
+    const s = icefall ?? this.serac;
     const near = Math.hypot(s.x - this.position.x, s.z - this.position.z);
     if (near > W.serac_near_m) return;
     const warm = Math.max(0, 1 - Math.abs(this.hour - 14) / 5);
     if (Math.random() >= (W.serac_per_hour * (1 + W.serac_warm_mult * warm) * dtM) / 3600) return;
+    this.shake = Math.max(this.shake, 0.4);
+    if (icefall) {
+      this.features.releaseIcefall(icefall);
+      this.onMessage(`A crack like a gunshot: the ${icefall.name} is calving! Ice is coming down.`);
+      return;
+    }
     const [gx, gz] = this.hm.gradient(s.x, s.z);
     const g = Math.hypot(gx, gz) || 1;
     const down = new THREE.Vector3(-gx / g, 0, -gz / g);
@@ -1155,7 +1212,6 @@ export class Climber {
       const at = s.clone().add(new THREE.Vector3((Math.random() - 0.5) * 20, 1, (Math.random() - 0.5) * 20));
       this.rockfall.release(at, down.clone().multiplyScalar(2 + Math.random() * 3), 0.4 + Math.random() * 1.0, true);
     }
-    this.shake = Math.max(this.shake, 0.4);
     this.onMessage('A crack like a gunshot: the serac above is calving! Ice is coming down the Bottleneck.');
   }
 
@@ -1176,6 +1232,268 @@ export class Climber {
     this.fall.arresting = false;
     this.fall.avalanche = true;
     this._hurt(W.catch_damage, 'You were swept away by an avalanche.');
+  }
+
+  // ------------------------------------------------------------ terrain features
+
+  /** Height of the snow you stand on: the ground, or the top of a cornice over it. */
+  _groundAt(x, z) {
+    const y = this.hm.heightAt(x, z);
+    return this.features ? y + this.features.liftAt(x, z) : y;
+  }
+
+  /** Which technical section, snow cave and named place you're in. */
+  _noteFeatures() {
+    const f = this.features;
+    if (!f) return;
+    const { x, z } = this.position;
+    const zone = f.zoneAt(x, z);
+    if (zone && zone !== this.zone) this.onMessage(`${zone.name}: ${zone.note}.${this.clipped ? '' : ' Stay on the rope.'}`);
+    this.zone = zone;
+    const cave = f.cavernAt(x, z);
+    if (cave && !this.sheltered) this.onMessage(`${cave.name}: out of the wind. Rest here to recover.`);
+    this.sheltered = !!cave;
+    this.placeName = f.placeName(x, z);
+  }
+
+  /** How warm the snow is: bridges and cornices are weakest in the afternoon sun. */
+  _snowWarmth() {
+    const hr = this.hour;
+    if (hr >= 11 && hr <= 18) return tuning.bridge_warm_mult;
+    if (hr < 8 || hr > 21) return tuning.bridge_cold_mult;
+    return 1;
+  }
+
+  /**
+   * A step onto snow that may not hold: a hidden snow bridge over a crevasse, or
+   * a cornice over the drop. Returns true if it gave way.
+   */
+  _stepHazards(gx, gz) {
+    const t = tuning;
+    const f = this.features;
+    const { x, z } = this.position;
+    const hit = f.holeAt(x, z);
+    if (hit && !f.isOpen(hit.hole)) {
+      const h = hit.hole;
+      const chance = t.bridge_collapse_per_step * Math.max(0.1, 1.2 - h.strength) * this._snowWarmth() * (this.pushing ? 1.5 : 1);
+      if (Math.random() < chance) {
+        f.openBridge(h);
+        this._enterHole(hit, f.isKnown(h) ? 'The snow bridge gave way under you!' : 'The snow collapsed under you: a hidden crevasse!');
+        return true;
+      }
+      if (!f.isKnown(h) && this._hollowWarned !== h.id && Math.random() < t.bridge_hollow_warning) {
+        this._hollowWarned = h.id;
+        this.onMessage('The snow sounds hollow underfoot… Probe ahead with X.');
+      }
+    }
+    const lip = f.corniceAt(x, z);
+    if (lip) {
+      const kind = lip.cornice.kind === 'overhang' ? t.overhang_mult : 1;
+      const chance = t.cornice_break_per_step * lip.out * lip.out * kind * this._snowWarmth();
+      if (Math.random() < chance) {
+        f.breakCornice(lip);
+        // Down and out over the lee side with the falling snow.
+        const lee = lip.cornice.lee;
+        this.position.y = this.hm.heightAt(x, z);
+        this._startFall(-lee.x - gx * 0.5, -lee.z - gz * 0.5, `The ${lip.cornice.kind === 'overhang' ? 'snow overhang' : 'cornice'} broke off under you! Hold Space to self-arrest.`, { speed: 4, back: true });
+        this.velocity.y -= 2;
+        return true;
+      }
+      const key = `${lip.cornice.id}:${lip.section}`;
+      if (lip.out > 0.4 && this._corniceWarned !== key) {
+        this._corniceWarned = key;
+        this.onMessage(`Cracks run through the snow at your feet: you're out on a ${lip.cornice.kind === 'overhang' ? 'snow overhang' : 'cornice'}. Get back from the edge.`);
+      }
+    }
+    return false;
+  }
+
+  /** Walked into an open crevasse or pit, or one you broke into: in you go. */
+  _intoOpenHole() {
+    const f = this.features;
+    if (!f) return false;
+    const hit = f.holeAt(this.position.x, this.position.z);
+    if (!hit || !f.isOpen(hit.hole)) return false;
+    const name = hit.hole.kind === 'bergschrund' ? 'the bergschrund' : `a ${hit.hole.kind}`;
+    this._enterHole(hit, `You stepped into ${name}!`);
+    return true;
+  }
+
+  /** A slide that runs over a crevasse goes into it, through a bridge more often than not. */
+  _slideIntoHole(p) {
+    const f = this.features;
+    if (!f) return false;
+    const hit = f.holeAt(p.x, p.z);
+    if (!hit) return false;
+    const h = hit.hole;
+    if (!f.isOpen(h)) {
+      this.fall.bridges ??= new Set();
+      if (this.fall.bridges.has(h.id)) return false;
+      this.fall.bridges.add(h.id);
+      if (Math.random() >= tuning.slide_bridge_break) return false;
+      f.openBridge(h);
+    }
+    this._enterHole(hit, 'You slid straight into a crevasse!', true);
+    return true;
+  }
+
+  /** Start dropping into a crevasse or pit. */
+  _enterHole(hit, why, sliding = false) {
+    const rim = this.hm.heightAt(this.position.x, this.position.z);
+    const start = sliding ? this.fall.startY : this.position.y;
+    const v = sliding ? this.velocity.clone() : new THREE.Vector3();
+    this._startFall(0, 0, why);
+    this.fall.startY = start;
+    this.fall.hole = { hole: hit.hole, rim, bottom: rim - hit.hole.depth };
+    this.velocity.copy(v).multiplyScalar(0.3);
+    this.velocity.y = Math.min(this.velocity.y, -1);
+    this.shake = 1;
+  }
+
+  /** Keep a body inside the slot: along it, and between its walls. */
+  _confineToHole(p, hole) {
+    const dx = p.x - hole.x, dz = p.z - hole.z;
+    let u = dx * hole.ux + dz * hole.uz;
+    let v = -dx * hole.uz + dz * hole.ux;
+    u = Math.min(Math.max(u, -hole.half * 0.85), hole.half * 0.85);
+    const w = Math.max(0.05, TerrainFeatures.halfWidth(hole, u) * 0.7);
+    v = Math.min(Math.max(v, -w), w);
+    p.x = hole.x + hole.ux * u - hole.uz * v;
+    p.z = hole.z + hole.uz * u + hole.ux * v;
+  }
+
+  /** Dropping down the slot: the walls rub and slow you until you wedge at the bottom. */
+  _holeFallStep(dt) {
+    const t = tuning;
+    const v = this.velocity;
+    const p = this.position;
+    const { hole, bottom } = this.fall.hole;
+    const steps = Math.ceil(dt / 0.004);
+    const h = dt / steps;
+    for (let i = 0; i < steps; i++) {
+      v.y -= t.gravity * h;
+      v.y *= Math.max(0, 1 - t.hole_wall_drag * h);
+      v.x *= Math.exp(-4 * h);
+      v.z *= Math.exp(-4 * h);
+      p.addScaledVector(v, h);
+      this._confineToHole(p, hole);
+      if (p.y <= bottom) {
+        p.y = bottom;
+        const hit = -v.y;
+        this.fall.worstHit = Math.max(this.fall.worstHit, hit);
+        this.fall.topSpeed = Math.max(this.fall.topSpeed, hit);
+        const what = hole.kind === 'bergschrund' ? 'the bergschrund' : `a ${hole.kind === 'crevasse' ? 'crevasse' : hole.kind}`;
+        if (hit > t.safe_impact_m_s) this._hurt((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell ${Math.round(hole.depth)} m into ${what}.`);
+        if (this.dead) return;
+        v.set(0, 0, 0);
+        this.mode = Mode.HOLE;
+        this.inHole = this.fall.hole;
+        this.slope = 90;
+        this.onMessage(`You fell ${Math.round(hole.depth)} m into ${what}. Health ${Math.round(this.health)}. Face a wall and hold W to climb out.`);
+        return;
+      }
+    }
+    this.fall.time += dt;
+  }
+
+  /**
+   * Climbing out of a crevasse: slow, exhausting work up an ice wall, and you can
+   * peel off back to the bottom. Ice tools (later) will make it faster and safer.
+   */
+  _climbOut(dtM, input) {
+    const t = tuning;
+    const { hole, rim, bottom } = this.inHole;
+    const p = this.position;
+    this.slope = 90;
+    this.zone = null;
+    this.sheltered = true;
+    this.placeName = hole.name;
+    const wants = input.y > 0.05 && !this.body.exhausted;
+    this.moving = wants;
+    this.effort = wants ? t.hole_climb_effort * (this.pushing ? t.push_effort : 1) : 0;
+    this.heading = this.yaw;
+    if (!wants) return;
+    const tool = this._iceTool();
+    const rate = (t.hole_climb_m_per_h / 3600) * tool.climb * Pace.altitudeFactor(p.y) * this.body.speedFactor() * (this.pushing ? 1.3 : 1);
+    p.y = Math.min(rim, p.y + rate * dtM);
+    if (Math.random() < (t.hole_climb_slip_per_min * tool.slip * (this.pushing ? 2 : 1) * dtM) / 60) {
+      const drop = p.y - bottom;
+      p.y = bottom;
+      this.shake = 1;
+      const speed = Math.sqrt(2 * t.gravity * drop) * 0.7;
+      if (speed > t.safe_impact_m_s) this._hurt((speed - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell back down the crevasse wall.`);
+      if (!this.dead) this.onMessage(`You peeled off the ice and fell ${drop.toFixed(1)} m back to the bottom.`);
+      return;
+    }
+    if (p.y >= rim - 0.05) this._leaveHole();
+  }
+
+  /** What you climb ice with. Bare hands and boots for now; an ice axe and crampons later. */
+  _iceTool() {
+    return { name: 'hands', climb: 1, slip: 1 };
+  }
+
+  /** Over the lip, onto the side you were facing. */
+  _leaveHole() {
+    const { hole } = this.inHole;
+    const p = this.position;
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+    let ox, oz;
+    if (hole.kind === 'pit' || hole.kind === 'moulin') {
+      ox = fx * (hole.width + 1.2);
+      oz = fz * (hole.width + 1.2);
+      p.x = hole.x + ox;
+      p.z = hole.z + oz;
+    } else {
+      // Across the slot: the normal pointing the way you face.
+      const nx = -hole.uz, nz = hole.ux;
+      const side = fx * nx + fz * nz >= 0 ? 1 : -1;
+      const u = (p.x - hole.x) * hole.ux + (p.z - hole.z) * hole.uz;
+      const out = TerrainFeatures.halfWidth(hole, u) + 1.2;
+      const v = -(p.x - hole.x) * hole.uz + (p.z - hole.z) * hole.ux;
+      p.x += nx * (side * out - v);
+      p.z += nz * (side * out - v);
+    }
+    p.y = this._groundAt(p.x, p.z);
+    this.inHole = null;
+    this.mode = Mode.WALK;
+    this.pace = 0;
+    this._updateGroundMode(this.hm.slopeDeg(p.x, p.z));
+    this.onMessage('You hauled yourself over the lip and out of the crevasse.');
+  }
+
+  /**
+   * Probe the snow ahead (X): finds hidden crevasses within reach in front of
+   * you, at the cost of a little time.
+   */
+  probe() {
+    const f = this.features;
+    if (!f || ![Mode.WALK, Mode.CLIMB, Mode.STEEP, Mode.ROPE].includes(this.mode)) return [];
+    this.mountainSeconds += tuning.probe_seconds;
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+    const found = f.probe(this.position.x, this.position.z, fx, fz);
+    this.onMessage(found.length
+      ? `Your probe punches through: ${found.length > 1 ? `${found.length} hidden crevasses` : 'a hidden crevasse'} ahead! It's marked now.`
+      : 'You probe ahead: firm snow.');
+    return found;
+  }
+
+  /** Ice breaking off the seracs and bouncing down. Separate from rockfall, which is off. */
+  _icefall(dt, dtM) {
+    const f = this.features;
+    if (!f || this.mode === Mode.FLY) return;
+    // With the weather system in, it decides when the serac calves (through
+    // features.releaseIcefall); without it, the serac keeps its own clock.
+    const fall = this.weather ? null : f.maybeIcefall(dtM, this.hour, this.position);
+    if (fall && Math.hypot(this.position.x - fall.x, this.position.z - fall.z) < tuning.icefall_warn_m * 2) {
+      this.shake = Math.max(this.shake, 0.4);
+      this.onMessage(`A crack like a gunshot: the ${fall.name} is collapsing! Ice is coming down.`);
+    }
+    if (!f.icefall.rocks.length) return;
+    const body = this.position.clone();
+    body.y += 0.9;
+    const target = this.dead || this.mode === Mode.HOLE ? null : body;
+    for (const { rock, speed } of f.icefall.step(dt, target)) this._rockHit(rock, speed);
   }
 
   _tumble(why = "You're tumbling out of control!") {
@@ -1213,7 +1531,8 @@ export class Climber {
   _heal(dtM) {
     const max = this.maxHealth;
     if (this.moving || this.health >= max) return;
-    const rate = this._campNearby() ? tuning.camp_health_regen_per_hour : tuning.health_regen_per_hour;
+    const rate = this._campNearby() ? tuning.camp_health_regen_per_hour
+      : this.sheltered ? tuning.cavern_health_regen_per_hour : tuning.health_regen_per_hour;
     this.health = Math.min(max, this.health + (rate * dtM) / 3600);
   }
 
@@ -1276,7 +1595,7 @@ export class Climber {
       return;
     }
     this.position.addScaledVector(rope.toRope, (rope.distance - leash) / rope.distance);
-    this.position.y = this.hm.heightAt(this.position.x, this.position.z);
+    this.position.y = this._groundAt(this.position.x, this.position.z);
   }
 
   _fly(dt, input) {

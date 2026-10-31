@@ -77,6 +77,8 @@ export class Hud {
     $('vnow').textContent = signed(c.verticalNow) + ' m/h';
     $('vavg').textContent = signed(c.verticalAvg) + ' m/h';
     $('surface').textContent = this._surfaceText();
+    $('place-row').hidden = !c.placeName;
+    $('place').textContent = c.placeName;
     $('bps').textContent = c.breathsPerStep < 0.95 ? 'easy' : `${c.breathsPerStep.toFixed(1)} per step`;
     $('day-num').textContent = `Day ${c.day}`;
     $('day-time').textContent = c.clockText();
@@ -150,6 +152,7 @@ export class Hud {
     if (c.dead) return '';
     if (c.tumbling) return 'Tumbling!';
     if (c.falling && c.fall.rope) return 'Falling onto the rope…';
+    if (c.falling && c.fall.hole) return 'Falling into the crevasse!';
     if (c.falling) {
       if (c.fall.arresting) return 'Digging in… keep holding Space';
       if (c.runaway) return 'Sliding too fast to dig in. Hold Space as soon as you slow down or reach flatter ground.';
@@ -157,11 +160,20 @@ export class Hud {
       if (o.back || o.head) return `Sliding ${c.slideHow()}! Hold Space: roll onto your front and swing your feet downhill.`;
       return 'Sliding! Hold Space to self-arrest before you pick up speed.';
     }
+    if (c.mode === Mode.HOLE) {
+      const up = Math.round(c.inHole.rim - c.position.y);
+      if (body.exhausted) return `${up} m below the lip. Exhausted: rest before you climb on.`;
+      return `${up} m below the lip. Face a wall and hold W to climb the ice. Slow, exhausting, and you can fall back.`;
+    }
     if (body.exhausted) return 'Exhausted. Stand still and breathe.';
     if (c.gasping) return 'Gasping. Stand and breathe until it settles. Shift rushes your breaths.';
     if (c.rockfall.rocks.some((r) => r.velocity.length() > 2 && r.position.distanceTo(c.position) < tuning.rock_warn_m && r.position.y > c.position.y))
       return 'Rocks coming down! Get out of the fall line.';
     if (c.phys.hace >= 0.3 || c.phys.hape >= 0.3) return 'Altitude illness! Go down now. Oxygen (O) and dex (P) buy time.';
+    const ice = c.features?.icefall.rocks;
+    if (ice?.some((r) => r.velocity.length() > 2 && r.position.distanceTo(c.position) < tuning.icefall_warn_m && r.position.y > c.position.y))
+      return 'Serac ice coming down! Get out from under it.';
+    if (c.blockedByIce) return 'A wall of ice. Find a way round.';
     if (c.blocked) return 'Too steep to climb without a fixed rope';
     if (c.clipped) return 'Clipped in: move freely. The rope speeds you along it and catches slips. C unclips.';
     if (c.ropeDistance() < CLIP_RANGE) return 'Fixed rope here. Press C to clip in.';
@@ -169,6 +181,8 @@ export class Hud {
       const plan = c.sleepPlan();
       return plan.night ? 'Tent here. Z to sleep until morning, K to cook.' : `Tent here. Z for a ${plan.hours} h nap, K to cook.`;
     }
+    if (c.features && this.hm.glacierAt(c.position.x, c.position.z) > 0.4 && c.features.trailDistance(c.position.x, c.position.z) > 15)
+      return 'Off the wanded trail: hidden crevasses. Probe ahead with X, and cross early while the snow is frozen.';
     if (c.slope > tuning.climb_start_deg) return `Steep ${c.surface.label.toLowerCase()} and unroped: one slip and you slide.`;
     const ph = c.phys;
     if (c.pastTurnaround) return `Past your ${c.turnaroundHour}:00 turnaround. Head down.`;
