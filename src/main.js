@@ -30,6 +30,8 @@ import { Tether } from './world/tether.js';
 import { Weather, weatherTuning } from './sim/weather.js';
 import { Precipitation, AvalancheMesh } from './world/weatherView.js';
 import { WindAudio } from './player/windAudio.js';
+import { DangerAudio } from './player/dangerAudio.js';
+import { Warnings } from './ui/warnings.js';
 import { TerrainFeatures } from './sim/terrainFeatures.js';
 import { FeatureMeshes } from './world/featureMeshes.js';
 import featureDefs from './data/features.json';
@@ -119,9 +121,11 @@ expedition.onUnlock = () => {
 const shelters = new ShelterMeshes(hm);
 scene.add(shelters);
 const hud = new Hud(hm, climber, route.places, expedition);
+const warnings = new Warnings(climber);
 climber.onMessage = (t) => hud.showMessage(t);
 const audio = new BreathAudio(climber.body);
 const wind = new WindAudio();
+const danger = new DangerAudio();
 const input = new Input(canvas);
 const view = {
   pitch: -0.2, distance: 7, firstPerson: false, gait: 0, time: 0,
@@ -323,7 +327,7 @@ async function protect() {
 let muted = false;
 const menu = new ControlsMenu(document.getElementById('menu'), {
   isMuted: () => muted,
-  onMute: () => { muted = audio.muted = wind.muted = !muted; },
+  onMute: () => { muted = audio.muted = wind.muted = danger.muted = !muted; },
 });
 menu.onClose = () => relock();
 let releasing = false;
@@ -374,6 +378,7 @@ if (params.has('hour')) climber.mountainSeconds = +params.get('hour') * 3600;
 climber.weather = new Weather(params.has('seed') ? +params.get('seed') : Math.floor(Math.random() * 1e9), climber.mountainSeconds);
 if (params.has('weather')) climber.weather.force(params.get('weather'), 48);
 if (params.has('avalanche')) climber.avalanches.releaseAbove(climber.position.x, climber.position.z);
+if (params.has('crack')) { const crown = climber.avalanches.findAbove(climber.position.x, climber.position.z); if (crown) climber._crackAbove(crown); }
 
 // The mountain's own shadows (ridges, buttresses, steps) and darker gullies, on
 // everything lit. ?flatlight leaves them off, to compare.
@@ -389,6 +394,7 @@ document.getElementById('go').onclick = () => {
   start.remove();
   audio.start();
   wind.start();
+  danger.start();
   // First stop: the Base Camp store, to gear up.
   openInventory(true);
 };
@@ -724,6 +730,8 @@ function frame(now) {
   avalancheMesh.update();
   camps.userData.update(now / 1000);
   hud.update(dt);
+  for (const cue of climber.cues.splice(0)) { danger.play(cue, camera); warnings.cue(cue); }
+  warnings.update(dt, camera);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

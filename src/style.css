@@ -23,6 +23,22 @@ canvas#c { display: block; width: 100vw; height: 100vh; }
   backdrop-filter: blur(var(--blur)) saturate(0.6); -webkit-backdrop-filter: blur(var(--blur)) saturate(0.6);
   mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 15%));
   -webkit-mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 15%)); }
+/* Cold: frost ferns creep in from the edges as you chill, with a blue-white tint. */
+#frost { position: fixed; inset: 0; pointer-events: none; --inner: 78%; --tint: 0; opacity: 0; transition: opacity .4s;
+  background-size: cover; background-position: center; background-color: rgba(200, 225, 255, var(--tint));
+  mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 22%));
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 22%)); }
+/* A marker on a slope that has cracked above you, or an arrow at the edge toward it. */
+#threat { position: fixed; left: 0; top: 0; pointer-events: none; opacity: 0; display: none; }
+#threat.on { display: block; }
+#threat .label, #threat .arrow { position: absolute; left: 0; top: 0; }
+#threat .label { transform: translate(-50%, -64px); padding: 2px 9px; border-radius: 10px; white-space: nowrap; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: #fff; background: rgba(200, 40, 30, .8); border: 1px solid rgba(255, 140, 120, .9); box-shadow: 0 0 14px rgba(255, 60, 40, .6); animation: threat-pulse .5s ease-in-out infinite alternate; }
+#threat.edge .label { transform: translate(-50%, -150%); }
+#threat .arrow { width: 0; height: 0; margin: -14px 0 0 -12px; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 24px solid rgba(255, 70, 50, .95);
+  transform-origin: 12px 14px; filter: drop-shadow(0 0 6px rgba(255, 60, 40, .8)); }
+#threat:not(.edge) .arrow { margin-top: -38px; }
+@keyframes threat-pulse { from { opacity: .75; } to { opacity: 1; } }
 kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font: 11px ui-monospace, monospace; color: var(--text); }
 #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; background: #0d1117; }
 

@@ -133,6 +133,7 @@ export class Hud {
     const c = this.climber;
     const list = c.phys.conditions().filter((x) => x.severity >= 0.66);
     for (const e of c.effects.values()) if (e.label) list.push({ label: e.label, severity: 0.5 });
+    if (c.slabRisk > 0.3 && !c.falling) list.push({ label: 'Loaded slope', severity: c.slabRisk > 0.6 ? 0.7 : 0.5 });
     const html = list.map((x) => `<span class="${x.severity >= 0.66 ? 'bad' : ''}">${x.label}</span>`).join('');
     if (html !== this._chipHtml) $('vital-chips').innerHTML = this._chipHtml = html;
   }
@@ -180,6 +181,12 @@ export class Hud {
     if (c.rockfall.rocks.some((r) => r.velocity.length() > 2 && r.position.distanceTo(c.position) < tuning.rock_warn_m && r.position.y > c.position.y)) alert = 'Rockfall';
     const ice = c.features?.icefall.rocks;
     if (ice?.some((r) => r.velocity.length() > 2 && r.position.distanceTo(c.position) < tuning.icefall_warn_m && r.position.y > c.position.y)) alert = 'Icefall';
+    // A slope cracking above you, or a slide pouring down toward you, beats everything.
+    if (c.pendingSlides?.length) alert = 'Slope cracking above: move sideways!';
+    else {
+      const blob = c.avalanches.nearestMoving(c.position, 250);
+      if (blob && blob.position.y > c.position.y + 5) alert = 'Avalanche: get out of its path!';
+    }
     if (c.phys.hace >= 0.3 || c.phys.hape >= 0.3) {
       alert ||= 'Altitude sickness: go down';
       if (pack.bottles.length && !c.phys.flow) acts.push(['O', 'Oxygen']);
@@ -350,6 +357,7 @@ export class Hud {
     $('m-pack').textContent = `${pack.kg.toFixed(1)} kg`;
     const list = ph.conditions();
     for (const e of c.effects.values()) if (e.label) list.push({ label: e.label, severity: 0.5 });
+    if (c.slabRisk > 0.3 && !c.falling) list.push({ label: 'Loaded slope', severity: c.slabRisk > 0.6 ? 0.7 : 0.5 });
     for (const i of c.permanentInjuries) list.push({ label: i.label, severity: 1 });
     const html = list.map((x) => `<span class="${x.severity >= 0.66 ? 'bad' : ''}">${x.label}</span>`).join('');
     if (html !== this._condHtml) $('m-cond').innerHTML = this._condHtml = html;
