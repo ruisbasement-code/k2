@@ -17,6 +17,8 @@ export class Input {
     this.look = { dx: 0, dy: 0, zoom: 0 };
     this.handlers = {};
     addEventListener('keydown', (e) => {
+      // Typing in a box (the chat, your name): not a game key.
+      if (isTyping(e)) return;
       if (e.code === 'Space') e.preventDefault();
       if (!e.repeat) this.handlers[e.code]?.();
       this.keys[e.code] = true;
@@ -60,4 +62,10 @@ export class Input {
     this.look = { dx: 0, dy: 0, zoom: 0 };
     return l;
   }
+}
+
+/** Whether a key went to a text box rather than the game. */
+export function isTyping(e) {
+  const t = e.target;
+  return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 }

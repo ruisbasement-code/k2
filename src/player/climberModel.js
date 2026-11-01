@@ -488,6 +488,8 @@ export class ClimberModel extends THREE.Group {
    */
   pose(mode, phase, moving, rise = 0, o = {}) {
     const dt = o.dt ?? 0;
+    // What it was posed with, as plain data: what another player's game needs to draw it the same.
+    this.lastPose = { mode, phase, moving, rise, stride: o.stride ?? 1, arrest: !!o.arrest };
     this.bones.forEach(({ joint }, i) => this._from[i].copy(joint.quaternion));
     this._pelvisFrom.copy(this.joints.pelvis.position);
     if (mode !== this._lastPose) {

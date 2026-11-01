@@ -267,3 +267,43 @@ button#set-off, #menu-resume, #start button { background: var(--accent); color: 
 .inv-col.store .hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; line-height: 1.4; }
 .inv-foot .ghost { margin-left: auto; margin-right: 8px; }
 .stepper button:disabled { opacity: .3; cursor: default; }
+
+/* ---- Multiplayer: joining, the team, helping, chat ---- */
+#mp { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); }
+#mp[hidden] { display: none; }
+#mp h2 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 600; }
+.mp-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+#mp input, #chat-in { background: rgba(0, 0, 0, .35); color: var(--text); border: 1px solid var(--line); border-radius: 7px; font: inherit; padding: 7px 10px; }
+#mp-name { width: 130px; }
+#mp-code { width: 100px; text-transform: uppercase; letter-spacing: .12em; }
+#start #mp button { padding: 7px 14px; font-size: 14px; background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 600; }
+#start #mp button:disabled { opacity: .6; cursor: default; }
+#mp-status { margin: 8px 0 0; font-size: 12px; color: var(--ok); min-height: 1em; }
+#mp-status.bad { color: #ff8b7a; }
+#mate-tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.mate-tag { position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 6px; background: rgba(12, 16, 24, .55); color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; text-shadow: 0 1px 2px #000; text-align: center; }
+.mate-tag small { display: block; font-weight: 400; font-size: 10px; color: #cfd6e0; }
+.mate-tag.down { background: rgba(150, 20, 20, .7); }
+#team { position: fixed; top: 12px; right: 14px; display: grid; gap: 3px; justify-items: end; pointer-events: none; font-size: 13px; text-shadow: 0 1px 3px #000; }
+#team[hidden] { display: none; }
+#team .team-head { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+#team .mate small { color: #c4cbd6; }
+#team .mate.down { color: #ff8b7a; }
+#team .mate.down em { font-style: normal; font-weight: 700; }
+#team-help { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5, 8, 12, .45); }
+#team-help[hidden] { display: none; }
+#team-help .card { position: static; width: min(360px, 100%); display: grid; gap: 6px; padding: 14px 16px; }
+#team-help h2 { margin: 0; font-size: 17px; }
+#team-help .mate-status { margin: 0 0 4px; color: var(--muted); font-size: 13px; }
+#team-help button { text-align: left; background: rgba(255, 255, 255, .06); color: var(--text); border: 1px solid var(--line); border-radius: 7px; font: inherit; padding: 7px 10px; cursor: pointer; }
+#team-help button:hover { background: rgba(255, 138, 61, .18); }
+#team-help button small { display: block; color: var(--muted); font-size: 11px; margin-left: 24px; }
+#team-help .hint { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+#chat-log { position: fixed; left: 18px; bottom: 110px; width: min(420px, 60vw); display: grid; gap: 2px; pointer-events: none; font-size: 13px; text-shadow: 0 1px 3px #000; }
+#chat-log > div { transition: opacity 1.5s; }
+#chat-log > div.old { opacity: 0; }
+#chat-log b { color: var(--accent); }
+#chat-log .mine b { color: var(--ok); }
+#chat-log .note { color: #c4cbd6; font-style: italic; }
+#chat-in { position: fixed; left: 18px; bottom: 78px; width: min(420px, 60vw); }
+#chat-in[hidden] { display: none; }

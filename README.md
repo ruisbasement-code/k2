@@ -28,6 +28,53 @@ as you save.
 | `npm run build` | Builds a static site into `dist/` |
 | `npm run preview` | Serves the `dist/` build locally |
 
+| `npm run host` | Builds the game and hosts it for multiplayer on http://localhost:8787 |
+| `npm run host:tunnel` | The same, plus a public Cloudflare link for friends anywhere |
+
+### Play with friends (multiplayer)
+
+One person hosts; everyone else opens a link and types the join code. On
+Windows, in Command Prompt:
+
+```bat
+cd C:\Users\RSUN\K2\k2-sim-new
+git pull
+npm install
+winget install --id Cloudflare.cloudflared
+npm run host:tunnel
+```
+
+(`winget` only once; open a new Command Prompt after it so `cloudflared` is found.)
+The window prints a **join code** and a link like
+`https://some-words.trycloudflare.com/?join=ABCD`. Send that link to your friends:
+it opens the game with the code filled in; they type a name and press **Join**,
+then **Start**. You play at http://localhost:8787, where the code is filled in
+for you. Keep the window open while you play; Ctrl+C stops it. Each run gets a
+new code and a new link, unless you pick a code: `set K2_CODE=K2ROPE && npm run host:tunnel`.
+Another port: `set PORT=8788 && npm run host:tunnel`. Friends on the same Wi-Fi
+can skip the tunnel and use the `Same Wi-Fi` address it prints (`npm run host`).
+
+Without the npm script, the tunnel is one command in a second window:
+`cloudflared tunnel --url http://localhost:8787`.
+
+In a game:
+
+- Everyone climbs under the same weather and clock (the first player in sets
+  them), and sees the others with their gear, pose and headlamp, a name tag
+  with how far off they are, and a team list at the top right (direction,
+  distance, health, and who has collapsed).
+- **Enter** next to a teammate opens the help menu: get them up when they've
+  collapsed in the cold (it's the only way back from a collapse besides giving
+  up), **first aid** with one of your kits (+25 health), or hand over water,
+  a snack bar, dexamethasone, a spare oxygen bottle (never the one on your
+  mask), hand warmers, a first-aid kit or a flare. If it can't be used (they're
+  already healed, their pack is full) you get it back.
+- When a teammate collapses, everyone is told which way and how far.
+- Flares, whistles and strobes are seen and heard by everyone; ropes you fix
+  with screws and pickets show up for the others, who can clip into them.
+- **Enter** (away from teammates) or **/** opens the chat.
+- Dying and respawning puts you back in the same game.
+
 Every merge to `main` also tests and publishes the game to GitHub Pages
 (`.github/workflows/web.yml`). Turn this on once in the repo's **Settings → Pages →
 Build and deployment → Source: GitHub Actions**. The game is then at
@@ -541,6 +588,10 @@ src/world/            heightmap.js, terrain.js (mesh + shader), fixedRopes.js, s
                       weatherView.js (falling snow, avalanche clouds)
 src/player/           climber.js (movement, ropes, falls, health), climberModel.js, ragdoll.js, breathAudio.js, windAudio.js, input.js
 src/ui/hud.js         HUD, minimap, breath ring, vision vignette
+src/net/              multiplayer: net.js (the relay socket), teammates.js (other climbers' models and name tags),
+                      multiplayer.js (state sync, helping teammates, chat, the join panel)
+src/sim/teamwork.js   what you can do for a teammate beside you, and what it does when it reaches them
+server/               relay.js (rooms by join code, passes messages on), host.js (serves dist/ + relay, Cloudflare tunnel)
 public/data/          the heightmap (float32) and its metadata
 tests/                Vitest: pace and stamina, simulated climbs, ropes, slopes, falls, death and rescue, hazards, sleep, survival, weather and avalanches
 ```

@@ -46,6 +46,8 @@ import { ControlsMenu } from './ui/controls.js';
 import { Signals, flareSeenM, compassPoint } from './sim/signals.js';
 import { SignalView, playWhistle } from './world/signalView.js';
 import { ShelterMeshes } from './world/shelters.js';
+import { Teammates } from './net/teammates.js';
+import { Multiplayer } from './net/multiplayer.js';
 
 const EYE_HEIGHT = 1.65;
 
@@ -200,6 +202,11 @@ input.on('KeyE', () => protect());
 input.on('KeyJ', () => holdDevice('gps'));
 input.on('KeyU', () => holdDevice('monitor'));
 input.on('KeyM', () => holdDevice('map'));
+// Multiplayer: Enter helps the teammate beside you (or opens the chat), / opens the chat.
+const playing = () => !document.getElementById('start') && !menu.open && !inventory.open && !minigame.busy;
+input.on('Enter', () => { if (playing()) mp.enter(); });
+input.on('NumpadEnter', () => { if (playing()) mp.enter(); });
+input.on('Slash', () => { if (playing() && mp.connected) mp.openChat(); });
 // Footing checks: while one is up, its keys catch (or miss) the foot instead of their usual job.
 for (const key of tuning.footing.keys) {
   const usual = input.handlers[key];
@@ -256,6 +263,7 @@ inventory.onClose = () => relock();
 
 /** Hold or use what's in a hotbar slot. */
 function useSlot(i) {
+  if (mp.busy) return mp.pickHelp(i);
   const it = hotbarItems(climber)[i];
   if (!it) return;
   if (['gps', 'monitor', 'map'].includes(it.id)) holdDevice(it.id);
@@ -386,19 +394,20 @@ function release() {
   }
 }
 function relock() {
-  if (!menu.open && !inventory.open && !document.getElementById('start')) canvas.requestPointerLock?.();
+  if (!menu.open && !inventory.open && !mp.busy && !document.getElementById('start')) canvas.requestPointerLock?.();
 }
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement) return;
   lostLockAt = performance.now();
   if (releasing) { releasing = false; return; }
-  if (!inventory.open && !minigame.busy && !document.getElementById('start')) menu.show();
+  if (!inventory.open && !minigame.busy && !mp.busy && !document.getElementById('start')) menu.show();
 });
 addEventListener('keydown', (e) => {
   if (e.code === 'Tab') e.preventDefault();
   if (e.code !== 'Escape' || e.repeat || minigame.busy) return;
   if (performance.now() - lostLockAt < 300) return; // the same Esc that freed the mouse
   if (inventory.open) inventory.hide();
+  else if (mp.busy) mp.closeHelp();
   else if (menu.open) menu.hide();
   else if (!document.getElementById('start')) menu.show();
 });
@@ -439,10 +448,34 @@ if (params.has('fly')) { climber.toggleFly(); climber.position.y += +params.get(
 if (params.has('injure')) for (const hit of params.get('injure').split(',')) climber._injure(+hit);
 if (params.has('lamp')) headlamp.set(+params.get('lamp'));
 if (params.has('hour')) climber.mountainSeconds = +params.get('hour') * 3600;
-climber.weather = new Weather(params.has('seed') ? +params.get('seed') : Math.floor(Math.random() * 1e9), climber.mountainSeconds);
+// The weather's seed and start: in multiplayer everyone shares the first player's.
+let weatherSeed = params.has('seed') ? +params.get('seed') : Math.floor(Math.random() * 1e9);
+let weatherStart = climber.mountainSeconds;
+climber.weather = new Weather(weatherSeed, weatherStart);
 if (params.has('weather')) climber.weather.force(params.get('weather'), 48);
 if (params.has('avalanche')) climber.avalanches.releaseAbove(climber.position.x, climber.position.z);
 if (params.has('crack')) { const crown = climber.avalanches.findAbove(climber.position.x, climber.position.z); if (crown) climber._crackAbove(crown); }
+// ---- Multiplayer: other climbers, and helping them ----
+
+const teammates = new Teammates();
+scene.add(teammates);
+const mp = new Multiplayer({
+  climber, expedition, model, sharedRopes, teammates, hud,
+  lamp: () => view.lamp ?? null,
+  world: () => ({ seed: weatherSeed, start: weatherStart, time: climber.mountainSeconds }),
+  setWorld: (w) => {
+    if (!w || (w.seed === weatherSeed && w.start === weatherStart)) return;
+    weatherSeed = w.seed;
+    weatherStart = w.start;
+    climber.weather = new Weather(weatherSeed, weatherStart);
+    climber.mountainSeconds = w.time;
+  },
+  release: () => release(),
+  relock: () => relock(),
+});
+hud.teamAction = () => mp.action();
+mp.init();
+
 // For poking at the game from the dev console (and the browser tests).
 if (import.meta.env.DEV) window.k2 = { climber, ropes, view };
 
@@ -531,7 +564,8 @@ function updateHeadlamp() {
     head.localToWorld(_lampPos.set(0, 0.15, -0.15));
     head.localToWorld(_lampDir.set(0, -0.25, -1)).sub(head.localToWorld(new THREE.Vector3(0, 0, 0))).normalize();
   }
-  model.setLamp(headlamp.update(view.time, _lampPos, _lampDir));
+  view.lamp = headlamp.update(view.time, _lampPos, _lampDir);
+  model.setLamp(view.lamp);
 }
 
 /**
@@ -795,7 +829,7 @@ function frame(now) {
       hud.showMessage('The rope you were on came down. Unclipped');
     }
     if (climber.falling && climber.fall?.rope && !ropes.isActive(climber.fall.rope.id)) climber._ropeFails();
-    const still = minigame.busy || inventory.open;
+    const still = minigame.busy || inventory.open || mp.busy;
     const before = climber.mountainSeconds;
     climber.update(dt, still ? { x: 0, y: 0, push: false, up: false, down: false, arrest: false } : input.movement());
     expedition.update();
@@ -803,6 +837,7 @@ function frame(now) {
     noticeSignals();
   }
   signalView.update(climber.signals, view.time);
+  mp.update(dt);
   shelters.update(climber.tents);
   rockMesh.update();
   featureMeshes.update(climber.position, climber);
@@ -813,6 +848,7 @@ function frame(now) {
   detailPatch.userData.update(climber.position);
   glacierBlocks.update(camera.position);
   updateCamera(dt);
+  teammates.update(dt, camera, climber.conditions?.visibility);
   audio.update();
   wind.update(climber.conditions);
   precipitation.update(dt, camera.position, climber.conditions);
@@ -832,7 +868,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__k2 = { climber, protection, placeProtection, sharedRopes, ropeMesh, signals: climber.signals, signalView, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
+window.__k2 = { mp, teammates, climber, protection, placeProtection, sharedRopes, ropeMesh, signals: climber.signals, signalView, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
 
 /** Read and clear a one-off flag that survives a reload. */
 function takeFlag(key) {
