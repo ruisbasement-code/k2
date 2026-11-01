@@ -43,7 +43,7 @@ lists every control (`src/ui/controls.js`), with the sound switch.
 | --- | --- |
 | W A S D, Shift | Move, push the pace |
 | Space (hold) | Self-arrest when you start sliding (ice axe in hand only) |
-| Q | Catch your footing when it flashes up on steep ground |
+| Q E R F | Catch your footing on steep ground: press whichever key flashes up (wrong key = slip; harder to read when hurt) |
 | C | Clip into / unclip from a fixed rope (within 5 m) |
 | E | Place an ice screw or snow picket on steep ground (needs the rope) |
 | I | Hold / stow the ice axe (or pick it in the hotbar) |
@@ -145,6 +145,16 @@ realistic pace still gets you somewhere. All the speeds below are in mountain ti
   effort. Each anchor on the way down means rethreading your device below it.
   There are two ropes: the Abruzzi Spur from Advanced Base Camp to
   Camp 4, and the Bottleneck and Traverse from above Camp 4 to about 8,450 m.
+- **Ropes you fix for the team**: where there's no fixed rope, the lead fixes one.
+  Put in a screw or picket (E), climb on, put in the next within 25 m of the last:
+  the rope runs on through every piece, and from the second piece that stretch is a
+  fixed line (green for yours) anyone can clip into with C, clip past each piece of,
+  jumar up and rappel down, like the route's ropes. Put a piece in further than 25 m
+  from the last and you start a new line. It's new rope on fresh anchors, so it fails
+  half as often as the old ropes (`placed_rope_fail_mult`). If your top piece rips
+  out, the line ends at the one below it. Each line is plain data (who fixed it and
+  where its pieces are): `sharedRopes.onEvent` is what multiplayer sends, and another
+  player's game passes it to `sharedRopes.receive()` to show the same pieces and line.
 
 **Footing checks.** Climbing ground of 38° or steeper, every now and then a foot
 skids and a **Q** comes up in a ring that drains. Press Q before it runs out and you

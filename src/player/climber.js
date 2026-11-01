@@ -1418,7 +1418,8 @@ export class Climber {
     f.next -= dt;
     if (f.next > 0) return;
     const window = this._footingWindow(s);
-    f.prompt = { left: window, window };
+    const keys = t.keys ?? ['KeyQ'];
+    f.prompt = { left: window, window, key: keys[Math.floor(Math.random() * keys.length) % keys.length] };
     f.next = (t.gap_easy_s + (t.gap_hard_s - t.gap_easy_s) * s) * (0.67 + Math.random() * 0.66);
   }
 
@@ -1434,10 +1435,14 @@ export class Climber {
     return Math.max(w, t.min_window_s);
   }
 
-  /** Q: catch your footing. True if there was one to catch. */
-  catchFooting() {
+  /**
+   * Catch your footing with the key the prompt shows (one of tuning.footing.keys).
+   * The wrong key and the foot goes. True if there was a footing to catch.
+   */
+  catchFooting(key) {
     const f = this.footing;
     if (!f.prompt) return false;
+    if (key !== f.prompt.key) { this._footingFailed(); return true; }
     f.prompt = null;
     f.result = 'held';
     f.flash = 0.8;
@@ -1463,7 +1468,8 @@ export class Climber {
     }
     if (this.clipped) {
       const name = this.ropes.names[this.ropeId];
-      if (Math.random() < t.clip_fail_chance) {
+      const fresh = this.ropes.isPlaced?.(this.ropeId) ? tuning.placed_rope_fail_mult : 1;
+      if (Math.random() < t.clip_fail_chance * fresh) {
         this._startFall(gx, gz, `${what} and your clip on the ${name} tore free! You're falling unroped. ${this._arrestHint()}`);
       } else this._startRopeFall(`${what}! The clip held: you drop onto the rope.`);
       return;
@@ -1780,7 +1786,9 @@ export class Climber {
     // The first real jolt tests the anchor: old fixed ropes sometimes fail.
     if (out > 0.5 && !this.fall.rope.tested) {
       this.fall.rope.tested = true;
-      if (Math.random() < t.rope_fail_chance + t.rope_fail_per_m_s * out) {
+      // A line a climber just fixed is new rope on fresh screws and pickets: it fails less.
+      const fresh = this.ropes.isPlaced?.(this.fall.rope.id) ? t.placed_rope_fail_mult : 1;
+      if (Math.random() < (t.rope_fail_chance + t.rope_fail_per_m_s * out) * fresh) {
         this._ropeFails();
         return false;
       }
