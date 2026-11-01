@@ -15,6 +15,7 @@
 
 import { smooth } from './heightmap.js';
 import { hash, vnoise, fbm, cellular, moraineAt } from './terrainDetail.js';
+import featureDefs from '../data/features.json';
 
 /** Grid rows and columns (of the 31 m data) the fine terrain covers, and how much finer it is. */
 export const FINE_REGION = { r0: 296, r1: 504, c0: 296, c1: 504, sub: 4 };
@@ -49,6 +50,11 @@ export function buildFineTerrain(hm, places = [], lines = []) {
     }
     return best;
   };
+  // Couloirs (the Bottleneck): a snow gully cut into the face between rock walls.
+  const couloirs = (featureDefs.couloirs ?? []).map((c) => {
+    const pts = c.points.map(([r, cc]) => hm.gridToWorld(r, cc));
+    return { ...c, pts };
+  });
   const h = new Float32Array(n * n);
   const edge = (R.c1 - R.c0) * hm.cell * 0.5;
   const cx = x0 + edge, cz = z0 + edge;
@@ -59,7 +65,9 @@ export function buildFineTerrain(hm, places = [], lines = []) {
       // Fade to nothing at the region's edge, to meet the coarse terrain there.
       const rim = Math.max(Math.abs(x - cx), Math.abs(z - cz));
       const keep = smooth(edge, edge - 250, rim);
-      h[j * n + i] = y + (keep > 0 ? keep * relief(hm, x, z, y, camps, smooth(18, 60, routeDist(x, z))) : 0);
+      let off = keep > 0 ? keep * relief(hm, x, z, y, camps, smooth(18, 60, routeDist(x, z))) : 0;
+      for (const c of couloirs) off = couloir(c, x, z, off);
+      h[j * n + i] = y + off;
     }
   }
   hm.fine = { x0, z0, step, n, h };
@@ -94,7 +102,9 @@ function relief(hm, x, z, y, camps, wild = 1) {
       sharp += (y - ring / 6) * k;
     }
     // Softly limited, so a summit or a big cliff does not grow a spike.
-    off += wild * rock * smooth(8, 22, slope) * 26 * Math.tanh(sharp / 26);
+    // On the rope's line too, a little: you climb over the spur's crests and
+    // round its buttresses, not up a smooth ramp.
+    off += (0.3 + 0.7 * wild) * rock * smooth(8, 22, slope) * 24 * Math.tanh(sharp / 24);
   }
 
   // Benches: step the face into shelves and rock bands. Height bands are warped so
@@ -115,7 +125,9 @@ function relief(hm, x, z, y, camps, wild = 1) {
       // A ledge you can stand and rest on for most of each band (nearly level), then
       // a short, steep rock step up to the next.
       const sharpStep = (smooth(0.62, 0.97, t) - t + 0.31) * 0.92;
-      off += (gentle * (1 - wild) + sharpStep * wild) * H * face * where;
+      // Near the rope the steps are still real rock steps to climb, just shorter.
+      const k = 0.35 + 0.65 * wild;
+      off += (gentle * (1 - k) + sharpStep * k) * H * face * where;
     }
   }
 
@@ -130,7 +142,7 @@ function relief(hm, x, z, y, camps, wild = 1) {
       rib += ridged(px * 0.028, pz * 0.028, 111) + 0.5 * ridged(px * 0.045, pz * 0.045, 113);
     }
     rib = rib / 7 / 1.5 - 0.45;
-    off += steep * rib * (9 + 4 * wild + (8 + 2 * wild) * smooth(40, 60, slope));
+    off += steep * rib * (10 + 4 * wild + (8 + 2 * wild) * smooth(40, 60, slope));
   }
 
   // Rock buttresses and outcrops. Away from the rope most are blocky towers: steep
@@ -178,4 +190,36 @@ function relief(hm, x, z, y, camps, wild = 1) {
     off = c.base ? off * (1 - 0.7 * w) : off + (c.y - y - off) * w * 0.8;
   }
   return off;
+}
+
+/**
+ * A couloir cut into the face along a line: a snow gully 'width_m' wide and up to
+ * 'depth_m' deep, its floor rounded, with ragged rock walls standing up to
+ * 'walls_m' either side. off is the relief so far; inside the gully it is calmed
+ * so the floor runs smooth, and the walls take its roughness instead.
+ */
+function couloir(c, x, z, off) {
+  let best = 1e9, along = 0, total = 0, at = 0;
+  for (let k = 0; k + 1 < c.pts.length; k++) {
+    const [ax, az] = c.pts[k], [bx, bz] = c.pts[k + 1];
+    const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
+    const t = Math.min(Math.max(((x - ax) * dx + (z - az) * dz) / (len * len), 0), 1);
+    const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+    if (d < best) { best = d; at = total + t * len; }
+    total += len;
+  }
+  const reach = c.width_m * 3;
+  if (best > reach) return off;
+  along = at / total;
+  // The gully narrows in its middle (the neck of the bottle) and fades out at its ends.
+  const ends = smooth(0, 0.18, along) * smooth(1, 0.82, along);
+  const neck = 1 - 0.35 * Math.exp(-(((along - 0.55) / 0.2) ** 2));
+  // Its line wanders a little, and each wall is ragged on its own.
+  const v = best;
+  const w = (c.width_m / 2) * neck * (0.9 + 0.2 * vnoise(at * 0.03, 3.7, 301));
+  const floor = -c.depth_m * Math.exp(-((v / (w * 1.1)) ** 2));
+  const wallNoise = 0.55 + 0.9 * fbm(x * 0.035, z * 0.035, 3, 303);
+  const walls = c.walls_m * wallNoise * smooth(w * 0.9, w * 1.6, v) * smooth(reach, w * 2.2, v);
+  const calm = smooth(w * 1.4, w * 0.6, v) * ends;
+  return off * (1 - 0.8 * calm) + (floor + walls) * ends;
 }
