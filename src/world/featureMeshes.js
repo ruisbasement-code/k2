@@ -9,6 +9,7 @@ import { TerrainFeatures } from '../sim/terrainFeatures.js';
 import { tuning } from '../sim/paceModel.js';
 import { MAX_TERRAIN_HOLES } from './terrain.js';
 import { RockfallMesh } from './hazardMeshes.js';
+import { blockGeometry, blockMaterial } from './glacierBlocks.js';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -17,8 +18,16 @@ const _p = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 
 const ICE_TOP = new THREE.Color(0x7fb6d2);
-const ICE_MID = new THREE.Color(0x2b6a96);
+const ICE_MID = new THREE.Color(0x1d4f78);
 const ICE_DEEP = new THREE.Color(0x050d18);
+const ICE_LIP = new THREE.Color(0xb8d4e4);
+const MAX_RUBBLE = 1600;
+
+/** A repeatable 0..1 number for a hole, a point on it and a purpose. */
+const rnd = (h, i, k) => {
+  const s = Math.sin(((h.seed ?? 0) * 1000 + i * 12.9898 + k * 78.233)) * 43758.5453;
+  return s - Math.floor(s);
+};
 
 /** A growable list of triangles with vertex colours, turned into a geometry. */
 class Tris {
@@ -108,9 +117,9 @@ float iceNoise(vec2 p) {
   float flute = iceNoise(vec2(along * 1.3, vIceW.y * 0.08));
   float glow = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
   vec3 pale = vec3(0.72, 0.88, 0.95), deep = vec3(0.20, 0.52, 0.74);
-  vec3 ice = mix(deep, pale, band * 0.7 + flute * 0.3);
+  vec3 ice = mix(deep, pale, 0.25 + band * 0.35 + flute * 0.25);
   ice = mix(ice, vec3(0.36, 0.38, 0.40), seam * 0.6);
-  diffuseColor.rgb = ice * glow * 1.15;
+  diffuseColor.rgb = ice * glow;
 }`);
   };
   return mat;
@@ -147,7 +156,6 @@ export class FeatureMeshes extends THREE.Group {
 
     // Light glows blue through the ice walls, so they're lit from within rather than by the sun.
     this.holeMat = iceWallMaterial();
-    this.lipMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide });
     this.bridgeMat = new THREE.MeshStandardMaterial({
       color: 0x5d7894, roughness: 1, transparent: true, opacity: 0.4, depthWrite: false,
       polygonOffset: true, polygonOffsetFactor: -3,
@@ -161,10 +169,12 @@ export class FeatureMeshes extends THREE.Group {
     this.iceBoxes = [0, 1, 2].map((k) => jaggedBox(k + 1));
 
     this.holes = new THREE.Mesh(new THREE.BufferGeometry(), this.holeMat);
-    this.lips = new THREE.Mesh(new THREE.BufferGeometry(), this.lipMat);
-    this.lips.receiveShadow = true;
-    this.lips.frustumCulled = false;
-    this.add(this.lips);
+    // Broken ice blocks along the lips and wedged in the slots, like the glacier's own.
+    this.rubble = new THREE.InstancedMesh(blockGeometry(), blockMaterial(), MAX_RUBBLE);
+    this.rubble.count = 0;
+    this.rubble.castShadow = this.rubble.receiveShadow = true;
+    this.rubble.frustumCulled = false;
+    this.add(this.rubble);
     this.bridges = new THREE.Mesh(new THREE.BufferGeometry(), this.bridgeMat);
     this.sags = new THREE.Mesh(new THREE.BufferGeometry(), this.sagMat);
     for (const m of [this.holes, this.bridges, this.sags]) {
@@ -411,50 +421,56 @@ export class FeatureMeshes extends THREE.Group {
     const f = this.features;
     const hm = this.hm;
     const walls = new Tris();
-    const lips = new Tris();
     const bridges = new Tris();
     const sags = new Tris();
     const cut = [];
+    const rubble = [];
     const holes = f.holesNear(c.x, c.z, this.radius).sort((a, b) => Math.hypot(a.x - c.x, a.z - c.z) - Math.hypot(b.x - c.x, b.z - c.z));
     const white = new THREE.Color(0xffffff);
+    const col = (a, b, t) => a.clone().lerp(b, t);
     for (const h of holes) {
       const open = f.isOpen(h);
       if (open && cut.length >= MAX_TERRAIN_HOLES) continue;
-      // Points along both edges of the lens (or round the circle for a pit).
+      // Points along both ragged edges of the lens (or round the oval of a pit).
       const ring = this._outline(h);
       if (open) {
         cut.push(h);
         const ys = ring.map((p) => hm.heightAt(p.x, p.z));
         const rim = Math.min(...ys);
         const bottom = rim - h.depth;
+        // The wall at each point of the rim, top to bottom: the lip, an undercut
+        // just below it, then the ice narrowing in steps and ledges to the dark.
+        // Light only gets a few metres in: pale at the lip, deep blue by about
+        // 4 m down, nearly black by 9 m, black at the bottom.
+        const band = Math.min(1.6, h.depth * 0.1);
+        const cols = ring.map((p, i) => {
+          const y = ys[i];
+          const j = (k) => rnd(h, i, k) - 0.5;
+          const lv = [
+            [1, y + 0.05],
+            [1.08 + 0.08 * j(1), y - band],
+            [0.85 + 0.14 * j(2), Math.max(bottom + 2, y - 4 - 1.2 * j(3))],
+            [0.66 + 0.14 * j(4), Math.max(bottom + 1, y - 9 - 2 * j(5))],
+            [0.4, bottom],
+          ];
+          return lv.map(([k, yy]) => {
+            const q = this._inward(h, p, k);
+            return new THREE.Vector3(q.x, yy, q.z);
+          });
+        });
+        const shades = [ICE_LIP, ICE_TOP, col(ICE_MID, ICE_DEEP, 0.35), ICE_DEEP, ICE_DEEP.clone().multiplyScalar(0.2)];
         for (let i = 0; i < ring.length; i++) {
-          const a = ring[i], b = ring[(i + 1) % ring.length];
-          const ya = ys[i], yb = ys[(i + 1) % ring.length];
-          // The walls narrow as they go down, so draw them leaning in.
-          const ia = this._inward(h, a, 0.45), ib = this._inward(h, b, 0.45);
-          // Pale where the light gets in near the lip, deep blue a few metres down, dark below.
-          const ma = this._inward(h, a, 0.9), mb = this._inward(h, b, 0.9);
-          const band = Math.min(2, h.depth * 0.15);
-          walls.quad(
-            new THREE.Vector3(a.x, ya + 0.05, a.z), new THREE.Vector3(b.x, yb + 0.05, b.z),
-            new THREE.Vector3(mb.x, yb - band, mb.z), new THREE.Vector3(ma.x, ya - band, ma.z),
-            ICE_TOP, ICE_TOP, ICE_MID, ICE_MID,
-          );
-          walls.quad(
-            new THREE.Vector3(ma.x, ya - band, ma.z), new THREE.Vector3(mb.x, yb - band, mb.z),
-            new THREE.Vector3(ib.x, bottom, ib.z), new THREE.Vector3(ia.x, bottom, ia.z),
-            ICE_MID, ICE_MID, ICE_DEEP, ICE_DEEP,
-          );
+          const a = cols[i], b = cols[(i + 1) % ring.length];
+          for (let k = 0; k < a.length - 1; k++) walls.quad(a[k], b[k], b[k + 1], a[k + 1], shades[k], shades[k], shades[k + 1], shades[k + 1]);
         }
-        // Snow lips only where there's snow: bare ice just breaks off at the edge.
-        if (!h.bare) this._lips(h, ring, ys, lips);
         // Snow plug at the bottom.
         const mid = new THREE.Vector3(h.x, bottom + 0.05, h.z);
-        const floor = new THREE.Color(0x2e4a63);
+        const floor = new THREE.Color(0x101e2c);
         for (let i = 0; i < ring.length; i++) {
-          const a = this._inward(h, ring[i], 0.45), b = this._inward(h, ring[(i + 1) % ring.length], 0.45);
+          const a = cols[i][4], b = cols[(i + 1) % ring.length][4];
           walls.tri(mid, new THREE.Vector3(b.x, bottom + 0.05, b.z), new THREE.Vector3(a.x, bottom + 0.05, a.z), floor, floor, floor);
         }
+        this._rubble(h, ring, ys, bottom, rubble);
       } else {
         // A bridge: a dim crack line if you've found it, the faintest sag if not.
         const out = f.isKnown(h) ? bridges : sags;
@@ -466,69 +482,91 @@ export class FeatureMeshes extends THREE.Group {
       }
     }
     this.terrain.userData.setHoles?.(cut);
-    for (const [mesh, tris] of [[this.holes, walls], [this.lips, lips], [this.bridges, bridges], [this.sags, sags]]) {
+    for (const [mesh, tris] of [[this.holes, walls], [this.bridges, bridges], [this.sags, sags]]) {
       mesh.geometry.dispose();
       mesh.geometry = tris.geometry();
     }
+    this._placeRubble(rubble);
   }
 
   /**
-   * Rounded snow lips along the edge: the snow on the glacier surface curls over
-   * and overhangs the slot a little, thickest in the middle of a crevasse.
+   * Blocks that have broken off the lips: strewn along the edge, some tipped
+   * half over it, and now and then one wedged across the slot further down.
    */
-  _lips(h, ring, ys, tris) {
+  _rubble(h, ring, ys, bottom, out) {
+    const f = this.features;
     const hm = this.hm;
-    const snow = new THREE.Color(0xdfe5ec), shade = new THREE.Color(0xa9bfd0);
     const pit = h.kind === 'pit' || h.kind === 'moulin';
-    // Cross-section from the open snow (out) over the crest to the hanging lip (in).
-    const profile = [[0.35, -0.03], [0.12, 0.08], [0.0, 0.12], [-0.18, 0.05], [-0.26, -0.2]];
-    const rows = ring.map((p, i) => {
-      const { u } = pit ? { u: 0 } : TerrainFeatures.local(h, p.x, p.z);
-      const thick = pit ? 0.8 : 0.5 + 0.5 * Math.sqrt(Math.max(0, 1 - (u / h.half) ** 2));
-      // Outward from the hole's middle line, in the ground plane.
-      const c = pit ? { x: h.x, z: h.z } : TerrainFeatures.point(h, u, 0);
+    const centre = (p) => (pit ? { x: h.x, z: h.z } : TerrainFeatures.point(h, TerrainFeatures.local(h, p.x, p.z).u, 0));
+    for (let i = 0; i < ring.length; i++) {
+      if (rnd(h, i, 11) > 0.55) continue;
+      const p = ring[i];
+      const c = centre(p);
       let ox = p.x - c.x, oz = p.z - c.z;
       const len = Math.hypot(ox, oz) || 1;
       ox /= len;
       oz /= len;
-      return profile.map(([d, up]) => {
-        const reach = d * thick;
-        const x = p.x + ox * reach, z = p.z + oz * reach;
-        const ground = d > 0.1 ? hm.heightAt(x, z) : ys[i];
-        return new THREE.Vector3(x, ground + 0.02 + up * thick, z);
-      });
-    });
-    for (let i = 0; i < rows.length; i++) {
-      const a = rows[i], b = rows[(i + 1) % rows.length];
-      for (let k = 0; k < a.length - 1; k++) {
-        const c0 = k >= 3 ? shade : snow;
-        tris.quad(a[k], b[k], b[k + 1], a[k + 1], c0);
+      const r = 0.35 + 1.1 * rnd(h, i, 12) ** 2 * Math.min(1.5, 0.5 + h.width * 0.4);
+      const d = r * 0.6 + 2.2 * rnd(h, i, 13) ** 1.5;
+      const x = p.x + ox * d, z = p.z + oz * d;
+      if (f.holeAt(x, z)) continue;
+      out.push({ x, y: hm.heightAt(x, z), z, r, h: r * (0.5 + 0.5 * rnd(h, i, 14)), yaw: rnd(h, i, 15) * 6.283, tilt: rnd(h, i, 16), rock: h.bare && rnd(h, i, 17) < 0.35 });
+    }
+    // Chockstones: a block or two jammed between the walls of a crevasse.
+    if (!pit) {
+      const n = Math.floor(rnd(h, 99, 18) * 3);
+      for (let k = 0; k < n; k++) {
+        const u = (rnd(h, k, 19) - 0.5) * h.half * 1.2;
+        const w = TerrainFeatures.halfWidth(h, u, 1) + TerrainFeatures.halfWidth(h, u, -1);
+        if (w < 0.6) continue;
+        const q = TerrainFeatures.point(h, u, 0);
+        const top = hm.heightAt(q.x, q.z);
+        const y = top - (top - bottom) * (0.2 + 0.4 * rnd(h, k, 20));
+        const r = w * 0.4;
+        out.push({ x: q.x, y, z: q.z, r, h: r * 0.8, yaw: rnd(h, k, 21) * 6.283, tilt: rnd(h, k, 22), rock: false });
       }
     }
   }
 
-  /** The outline of a hole as a closed loop of {x, z}. */
+  _placeRubble(list) {
+    const mesh = this.rubble;
+    const n = Math.min(list.length, MAX_RUBBLE);
+    const color = new THREE.Color();
+    const e = new THREE.Euler();
+    for (let k = 0; k < n; k++) {
+      const b = list[k];
+      e.set((b.tilt - 0.5) * 0.6, b.yaw, (b.tilt * 7 % 1 - 0.5) * 0.6, 'YXZ');
+      _q.setFromEuler(e);
+      _s.set(b.r, b.h, b.r * (0.75 + 0.4 * b.tilt));
+      _p.set(b.x, b.y, b.z);
+      _m.compose(_p, _q, _s);
+      mesh.setMatrixAt(k, _m);
+      if (b.rock) color.setRGB(0.27, 0.26, 0.25);
+      else color.setRGB(0.60, 0.74, 0.84).lerp(ICE_LIP, b.tilt);
+      mesh.setColorAt(k, color);
+    }
+    mesh.count = n;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
+
+  /** The ragged outline of a hole as a closed loop of {x, z}: one side out, the other back. */
   _outline(h) {
     const pts = [];
-    const n = 14;
-    if (h.kind === 'pit' || h.kind === 'moulin') {
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        pts.push({ x: h.x + Math.cos(a) * h.width, z: h.z + Math.sin(a) * h.width });
-      }
-      return pts;
-    }
-    const at = (u, side) => TerrainFeatures.point(h, u, TerrainFeatures.halfWidth(h, u) * side);
-    for (let i = 0; i <= n; i++) pts.push(at(-h.half + (2 * h.half * i) / n, 1));
-    for (let i = n - 1; i > 0; i--) pts.push(at(-h.half + (2 * h.half * i) / n, -1));
+    const n = h.kind === 'pit' || h.kind === 'moulin' ? 12 : Math.max(14, Math.min(40, Math.round(h.half / 1.5)));
+    // Spaced more closely towards the ends, where the edges curve fastest.
+    const u = (i) => -h.half * Math.cos((Math.PI * i) / n);
+    const at = (uu, side) => TerrainFeatures.point(h, uu, TerrainFeatures.halfWidth(h, uu, side) * side);
+    for (let i = 0; i <= n; i++) pts.push(at(u(i), 1));
+    for (let i = n - 1; i > 0; i--) pts.push(at(u(i), -1));
     return pts;
   }
 
-  /** A point on the outline pulled toward the hole's middle line. */
+  /** A point on the outline pulled toward the hole's middle line (k > 1 pushes it out). */
   _inward(h, p, k) {
     if (h.kind === 'pit' || h.kind === 'moulin') return { x: h.x + (p.x - h.x) * k, z: h.z + (p.z - h.z) * k };
     const { u, v } = TerrainFeatures.local(h, p.x, p.z);
-    return TerrainFeatures.point(h, u * 0.95, v * k);
+    return TerrainFeatures.point(h, u * Math.min(1, 0.95 + 0.05 * k), v * k);
   }
 
   _towers(c) {

@@ -84,7 +84,7 @@ export class GlacierBlocks extends THREE.Group {
 }
 
 /** A lumpy, faceted block: bottom half buried, top rounded. */
-function blockGeometry() {
+export function blockGeometry() {
   const geo = new THREE.IcosahedronGeometry(1, 2);
   const pos = geo.attributes.position;
   const v = new THREE.Vector3();
@@ -101,7 +101,7 @@ function blockGeometry() {
 }
 
 /** Ice or rock on the sides (the instance colour), snow on whatever faces up. */
-function blockMaterial() {
+export function blockMaterial() {
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, flatShading: true });
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader

@@ -104,6 +104,34 @@ describe('where the features are', () => {
     }
   });
 
+  it('gives holes ragged edges that the physics and the drawing agree on, and deep pits', () => {
+    const f = world();
+    const holes = glacierHoles(f, (h) => !h.hidden);
+    const pits = holes.filter((h) => h.kind === 'pit' || h.kind === 'moulin');
+    expect(pits.length).toBeGreaterThan(3);
+    for (const h of pits) expect(h.depth).toBeGreaterThanOrEqual(tuning.hole_depth_m[0]);
+    let checked = 0, ragged = 0;
+    for (const h of holes.slice(0, 40)) {
+      for (const side of [1, -1]) {
+        for (const k of [-0.5, 0, 0.4]) {
+          const u = k * h.half;
+          const w = TerrainFeatures.halfWidth(h, u, side);
+          if (w < 0.3) continue;
+          const inside = TerrainFeatures.point(h, u, side * w * 0.9);
+          const outside = TerrainFeatures.point(h, u, side * (w + 0.3));
+          const hitIn = f.holeAt(inside.x, inside.z);
+          if (!hitIn || hitIn.hole !== h) continue; // another hole overlapping: skip
+          expect(f.holeAt(outside.x, outside.z)?.hole).not.toBe(h);
+          expect(f.nearHole(outside.x, outside.z, 0.5)).toBe(true);
+          checked++;
+          if (Math.abs(TerrainFeatures.wobble(h, u, side) - 1) > 0.1) ragged++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(40);
+    expect(ragged / checked).toBeGreaterThan(0.3);
+  });
+
   it('keeps camps, the wanded trail and the fixed ropes clear', () => {
     for (const h of glacierHoles(f)) {
       expect(f.trailDistance(h.x, h.z)).toBeGreaterThan(defs.wand_trail.clear_m);
@@ -318,6 +346,9 @@ describe('cornices, seracs, caves and hard ground', () => {
     expect(tuning.rockfall_enabled).toBe(false);
     const fall = f.icefalls[0];
     let rocks = 0;
+    // A fixed sequence of chances, so the ice always comes down within the loop.
+    let seed = 1;
+    vi.spyOn(Math, 'random').mockImplementation(() => ((seed = (seed * 16807) % 2147483647) / 2147483647));
     for (let i = 0; i < 2000 && !rocks; i++) {
       f.maybeIcefall(60, 14, fall);
       rocks = f.icefall.rocks.length;

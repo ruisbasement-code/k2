@@ -355,13 +355,16 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
 [`src/data/features.json`](src/data/features.json), numbers in `tuning.json`):
 
 - **Crevasses.** The glaciers crack across their flow where the ice steepens, in fields
-  of parallel cracks bowed the way the ice bends. Their walls are layered blue glacier ice
-  that fades to black with depth, with snow lips curling over the edge where there's snow.
+  of parallel cracks bowed the way the ice bends. Open ones gape up to several metres,
+  with ragged edges where blocks have broken off; the broken blocks lie along the lips
+  among the glacier's own, and now and then one is wedged across the slot. The walls are
+  layered blue glacier ice, undercut just below the lip, stepping in as they go down and
+  fading from pale blue to black within about 10 m.
   On the lower Godwin-Austen Glacier most are open and easy to see; higher up, most
   are **hidden under snow bridges**. Each step on a bridge can break it, much more
   likely in the warm afternoon than in the frozen night and early morning, so cross
   glaciers early. You may hear the snow sound hollow first. Fall in and you drop
-  8–30 m, slowed by the narrowing walls, onto the snow plug at the bottom; deep
+  15–40 m, slowed by the narrowing walls, onto the snow plug at the bottom; deep
   falls hurt badly. A slide that runs over a crevasse goes into it too.
 - **Climbing out.** Face a wall and hold W. Without ice tools it's slow, exhausting
   and you can peel off back to the bottom (`Climber._iceTool()` is where an axe and
@@ -371,8 +374,9 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
 - **The path lights.** Lamp posts mark a crevasse-free line from Base Camp across the
   glacier to the foot of the Abruzzi Spur, and on up beside the fixed rope to Camp 1. They
   glow at night and through storms. Off the path, you're on your own.
-- **Pits and moulins.** Round holes: meltwater moulins on the bare lower glacier,
-  snow-covered pits higher up. They work like crevasses.
+- **Pits and moulins.** Deep, ragged, roughly oval holes 4–12 m across, above and below
+  the crevasse fields: meltwater moulins on the bare lower glacier, often snow-covered
+  pits higher up. They work like crevasses.
 - **The bergschrund.** The big crevasse where the glacier pulls away from the foot of
   the Abruzzi Spur, bridged where the trail crosses it. An ice cavern sits in it.
 - **Seracs.** The **Bottleneck serac**, a hanging ice cliff at about 8,400 m, hangs over

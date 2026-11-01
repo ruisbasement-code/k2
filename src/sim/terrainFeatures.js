@@ -114,7 +114,7 @@ export class TerrainFeatures {
       this.placedHoles.push({
         id: `bergschrund${k}${s > 0 ? 'b' : 'a'}`, name: b.name, kind: 'bergschrund',
         x: c.x + ux * off, z: c.z + uz * off, ux, uz, half: side, width: b.width_m / 2,
-        depth: b.depth_m, hidden: false, strength: 1, bend: 0,
+        depth: b.depth_m, hidden: false, strength: 1, bend: 0, seed: 0.31 + 0.2 * k + (s > 0 ? 0.13 : 0),
       });
     }
   }
@@ -271,13 +271,13 @@ export class TerrainFeatures {
       return [{ type: 'serac', ...this._block(x, z, ux, uz, halfL, halfD, 7 + 10 * hash(i, j, 6), 'Ice tower', `t${i},${j}`) }];
     }
     const chance = snowfield ? t.snowfield_crevasse_share : t.crevasse_share * (0.3 + 0.7 * steep) * glacier;
-    if (roll >= chance) return [];
+    const bare = y < t.bare_glacier_below_m;
+    if (roll >= chance) return snowfield ? [] : this._pits(i, j, x, z, ux, uz, bare);
     // A field of parallel cracks across the flow, spaced down it, bowed the way
     // the ice bends. The middle cracks run longest and gape widest. A field stays
     // inside its own cell, so fields never cross.
-    const bare = y < t.bare_glacier_below_m;
     const fx = -gx / g, fz = -gz / g;
-    const count = snowfield ? 2 + Math.floor(2 * hash(i, j, 4)) : 3 + Math.floor(5 * hash(i, j, 4));
+    const count = snowfield ? 2 + Math.floor(2 * hash(i, j, 4)) : 3 + Math.floor(3 * hash(i, j, 4));
     const spread = Math.min(30, (count - 1) * (t.crevasse_spacing_m[0] + (t.crevasse_spacing_m[1] - t.crevasse_spacing_m[0]) * hash(i, j, 5)) / 2);
     const bow = (hash(i, j, 6) - 0.5) * 2 * t.crevasse_bow_m;
     const out = [];
@@ -289,27 +289,46 @@ export class TerrainFeatures {
       const cx = x + fx * off + ux * slide, cz = z + fz * off + uz * slide;
       const half = 12 + 20 * (0.5 + 0.5 * mid) * (0.6 + 0.4 * h(4));
       const hidden = h(5) < (bare ? t.hidden_share_bare : t.hidden_share_snow);
-      const width = 0.3 + (hidden ? 0.6 : 0.4 + 1.4 * mid) * h(6);
+      // Open slots gape: up to several metres across in the middle of a field.
+      const width = hidden ? 0.3 + 0.6 * h(6) : t.crevasse_open_width_m[0] + (t.crevasse_open_width_m[1] - t.crevasse_open_width_m[0]) * (0.35 + 0.65 * mid) * h(6);
       if ((!snowfield && hm.glacierAt(cx, cz) < 0.3) || !this._clear(cx, cz, half)) continue;
       out.push({
         type: 'hole', id: `c${i},${j},${k}`, kind: 'crevasse', name: 'Crevasse', bare,
-        x: cx, z: cz, ux, uz, half, width, bend: bow * (half / 30),
+        x: cx, z: cz, ux, uz, half, width, bend: bow * (half / 30), seed: h(12),
         depth: t.hole_depth_m[0] + (t.hole_depth_m[1] - t.hole_depth_m[0]) * h(8), hidden,
         // Wide crevasses have thin, weak bridges.
         strength: 0.35 + 0.65 * h(9) - (width > 1 ? 0.2 : 0),
       });
     }
-    // Now and then a pit: a moulin on the bare ice, a snow-covered hole higher up.
-    if (!snowfield && hash(i, j, 8) < t.pit_share) {
-      const px = x + ux * 50, pz = z + uz * 50;
-      const r = 1.2 + 2.5 * hash(i, j, 9);
-      if (this._clear(px, pz, r) && hm.glacierAt(px, pz) > 0.3) {
-        out.push({
-          type: 'hole', id: `p${i},${j}`, kind: bare ? 'moulin' : 'pit', name: bare ? 'Moulin' : 'Pit', bare,
-          x: px, z: pz, ux: 1, uz: 0, half: r, width: r, bend: 0, hidden: !bare && hash(i, j, 10) < 0.6,
-          depth: t.hole_depth_m[0] + (t.hole_depth_m[1] - t.hole_depth_m[0]) * hash(i, j, 11), strength: 0.5,
-        });
-      }
+    out.push(...this._pits(i, j, x, z, ux, uz, bare));
+    return out;
+  }
+
+  /**
+   * Pits in a glacier cell, off to the side of its crevasse field: round-ish,
+   * ragged, deep holes. Moulins (meltwater shafts) on the bare ice, snow-covered
+   * pits higher up.
+   */
+  _pits(i, j, x, z, ux, uz, bare) {
+    const t = tuning;
+    const out = [];
+    for (let k = 0; k < 2; k++) {
+      const h = (s) => hash(i * 7 + k * 101, j * 13 - k * 57, s);
+      if (h(8) >= t.pit_share) continue;
+      const side = k === 0 ? 1 : -1;
+      // Above or below the field, down the flow, clear of its cracks and the next cell's.
+      const along = 44 + 14 * h(1), across = (h(2) - 0.5) * 40;
+      const px = x - uz * side * along + ux * across, pz = z + ux * side * along + uz * across;
+      const r = t.pit_radius_m[0] + (t.pit_radius_m[1] - t.pit_radius_m[0]) * h(9) * h(9);
+      const half = r * (1 + 0.7 * h(3));
+      const a = h(4) * Math.PI;
+      if (!this._clear(px, pz, half + 2) || this.hm.glacierAt(px, pz) < 0.3) continue;
+      out.push({
+        type: 'hole', id: `p${i},${j},${k}`, kind: bare ? 'moulin' : 'pit', name: bare ? 'Moulin' : 'Pit', bare,
+        x: px, z: pz, ux: Math.cos(a), uz: Math.sin(a), half, width: r, bend: 0, seed: h(12),
+        hidden: !bare && h(10) < 0.5,
+        depth: t.hole_depth_m[0] + (t.hole_depth_m[1] - t.hole_depth_m[0]) * h(11), strength: 0.5,
+      });
     }
     return out;
   }
@@ -343,10 +362,42 @@ export class TerrainFeatures {
     return out;
   }
 
-  /** Half the width of a hole at a point along it: crevasses taper to their ends. */
-  static halfWidth(h, u) {
-    if (h.kind === 'pit' || h.kind === 'moulin') return h.width * Math.sqrt(Math.max(0, 1 - (u / h.half) ** 2));
-    return h.width * Math.sqrt(Math.max(0, 1 - (u / h.half) ** 4));
+  /**
+   * How much a hole's edge bulges in or out at u along it, on one side (+1 or -1):
+   * real crevasse lips are ragged where blocks have broken off, so each side wanders
+   * on its own. The terrain shader (terrain.js, holeWobble) uses the same sums.
+   */
+  static wobble(h, u, side = 1) {
+    const ph = (h.seed ?? 0) * 40 + (side < 0 ? 17.3 : 0);
+    const pit = h.kind === 'pit' || h.kind === 'moulin';
+    const q = pit ? (u / h.half) * 6 : u * 0.45;
+    return 1 + 0.28 * Math.sin(q + ph) + 0.16 * Math.sin(q * 2.5 + ph * 1.7) + 0.09 * Math.sin(q * 6 + ph * 2.3);
+  }
+
+  /** Half the width of a hole at a point along it, on one side: crevasses taper to their ends. */
+  static halfWidth(h, u, side = 1) {
+    const t = u / h.half;
+    const base = h.kind === 'pit' || h.kind === 'moulin' ? Math.sqrt(Math.max(0, 1 - t * t)) : Math.sqrt(Math.max(0, 1 - t ** 4));
+    return h.width * base * TerrainFeatures.wobble(h, u, side);
+  }
+
+  /** The farthest a hole's edge can reach from its centre, for quick rejects. */
+  static reach(h) {
+    return h.half + Math.abs(h.bend ?? 0) + h.width * 1.55;
+  }
+
+  /** Whether (x, z) is within margin metres of the edge of any hole (open or hidden). */
+  nearHole(x, z, margin) {
+    const test = (h) => {
+      if (Math.hypot(x - h.x, z - h.z) > TerrainFeatures.reach(h) + margin) return false;
+      const { u, v } = TerrainFeatures.local(h, x, z);
+      if (Math.abs(u) >= h.half + margin) return false;
+      const uc = Math.max(-h.half, Math.min(h.half, u));
+      return Math.abs(v) < TerrainFeatures.halfWidth(h, uc, v < 0 ? -1 : 1) + margin;
+    };
+    for (const h of this.placedHoles) if (test(h)) return true;
+    for (const f of this._near(x, z, margin)) if (f.type === 'hole' && test(f)) return true;
+    return false;
   }
 
   /**
@@ -370,10 +421,10 @@ export class TerrainFeatures {
   /** The hole at (x, z), if you're over one: {hole, u, v} (along it, across it). */
   holeAt(x, z) {
     const test = (h) => {
-      if (Math.hypot(x - h.x, z - h.z) > h.half + Math.abs(h.bend ?? 0) + h.width) return null;
+      if (Math.hypot(x - h.x, z - h.z) > TerrainFeatures.reach(h)) return null;
       const { u, v } = TerrainFeatures.local(h, x, z);
       if (Math.abs(u) >= h.half) return null;
-      return Math.abs(v) < TerrainFeatures.halfWidth(h, u) ? { hole: h, u, v } : null;
+      return Math.abs(v) < TerrainFeatures.halfWidth(h, u, v < 0 ? -1 : 1) ? { hole: h, u, v } : null;
     };
     for (const h of this.placedHoles) {
       const hit = test(h);

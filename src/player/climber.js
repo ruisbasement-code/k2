@@ -1537,7 +1537,7 @@ export class Climber {
   _confineToHole(p, hole) {
     let { u, v } = TerrainFeatures.local(hole, p.x, p.z);
     u = Math.min(Math.max(u, -hole.half * 0.85), hole.half * 0.85);
-    const w = Math.max(0.05, TerrainFeatures.halfWidth(hole, u) * 0.7);
+    const w = Math.max(0.05, Math.min(TerrainFeatures.halfWidth(hole, u, 1), TerrainFeatures.halfWidth(hole, u, -1)) * 0.7);
     v = Math.min(Math.max(v, -w), w);
     const q = TerrainFeatures.point(hole, u, v);
     p.x = q.x;
@@ -1627,8 +1627,8 @@ export class Climber {
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     let ox, oz;
     if (hole.kind === 'pit' || hole.kind === 'moulin') {
-      ox = fx * (hole.width + 1.2);
-      oz = fz * (hole.width + 1.2);
+      ox = fx * (Math.max(hole.half, hole.width * 1.6) + 1.2);
+      oz = fz * (Math.max(hole.half, hole.width * 1.6) + 1.2);
       p.x = hole.x + ox;
       p.z = hole.z + oz;
     } else {
@@ -1636,7 +1636,7 @@ export class Climber {
       const nx = -hole.uz, nz = hole.ux;
       const side = fx * nx + fz * nz >= 0 ? 1 : -1;
       const { u } = TerrainFeatures.local(hole, p.x, p.z);
-      const q = TerrainFeatures.point(hole, u, side * (TerrainFeatures.halfWidth(hole, u) + 1.2));
+      const q = TerrainFeatures.point(hole, u, side * (TerrainFeatures.halfWidth(hole, u, side) + 1.2));
       p.x = q.x;
       p.z = q.z;
     }

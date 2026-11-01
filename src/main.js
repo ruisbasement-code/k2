@@ -65,13 +65,13 @@ const ropes = new FixedRopes(hm, route.fixed_ropes);
 hm.detail = new TerrainDetail(hm, campFlats(hm, route.places));
 for (const line of ropes.ropes) hm.detail.addCorridor(line);
 
-const detailPatch = createDetailPatch(hm);
+const detailPatch = createDetailPatch(hm, terrain.userData.holes);
 scene.add(detailPatch);
 const features = new TerrainFeatures(hm, featureDefs, { ropes, places: route.places });
 // The wanded trail across the glacier is trodden too.
 if (features.trail) hm.detail.addCorridor(features.trail.points);
-// Broken ice blocks and boulders strewn over the glaciers, clear of crevasses and seracs.
-hm.detail.keepClear = (x, z) => !features.holesNear(x, z, 30).length && !features.seracsNear(x, z, 10).length;
+// Broken ice blocks and boulders strewn over the glaciers. They come right up to the crevasse lips, but never over a hole.
+hm.detail.keepClear = (x, z) => !features.nearHole(x, z, 3.5) && !features.seracsNear(x, z, 10).length;
 const glacierBlocks = new GlacierBlocks(hm);
 scene.add(glacierBlocks);
 const featureMeshes = new FeatureMeshes(hm, features, terrain, ropes);
