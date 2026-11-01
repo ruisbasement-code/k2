@@ -5,6 +5,9 @@
 // drums and duffels, with a puja altar and prayer flags in the middle of camp.
 // The camps higher up are a few tents on ledges cut into the slope, with a
 // built-up stone or snow platform under each, oxygen bottles and gear around.
+// Every camp has been used for decades, so there are leftovers too: faded tents
+// torn and slumped on old platforms, empty platforms, caches of drums or oxygen
+// under tarps or drifted snow, and at Base Camp flag poles and a memorial cairn.
 
 import * as THREE from 'three';
 import { PropBatch, campMaterials } from './propBatch.js';
@@ -140,6 +143,57 @@ function buildBaseCamp(b, hm, cx, cz, tents, rand, sleeping) {
       return new THREE.Vector3(x, g + 3.1, z);
     };
     P.prayerFlags(b, pole(p1x, p1z), pole(p2x, p2z), 0.7);
+
+    // A flag pole by the mess tent, strung down to a cairn of stones, and the
+    // expedition's cache of drums under a tarp behind the kitchen.
+    const [fx, fz] = off(-3.8, 4.2);
+    const ftop = P.flagPole(b, onGround(hm, fx, fz, rand() * 6), rand, 4.5 + rand() * 1.5);
+    const [ex, ez] = off(-11 + rand() * 3, 9 + rand() * 3);
+    const eg = hm.heightAt(ex, ez);
+    P.prayerFlags(b, ftop, new THREE.Vector3(ex, eg + 0.4, ez), 1.0);
+    for (let s = 0; s < 3; s++) P.stone(b, place(ex, eg, ez, 0), (rand() - 0.5) * 0.5, 0.15, (rand() - 0.5) * 0.5, 0.25, rand);
+    if (rand() < 0.75) {
+      const [gx, gz] = off(-8 + (rand() - 0.5) * 2, -5.5);
+      P.gearCache(b, onGround(hm, gx, gz, yaw + (rand() - 0.5) * 0.6), rand);
+    }
+  }
+
+  // Out past the compounds: what earlier seasons left behind. Empty tent
+  // platforms, a few old tents slumped on theirs, the odd forgotten cache.
+  for (let k = 0; k < 14; k++) {
+    let x, z, tries = 0;
+    do {
+      const a = rand() * Math.PI * 2, r = 85 + rand() * 40;
+      x = cx + Math.cos(a) * r;
+      z = cz + Math.sin(a) * r;
+    } while (hm.slopeDeg(x, z) > 10 && ++tries < 10);
+    if (tries >= 10) continue;
+    const yaw = rand() * Math.PI * 2;
+    if (k % 5 === 4) {
+      P.gearCache(b, onGround(hm, x, z, yaw), rand);
+      continue;
+    }
+    const site = levelSite(b, hm, x, z, yaw, [-1.5, 1.5, -1.1, 1.7], 'rock', rand);
+    if (k % 2 === 0) P.oldTent(b, site, pick(rand, P.TENT_COLORS), rand);
+  }
+
+  // A memorial cairn on a rise at the edge of camp, flags strung out from it.
+  {
+    let mx, mz, tries = 0;
+    do {
+      const a = 2.4 + tries * 0.5;
+      mx = cx + Math.cos(a) * (115 + tries * 3);
+      mz = cz + Math.sin(a) * (115 + tries * 3);
+    } while (hm.slopeDeg(mx, mz) > 14 && ++tries < 12);
+    const base = onGround(hm, mx, mz, rand() * 6);
+    P.cairn(b, base, rand);
+    const top = new THREE.Vector3(mx, hm.heightAt(mx, mz) + 2.3, mz);
+    for (let k = 0; k < 4; k++) {
+      const a = k * 1.57 + rand() * 0.6, r = 8 + rand() * 4;
+      const x = mx + Math.cos(a) * r, z = mz + Math.sin(a) * r, g = hm.heightAt(x, z);
+      P.prayerFlags(b, top, new THREE.Vector3(x, g + 0.3, z), 0.8);
+      for (let s = 0; s < 3; s++) P.stone(b, place(x, g, z, 0), (rand() - 0.5) * 0.5, 0.12, (rand() - 0.5) * 0.5, 0.22, rand);
+    }
   }
 
   // Moraine boulders scattered round camp.
@@ -154,7 +208,25 @@ function buildBaseCamp(b, hm, cx, cz, tents, rand, sleeping) {
 function buildHighCamp(b, hm, ropes, cx, cz, tents, rand, sleeping) {
   const y0 = hm.heightAt(cx, cz);
   const kind = y0 > 6900 || y0 < 5600 ? 'snow' : 'rock';
-  const sites = findLedges(hm, ropes, cx, cz, tents, 40);
+  // A ledge or two beyond the tents in use holds an old one from another season.
+  const old = 1 + (rand() < 0.6 ? 1 : 0);
+  const all = findLedges(hm, ropes, cx, cz, tents + old, 40);
+  const sites = all.slice(0, tents);
+  for (const [x, z] of all.slice(tents)) {
+    const [gx, gz] = hm.gradient(x, z, 3);
+    const yaw = Math.hypot(gx, gz) > 0.02 ? Math.atan2(-gx, -gz) : rand() * 6;
+    const site = levelSite(b, hm, x, z, yaw, [-1.5, 1.5, -1.0, 1.25], kind, rand, true);
+    P.oldTent(b, site, pick(rand, [0xf2b705, 0xe8571c, 0xd62b1f, 0x2e63b8]), rand, { buried: kind === 'snow' });
+  }
+  // A cache left for the push higher: oxygen and sacks up high, drums lower down.
+  {
+    const [x, z] = sites.length > 1 ? sites[1] : [cx, cz];
+    const [gx, gz] = hm.gradient(x, z, 3);
+    const yaw = Math.hypot(gx, gz) > 0.02 ? Math.atan2(-gx, -gz) : 0;
+    const fwd = [Math.sin(yaw), Math.cos(yaw)];
+    const qx = x - fwd[1] * 2.6, qz = z + fwd[0] * 2.6;
+    P.gearCache(b, onGround(hm, qx, qz, yaw), rand, y0 > 6000);
+  }
   for (const [x, z] of sites) {
     // Long side along the contour, door facing downhill.
     const [gx, gz] = hm.gradient(x, z, 3);
@@ -177,7 +249,7 @@ function buildHighCamp(b, hm, ropes, cx, cz, tents, rand, sleeping) {
     if (Math.hypot(bx - ax, bz - az) > 14) continue;
     const a = new THREE.Vector3(ax, hm.heightAt(ax, az) + 0.4, az);
     const c = new THREE.Vector3(bx, hm.heightAt(bx, bz) + 0.4, bz);
-    if (y0 < 6000 && i === 0) {
+    if (y0 < 6800 && i === 0) {
       a.y += 1.6; c.y += 1.6;
       P.prayerFlags(b, a, c, 0.5);
       for (const p of [a, c]) b.add(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 6), 'soft', 0x8a6a45, place(p.x, p.y - 1.1, p.z, 0));
