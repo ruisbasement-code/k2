@@ -32,6 +32,10 @@ export const CONTROLS = [
     [['Y'], 'Turnaround time'],
     [['R'], 'Get up when stuck lying on steep ground · respawn after dying · give up when collapsed'],
   ]],
+  ['Team (multiplayer)', [
+    [['Enter'], 'Help the teammate beside you: get them up when collapsed, first aid, give water, food, dex, oxygen, warmers or a flare'],
+    [['Enter'], 'Chat, when nobody is beside you (or /)'],
+  ]],
   ['View', [
     [['Mouse'], 'Look (click to capture)'],
     [['Wheel'], 'Zoom'],

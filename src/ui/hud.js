@@ -208,6 +208,9 @@ export class Hud {
       if (!body.exhausted) acts.push(['W', 'Climb out']);
       return out(body.exhausted ? 'Exhausted' : `${up} m down`);
     }
+    // A teammate within reach (multiplayer): what you can do for them comes first.
+    const team = this.teamAction?.();
+    if (team) acts.push(team);
     let alert = '';
     if (body.exhausted) alert = 'Exhausted';
     else if (c.gasping) alert = 'Catch your breath';

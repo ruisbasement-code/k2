@@ -8,10 +8,14 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "host": "vite build && node server/host.js",
+    "host:tunnel": "vite build && node server/host.js --tunnel",
+    "serve": "node server/host.js"
   },
   "dependencies": {
-    "three": "^0.169.0"
+    "three": "^0.169.0",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
     "vite": "^5.4.10",
