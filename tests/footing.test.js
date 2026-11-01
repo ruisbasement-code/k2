@@ -46,14 +46,25 @@ describe('footing checks', () => {
     climbUntilPrompt(c);
     expect(c.footing.prompt).not.toBe(null);
     expect(c.footing.prompt.window).toBeGreaterThanOrEqual(tuning.footing.min_window_s);
-    expect(c.catchFooting()).toBe(true);
+    expect(tuning.footing.keys).toContain(c.footing.prompt.key);
+    expect(c.catchFooting(c.footing.prompt.key)).toBe(true);
     expect(c.footing.prompt).toBe(null);
     expect(c.footing.result).toBe('held');
     for (let t = 0; t < 2; t += FRAME) c.update(FRAME, { x: 0, y: 0 });
     expect(c.falling).toBe(false);
     expect(c.clipped).toBe(true);
     // Pressing Q with nothing to catch does nothing.
-    expect(c.catchFooting()).toBe(false);
+    expect(c.catchFooting('KeyQ')).toBe(false);
+  });
+
+  it('the wrong key loses the foot', () => {
+    const c = onSteepRope();
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    climbUntilPrompt(c);
+    const wrong = tuning.footing.keys.find((k) => k !== c.footing.prompt.key);
+    expect(c.catchFooting(wrong)).toBe(true);
+    expect(c.footing.prompt).toBe(null);
+    expect(c.footing.result).toBe('slipped');
   });
 
   it('never come up walking on gentle ground', () => {

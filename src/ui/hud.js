@@ -152,7 +152,10 @@ export class Hud {
     if (html !== this._chipHtml) $('vital-chips').innerHTML = this._chipHtml = html;
   }
 
-  /** A foot skidding on steep ground: Q in a ring that drains as time runs out. */
+  /**
+   * A foot skidding on steep ground: a random key in a ring that drains as time
+   * runs out. Hurt, the key blurs and flickers, and badly hurt it flashes a wrong letter.
+   */
   _footing() {
     const f = this.climber.footing;
     const el = $('footing');
@@ -162,7 +165,23 @@ export class Hud {
     if (state !== this._footState) {
       this._footState = state;
       el.className = state;
-      el.querySelector('.say').textContent = state === 'up' ? 'Footing! Press Q' : state === 'held' ? 'Footing held' : 'Slipped!';
+      el.querySelector('.say').textContent = state === 'up' ? 'Footing!' : state === 'held' ? 'Footing held' : 'Slipped!';
+    }
+    const kbd = el.querySelector('kbd');
+    if (f.prompt) {
+      const hurt = Math.min(Math.max(1 - this.climber.feltHealth / 100, 0), 1);
+      const now = performance.now() / 1000;
+      const letter = f.prompt.key.slice(3);
+      // Badly hurt: now and then, for a blink, your eyes show you the wrong key.
+      const decoy = hurt > 0.45 && Math.sin(now * 7.3 + f.prompt.window * 13) > 1.35 - hurt * 0.6;
+      const shown = decoy ? 'QERF'.replace(letter, '')[Math.floor(now * 3) % 3] : letter;
+      if (kbd.textContent !== shown) kbd.textContent = shown;
+      const flicker = hurt > 0.2 ? 1 - hurt * 0.75 * (0.5 + 0.5 * Math.sin(now * (9 + hurt * 14))) : 1;
+      kbd.style.filter = hurt > 0.05 ? `blur(${(hurt * 5).toFixed(1)}px)` : '';
+      kbd.style.opacity = Math.max(flicker, 0.12).toFixed(2);
+    } else {
+      kbd.style.filter = '';
+      kbd.style.opacity = '';
     }
     const left = f.prompt ? Math.max(f.prompt.left / f.prompt.window, 0) : 0;
     el.style.setProperty('--left', left.toFixed(3));

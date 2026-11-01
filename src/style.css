@@ -72,7 +72,7 @@ kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); bord
 
 /* ---- Prompts and messages ---- */
 #prompt { position: fixed; left: 50%; bottom: 112px; transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; pointer-events: none; }
-/* Footing check: Q in a ring that drains; red as it runs out. */
+/* Footing check: a random key (Q E R F) in a ring that drains; red as it runs out. */
 #footing { position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 8px; pointer-events: none; --left: 1; }
 #footing[hidden] { display: none; }
 #footing .ring { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center;
