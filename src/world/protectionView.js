@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { Parts } from './ropeMesh.js';
 import { Tether } from './tether.js';
 
-const MAX_PIECES = 40; // the oldest are taken out (cleaned) beyond this
+const MAX_PIECES = 200; // the oldest are taken out (cleaned) beyond this
 const ROPE_COLORS = [0x2a9d4a, 0xd9a21b, 0x8a3fb8, 0x2b7fd1, 0xd0452b];
 
 const _up = new THREE.Vector3(0, 1, 0);
@@ -41,14 +41,17 @@ export class ProtectionView extends THREE.Group {
 
   /**
    * Put a piece in where a climber stands: {x, y, z, kind: 'screw' | 'picket'}.
-   * Returns the placed piece (keep its id to clip to it).
+   * Returns the placed piece (keep its id to clip to it). With at.exact the piece
+   * goes in at x, z itself, at.normal ([x, y, z]) its angle: one another player
+   * put in, as their game sent it.
    */
   place(at) {
     const hm = this.hm;
     hm.groundNormalAt(at.x, at.z, _n);
     // Driven in at right angles to the slope, a little uphill of the boots.
-    const x = at.x - _n.x * 0.4, z = at.z - _n.z * 0.4;
-    const piece = { id: this._next++, x, y: hm.groundAt(x, z), z, kind: at.kind, normal: _n.clone(), yaw: Math.random() * Math.PI * 2 };
+    const x = at.exact ? at.x : at.x - _n.x * 0.4, z = at.exact ? at.z : at.z - _n.z * 0.4;
+    if (at.normal) _n.set(at.normal[0], at.normal[1], at.normal[2]);
+    const piece = { id: this._next++, x, y: hm.groundAt(x, z), z, kind: at.kind, normal: _n.clone(), yaw: at.yaw ?? Math.random() * Math.PI * 2, owner: at.owner ?? null };
     const out = piece.kind === 'picket' ? 0.12 : 0.02;
     piece.top = new THREE.Vector3(x, piece.y, z).addScaledVector(piece.normal, out);
     piece.clip = piece.top.clone().addScaledVector(piece.normal, piece.kind === 'picket' ? -0.015 : 0.085);
@@ -56,6 +59,10 @@ export class ProtectionView extends THREE.Group {
     if (this.pieces.length > MAX_PIECES) this.pieces.shift();
     this._rebuild();
     return piece;
+  }
+
+  get(id) {
+    return this.pieces.find((p) => p.id === id) ?? null;
   }
 
   /** Take a piece out again (cleaned on the way down). */

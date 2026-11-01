@@ -1,5 +1,11 @@
 // Fixed ropes on the Abruzzi Spur. Each rope is a polyline hugging the terrain,
 // ordered from its bottom end to its top end.
+//
+// Climbers fix ropes too: a lead who walks up, puts in a screw or picket, walks
+// on and puts in another leaves the rope running through them, and that stretch
+// becomes a fixed line like the others (fixLine). Anyone can clip into it, clip
+// past its anchors, jumar up and rappel down it. Each line is plain data (who
+// fixed it and where its anchors are), so multiplayer can send it to everyone.
 
 import * as THREE from 'three';
 import { tubeAlong, ropeMaterial, Parts } from './ropeMesh.js';
@@ -21,10 +27,15 @@ const CHUNK_M = 120;
 const DETAIL_RANGE = 260;
 // Anchor spacing before the rope is draped (no mesh, as in the tests).
 const FALLBACK_ANCHOR_M = 25;
+// A line climbers fixed: sampled this often between its anchors, the rope this
+// thick and in these colours (yours first, then teammates' in turn).
+const LINE_SPACING = 1.5;
+const LINE_COLORS = [[0x2a9d4a, 0xe8e2c8], [0xd9a21b, 0x2b2b2b], [0x8a3fb8, 0xe8e2c8], [0x2b7fd1, 0xf0c040], [0xd0452b, 0xe8e2c8]];
 
 export class FixedRopes {
   /** @param defs [{name, points: [[r, c], ...]}] from route.json */
   constructor(hm, defs) {
+    this.hm = hm;
     this.names = [];
     this.ropes = []; // arrays of THREE.Vector3
     this.lengths = []; // cumulative distance at each point
@@ -49,6 +60,94 @@ export class FixedRopes {
       this.ropes.push(pts);
       this.lengths.push(cum);
     }
+    /** How many ropes came with the route; the rest were fixed by climbers. */
+    this.routeCount = this.ropes.length;
+    /** Line key -> rope id, for the lines climbers fixed. */
+    this.lineIds = new Map();
+    /** Rope id -> {key, by, anchors: [{x, y, z, kind}], anchorS: [s, ...], active} for those lines. */
+    this.lines = [];
+  }
+
+  /** Whether rope id was fixed by a climber (rather than being on the route). */
+  isPlaced(rope) {
+    return rope >= this.routeCount;
+  }
+
+  /** Whether rope id is still there to clip into (a fixed line can be taken down). */
+  isActive(rope) {
+    return rope >= 0 && rope < this.ropes.length && (!this.isPlaced(rope) || this.lines[rope].active);
+  }
+
+  /**
+   * Fix a line through the anchors a climber put in, bottom to top, or update it
+   * as they put in more: call again with the same key and the longer list. The
+   * anchors are where the rope runs through each piece ({x, y, z, kind}); it
+   * needs two. Stretches already there stay where they were, so anyone clipped
+   * in stays on the same stretch. Returns the rope id.
+   * @param key unique to the line, the same on every player's game ('<who>:<n>')
+   * @param by who fixed it; name what the line is called ('rope you fixed')
+   */
+  fixLine(key, { by = '', name = `${by}'s rope`, anchors }) {
+    let r = this.lineIds.get(key);
+    if (anchors.length < 2) {
+      if (r !== undefined) this.removeLine(key);
+      return -1;
+    }
+    if (r === undefined) {
+      r = this.ropes.length;
+      this.lineIds.set(key, r);
+      this.ropes.push([]);
+      this.lengths.push([0]);
+      this.names.push(name);
+      this.lines[r] = { key, by, color: (this.lineIds.size - 1) % LINE_COLORS.length };
+    }
+    const line = this.lines[r];
+    Object.assign(line, { by, anchors: anchors.map((a) => ({ x: a.x, y: a.y, z: a.z, kind: a.kind })), active: true });
+    this.names[r] = name;
+    const hm = this.hm;
+    const pts = [];
+    const anchorS = [];
+    const cum = [];
+    let s = 0;
+    const push = (x, y, z) => {
+      const p = new THREE.Vector3(x, y, z);
+      if (pts.length) s += p.distanceTo(pts[pts.length - 1]);
+      pts.push(p);
+      cum.push(s);
+    };
+    for (let i = 0; i < anchors.length; i++) {
+      const a = anchors[i];
+      push(a.x, hm.heightAt(a.x, a.z) + ROPE_HEIGHT, a.z);
+      anchorS.push(s);
+      const b = anchors[i + 1];
+      if (!b) break;
+      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / LINE_SPACING));
+      for (let k = 1; k < steps; k++) {
+        const x = a.x + ((b.x - a.x) * k) / steps, z = a.z + ((b.z - a.z) * k) / steps;
+        push(x, hm.heightAt(x, z) + ROPE_HEIGHT, z);
+      }
+    }
+    this.ropes[r] = pts;
+    this.lengths[r] = cum;
+    line.anchorS = anchorS;
+    if (this.drapes) {
+      this.drapes[r] = this._drapeLine(r);
+      this._lineMesh(r);
+    }
+    return r;
+  }
+
+  /** Take a fixed line down: nobody can clip into it any more. */
+  removeLine(key) {
+    const r = this.lineIds.get(key);
+    if (r === undefined) return;
+    this.lines[r].active = false;
+    this._lineMesh(r);
+  }
+
+  /** The lines climbers fixed, as plain data: [{key, by, anchors}] (what multiplayer sends). */
+  linesData() {
+    return this.lines.filter((l) => l?.active).map(({ key, by, anchors }) => ({ key, by, anchors }));
   }
 
   lengthOf(rope) {
@@ -85,6 +184,7 @@ export class FixedRopes {
    * one every FALLBACK_ANCHOR_M.
    */
   anchorsOf(rope) {
+    if (this.isPlaced(rope)) return this.lines[rope].anchorS;
     const d = this.drapes?.[rope];
     const cache = d ? (this._anchorS ??= []) : (this._fallbackAnchorS ??= []);
     if (cache[rope]) return cache[rope];
@@ -107,10 +207,15 @@ export class FixedRopes {
     return { k, lo: A[k], hi: A[k + 1] };
   }
 
-  /** Nearest rope to p: {rope, s, distance, point}. rope is -1 when there are none. */
-  nearest(p) {
+  /**
+   * Nearest rope to p: {rope, s, distance, point}. rope is -1 when there are none.
+   * opts.placed false leaves out the lines climbers fixed (the route's ropes only).
+   */
+  nearest(p, { placed = true } = {}) {
     let best = { rope: -1, s: 0, distance: Infinity, point: null };
-    for (let r = 0; r < this.ropes.length; r++) {
+    const count = placed ? this.ropes.length : this.routeCount;
+    for (let r = 0; r < count; r++) {
+      if (!this.isActive(r)) continue;
       const near = this.nearestOn(r, p);
       if (near.distance < best.distance) best = near;
     }
@@ -209,6 +314,56 @@ export class FixedRopes {
     return { ds, n, x, z, y, g, anchors, kinds };
   }
 
+  /**
+   * How a line a climber fixed hangs: from the carabiner on each of their pieces
+   * to the next, sagging between them and lying on the snow where it bulges up.
+   */
+  _drapeLine(r) {
+    const hm = this.hm;
+    const line = this.lines[r];
+    const L = this.lengthOf(r);
+    const n = Math.max(2, Math.ceil(L / DRAPE_STEP));
+    const ds = L / n;
+    const x = new Float32Array(n + 1), z = new Float32Array(n + 1), g = new Float32Array(n + 1), y = new Float32Array(n + 1);
+    const p = new THREE.Vector3();
+    for (let i = 0; i <= n; i++) {
+      this.pointAt(r, i * ds, p);
+      x[i] = p.x; z[i] = p.z; g[i] = hm.groundAt(p.x, p.z);
+    }
+    const anchors = line.anchorS.map((s) => Math.min(n, Math.round(s / ds)));
+    const clipY = line.anchors.map((a, k) => Math.max(a.y, g[anchors[k]] + ROPE_RADIUS));
+    for (let k = 0; k < anchors.length - 1; k++) {
+      const a = anchors[k], b = anchors[k + 1];
+      const ya = clipY[k], yb = clipY[k + 1];
+      for (let i = a; i <= b; i++) {
+        const t = b > a ? (i - a) / (b - a) : 0;
+        const span = Math.hypot((b - a) * ds, yb - ya);
+        y[i] = Math.max(ya + (yb - ya) * t - SAG * span * 4 * t * (1 - t), g[i] + ROPE_RADIUS + 0.03);
+      }
+    }
+    for (let k = 0; k < anchors.length; k++) y[anchors[k]] = clipY[k];
+    return { ds, n, x, z, y, g, anchors, kinds: line.anchors.map((a) => a.kind) };
+  }
+
+  /** (Re)draw a fixed line; the screws and pickets on it are drawn with the climber's protection. */
+  _lineMesh(r) {
+    const line = this.lines[r];
+    if (!this.group) return;
+    if (line.mesh) {
+      this.group.remove(line.mesh);
+      line.mesh.geometry.dispose();
+      line.mesh = null;
+    }
+    if (!line.active) return;
+    const d = this.drapes[r];
+    const pts = [];
+    for (let i = 0; i <= d.n; i++) pts.push(new THREE.Vector3(d.x[i], d.y[i], d.z[i]));
+    this._lineMats ??= LINE_COLORS.map(([a, b]) => ropeMaterial(a, b));
+    line.mesh = new THREE.Mesh(tubeAlong(pts, ROPE_RADIUS, 6, 0.12), this._lineMats[line.color]);
+    line.mesh.castShadow = true;
+    this.group.add(line.mesh);
+  }
+
   /** What a rope is fixed to here: a piton on rock, a picket in snow. */
   _anchorKind(x, z) {
     return this.hm.slopeDeg(x, z) > 42 || this.hm.heightAt(x, z) < 5300 ? 'piton' : 'picket';
@@ -233,8 +388,9 @@ export class FixedRopes {
   createMesh(hm, features = null) {
     this.hm = hm;
     this.features = features;
-    this.drapes = this.ropes.map((_, r) => this._drape(r));
+    this.drapes = this.ropes.map((_, r) => (this.isPlaced(r) ? this._drapeLine(r) : this._drape(r)));
     const group = new THREE.Group();
+    this.group = group;
     const chunks = [];
     const parts = {};
     for (const k of ['carabiner', 'piton', 'picket', 'knot', 'rustyPiton']) parts[k] = Parts[k]();
@@ -248,6 +404,7 @@ export class FixedRopes {
     const up = new THREE.Vector3(0, 1, 0), dir = new THREE.Vector3(), pos = new THREE.Vector3();
 
     this.drapes.forEach((d, r) => {
+      if (this.isPlaced(r)) return;
       const ropeMat = ropeMats[r % ropeMats.length];
       const knotColor = new THREE.Color(colors[r % colors.length][0]);
       // The rope, in pieces so each is culled on its own.
@@ -344,6 +501,7 @@ export class FixedRopes {
         s += len + 25 + rnd() * 110;
       }
     });
+    for (let r = this.routeCount; r < this.ropes.length; r++) this._lineMesh(r);
     group.userData.chunks = chunks;
     group.update = (cam) => {
       for (const c of chunks) c.userData.detail.visible = cam.distanceTo(c.userData.center) < DETAIL_RANGE;

@@ -230,7 +230,7 @@ export class TerrainFeatures {
   _clear(x, z, r) {
     for (const c of this.camps) if (Math.hypot(c.x - x, c.z - z) < tuning.camp_radius_m + r + 20) return false;
     if (this.trail && polyDist(x, z, this.trail.points) < this.trail.clear_m + r) return false;
-    if (this.ropes && this.ropes.nearest(new THREE.Vector3(x, this.hm.heightAt(x, z), z)).distance < r + 10) return false;
+    if (this.ropes && this.ropes.nearest(new THREE.Vector3(x, this.hm.heightAt(x, z), z), { placed: false }).distance < r + 10) return false;
     for (const h of this.placedHoles) if (Math.hypot(h.x - x, h.z - z) < h.half + r + 15) return false;
     return true;
   }
