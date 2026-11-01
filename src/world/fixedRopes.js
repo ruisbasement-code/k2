@@ -19,6 +19,8 @@ const OLD_RADIUS = 0.014;
 // The rope is drawn in pieces this long; their anchors and old ropes only within DETAIL_RANGE m.
 const CHUNK_M = 120;
 const DETAIL_RANGE = 260;
+// Anchor spacing before the rope is draped (no mesh, as in the tests).
+const FALLBACK_ANCHOR_M = 25;
 
 export class FixedRopes {
   /** @param defs [{name, points: [[r, c], ...]}] from route.json */
@@ -75,6 +77,34 @@ export class FixedRopes {
   tangentAt(rope, s, out = new THREE.Vector3()) {
     const i = this._segment(rope, s);
     return out.subVectors(this.ropes[rope][i + 1], this.ropes[rope][i]).normalize();
+  }
+
+  /**
+   * Distances along the rope of its anchors, bottom to top, the rope's two ends
+   * included. Where the rope hangs once the mesh is built; before that (in tests)
+   * one every FALLBACK_ANCHOR_M.
+   */
+  anchorsOf(rope) {
+    const d = this.drapes?.[rope];
+    const cache = d ? (this._anchorS ??= []) : (this._fallbackAnchorS ??= []);
+    if (cache[rope]) return cache[rope];
+    let list;
+    if (d) list = Array.from(d.anchors, (i) => i * d.ds);
+    else {
+      const L = this.lengthOf(rope);
+      list = [];
+      for (let s = 0; s < L - FALLBACK_ANCHOR_M / 2; s += FALLBACK_ANCHOR_M) list.push(s);
+      list.push(L);
+    }
+    return (cache[rope] = list);
+  }
+
+  /** The stretch between two anchors that s lies in: {k, lo, hi}, k counted from the bottom. */
+  sectionAt(rope, s) {
+    const A = this.anchorsOf(rope);
+    let k = 0;
+    while (k < A.length - 2 && s >= A[k + 1]) k++;
+    return { k, lo: A[k], hi: A[k + 1] };
   }
 
   /** Nearest rope to p: {rope, s, distance, point}. rope is -1 when there are none. */
