@@ -98,19 +98,21 @@ export function createTerrain(hm) {
   const group = new THREE.Group();
   group.add(terrain, outer);
   if (f) group.add(createFineTerrain(hm, holes));
+  group.userData.holes = holes;
   /** Cut these open holes ({x, z, ux, uz, half, width, kind}) out of the surface, nearest first. */
   group.userData.setHoles = (list) => {
     const n = Math.min(list.length, MAX_TERRAIN_HOLES);
     for (let i = 0; i < n; i++) {
       const h = list[i];
       holes.uHoleA.value[i].set(h.x, h.z, h.ux, h.uz);
-      holes.uHoleB.value[i].set(h.half, h.width, h.kind === 'pit' || h.kind === 'moulin' ? 1 : 0, h.bend ?? 0);
+      // z: 2 + seed for a pit, seed for a crevasse (seed in [0, 1)).
+      holes.uHoleB.value[i].set(h.half, h.width, (h.kind === 'pit' || h.kind === 'moulin' ? 2 : 0) + Math.min(h.seed ?? 0, 0.999), h.bend ?? 0);
     }
     holes.uHoleCount.value = n;
     let cx = 0, cz = 0;
     for (let i = 0; i < n; i++) { cx += list[i].x / n; cz += list[i].z / n; }
     let r = -1;
-    for (let i = 0; i < n; i++) r = Math.max(r, Math.hypot(list[i].x - cx, list[i].z - cz) + list[i].half + Math.abs(list[i].bend ?? 0) + list[i].width);
+    for (let i = 0; i < n; i++) r = Math.max(r, Math.hypot(list[i].x - cx, list[i].z - cz) + list[i].half + Math.abs(list[i].bend ?? 0) + list[i].width * 1.55 + 3);
     holes.uHoleBounds.value.set(cx, cz, r, 0);
   };
   return group;
@@ -215,7 +217,7 @@ function fineChunk(f, nrm, surf, i0, j0, size, stride, origin) {
  * The fine terrain right around the climber, built from the same relief the
  * physics stands you on (hm.detail). update(position) rebuilds it as you move.
  */
-export function createDetailPatch(hm) {
+export function createDetailPatch(hm, holes = null) {
   const SEG = 200, STEP = 0.4;
   const half = (SEG * STEP) / 2;
   const n = SEG + 1;
@@ -234,7 +236,8 @@ export function createDetailPatch(hm) {
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('surf', new THREE.BufferAttribute(surf, 4));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
-  const mat = terrainMaterial(false);
+  // Cut by the same crevasse openings as the terrain under it.
+  const mat = terrainMaterial(false, holes);
   // Drawn in front of the coarse terrain it sits on.
   mat.polygonOffset = true;
   mat.polygonOffsetFactor = -2;
@@ -320,7 +323,11 @@ if (vW.x > uCut.x && vW.z > uCut.y && vW.x < uCut.z && vW.z < uCut.w) discard;
 #endif`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 TerrainSample ts = terrainSample(vW, normalize(vWN), vSurf, cameraPosition);
-diffuseColor.rgb = ts.albedo;`)
+diffuseColor.rgb = ts.albedo;
+#ifdef TERRAIN_HOLES
+// Round a crevasse's lip: bluish, shadowed snow and old ice just before the drop.
+diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.74, 0.86), gHoleRim * gHoleRim);
+#endif`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = ts.roughness;`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -454,31 +461,55 @@ uniform vec4 uHoleB[TERRAIN_HOLES];
 uniform int uHoleCount;
 uniform vec4 uHoleBounds;
 
-// Inside an open crevasse (a lens tapering to its ends) or pit (a circle)?
-bool inHole(vec2 p) {
-  if (distance(p, uHoleBounds.xy) > uHoleBounds.z) return false;
+// The ragged edge: same sums as TerrainFeatures.wobble.
+float holeWobble(float u, float hl, bool pit, float seed, float side) {
+  float ph = seed * 40.0 + (side < 0.0 ? 17.3 : 0.0);
+  float q = pit ? u / hl * 6.0 : u * 0.45;
+  return 1.0 + 0.28 * sin(q + ph) + 0.16 * sin(q * 2.5 + ph * 1.7) + 0.09 * sin(q * 6.0 + ph * 2.3);
+}
+
+// How far inside an open crevasse (a lens tapering to its ends) or pit (an oval)
+// p is, in metres: > 0 inside, < 0 outside (only meaningful within a few metres).
+float gHoleRim = 0.0;
+float holeDepthIn(vec2 p) {
+  float best = -99.0;
+  if (distance(p, uHoleBounds.xy) > uHoleBounds.z) return best;
   for (int i = 0; i < TERRAIN_HOLES; i++) {
     if (i >= uHoleCount) break;
     vec4 a = uHoleA[i];
     vec4 b = uHoleB[i];
     vec2 d = p - a.xy;
-    if (dot(d, d) > (b.x + b.y + abs(b.w)) * (b.x + b.y + abs(b.w))) continue;
+    float reach = b.x + abs(b.w) + b.y * 1.55 + 3.0;
+    if (dot(d, d) > reach * reach) continue;
     float u = dot(d, a.zw);
     if (abs(u) >= b.x) continue;
     float t = u / b.x;
     float v = dot(d, vec2(-a.w, a.z)) - b.w * (1.0 - t * t);
-    float w = b.z > 0.5 ? b.y * sqrt(1.0 - t * t) : b.y * sqrt(1.0 - t * t * t * t);
-    if (abs(v) < w) return true;
+    bool pit = b.z >= 1.5;
+    float w = pit ? b.y * sqrt(1.0 - t * t) : b.y * sqrt(1.0 - t * t * t * t);
+    w *= holeWobble(u, b.x, pit, fract(b.z), v);
+    best = max(best, w - abs(v));
   }
-  return false;
+  return best;
+}
+bool inHole(vec2 p) {
+  float k = holeDepthIn(p);
+  // Within a metre or two of the edge, the snow is trampled, cracked and shadowed.
+  gHoleRim = smoothstep(-2.5, 0.0, k);
+  return k > 0.0;
 }
 #endif
 
 struct TerrainSample { vec3 albedo; float roughness; float bump; };
 
 TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
-  gFoot = max(length(fwidth(p)), 1e-4);
   float dist = length(p - cam);
+  // The footprint from distance and viewing angle, not fwidth(p): fwidth jumps from
+  // one 2x2 pixel block to the next, and since every detail fade depends on it, the
+  // bump's screen-space derivatives turned those jumps into speckle and stair-steps.
+  // This one varies smoothly across the screen. 0.0018 rad is about one pixel.
+  float facing = abs(dot(n, (cam - p) / max(dist, 1e-3)));
+  gFoot = max(dist * 0.0018 / max(facing, 0.12), 1e-4);
   float h = p.y;
   // Ground type follows the slope of the terrain, not of every boulder up close.
   float slope = surf.x * 90.0;
@@ -499,8 +530,10 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   float acrossM = dot(p.xz, across);
   // Distance down the face, counting the drop too, so cliffs don't stretch the streaks.
   float alongM = dot(p.xz, downDir) - p.y;
-  // Thin streaks: varied across the slope, stretched 15x down it.
-  float streaks = fbm(vec2(acrossM * 0.35, alongM * 0.023), 4, gFoot * 0.35);
+  // Thin streaks: varied across the slope, stretched down it.
+  // Stretched only 5x: the fall line turns from one facet to the next, and longer
+  // streaks broke into zigzags where it did.
+  float streaks = fbm(vec2(acrossM * 0.3, alongM * 0.06), 4, gFoot * 0.3);
   // Finer streaks only close up, faded out before they get small enough to shimmer.
   float closeUp = 1.0 - smoothstep(25.0, 90.0, dist);
   float streaksNear = closeUp > 0.0 ? mix(0.5, fbm(vec2(acrossM * 0.55, alongM * 0.05), 3, gFoot * 0.55), closeUp) : 0.5;
@@ -612,11 +645,18 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   TerrainSample s;
   s.albedo = col;
   s.roughness = mix(mix(0.95, 0.75, snowy), 0.35, iceLike);
-  s.bump = (fine * near * mix(1.0, 0.2, snowy) + medium * mid * 6.0) * 0.6;
+  // Bump comes from screen-space derivatives, so it has to stay gentle: its height is
+  // in metres, and each band's relief is kept to a few per cent of its wavelength
+  // (centimetres for the fine grain, under a metre for the 20 m swell). Steeper than
+  // that, the normal swings from pixel to pixel and the ground breaks into speckle.
+  // Small detail also fades out once a pixel covers more than a few centimetres.
+  float smallBump = 1.0 - smoothstep(0.06, 0.35, gFoot);
+  float broadBump = 1.0 - smoothstep(2.0, 8.0, gFoot);
+  s.bump = fine * near * mix(0.07, 0.02, snowy) * smallBump + medium * mid * 0.8 * broadBump;
   // Cracks cut in, ripples and runnels shape the snow, a ledge stands proud of the slope.
-  s.bump += (-0.25 * blockCrack * near - 0.1 * jointCrack) * (1.0 - snowy)
-    + (0.05 * ripples * grain + 0.12 * runnels * streaksNear) * snowy
-    + (0.35 * ledge - 0.15 * lip);
+  s.bump += ((-0.05 * blockCrack * near - 0.02 * jointCrack) * (1.0 - snowy)
+    + (0.015 * ripples * grain + 0.05 * runnels * streaksNear) * snowy
+    + (0.12 * ledge - 0.05 * lip)) * smallBump;
   s.bump *= graze;
   return s;
 }

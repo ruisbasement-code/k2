@@ -125,7 +125,9 @@ function relief(hm, x, z, y, camps, wild = 1) {
     let rib = 0;
     for (let k = -3; k <= 3; k++) {
       const px = x + fx * k * 22, pz = z + fz * k * 22;
-      rib += ridged(px * 0.028, pz * 0.028, 111) + 0.5 * ridged(px * 0.07, pz * 0.07, 113);
+      // No finer than about 22 m: the grid is 7.8 m, and sharper creases alias into
+      // zigzag stair-steps.
+      rib += ridged(px * 0.028, pz * 0.028, 111) + 0.5 * ridged(px * 0.045, pz * 0.045, 113);
     }
     rib = rib / 7 / 1.5 - 0.45;
     off += steep * rib * (9 + 4 * wild + (8 + 2 * wild) * smooth(40, 60, slope));
@@ -161,7 +163,7 @@ function relief(hm, x, z, y, camps, wild = 1) {
   if (glacier > 0.01) {
     const [wx, wz] = hm.baseGradient(x, z, 3 * hm.cell);
     const wide = (Math.atan(Math.hypot(wx, wz)) * 180) / Math.PI;
-    const hummock = (fbm(x * 0.025, z * 0.025, 3, 131) - 0.5) * 9 + (ridged(x * 0.07, z * 0.07, 133) - 0.6) * 4;
+    const hummock = (fbm(x * 0.025, z * 0.025, 3, 131) - 0.5) * 9 + (ridged(x * 0.045, z * 0.045, 133) - 0.6) * 4;
     const blocks = cellular(x, z, 18, 135);
     const broken = (0.3 + 0.7 * smooth(4, 12, wide)) * (hash(blocks.i, blocks.j, 136) * 7 + 2) * smooth(0, 4, blocks.d2 - blocks.d1);
     const moraine = moraineAt(x, z);

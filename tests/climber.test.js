@@ -88,7 +88,10 @@ describe('climber', () => {
     let furthest = 0;
     for (let i = 0; i < 30 * 30; i++) {
       c.update(FRAME, { x: 1, y: 0 });
-      furthest = Math.max(furthest, ropes.nearestOn(0, c.position).distance);
+      // The leash is measured across the ground: in a gully beside a rope run over a
+      // rib you can be further below it than that.
+      const near = ropes.nearestOn(0, c.position).point;
+      furthest = Math.max(furthest, Math.hypot(near.x - c.position.x, near.z - c.position.z));
     }
     expect(c.clipped).toBe(true);
     expect(furthest).toBeGreaterThan(3);
