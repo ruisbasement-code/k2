@@ -144,7 +144,13 @@ describe('climber', () => {
   });
 
   it('turns a slip while scrambling into a slide down the slope', () => {
-    const spot = steepest(at('Advanced Base Camp'), tuning.climb_start_deg + 5, tuning.no_rope_max_deg);
+    // Somewhere the slope keeps going below you, not just above a ledge.
+    const runsOn = (x, z) => {
+      const [gx, gz] = hm.gradient(x, z);
+      const g = Math.hypot(gx, gz);
+      return [3, 6, 9, 12, 15, 18, 21, 24].every((d) => hm.slopeDeg(x - (gx / g) * d, z - (gz / g) * d) > tuning.climb_start_deg + 3);
+    };
+    const spot = steepest(at('Advanced Base Camp'), tuning.climb_start_deg + 5, tuning.no_rope_max_deg, runsOn);
     const c = new Climber(hm, ropes, route.places);
     c.placeAt(spot.x, spot.z, spot.x, spot.z);
     const [gx, gz] = hm.gradient(spot.x, spot.z);
@@ -273,14 +279,14 @@ describe('climber', () => {
 });
 
 /** The steepest spot between lo and hi degrees within 400 m of a place. */
-function steepest([cx, cz], lo, hi) {
+function steepest([cx, cz], lo, hi, keep = () => true) {
   let best = null;
   for (let dx = -400; dx <= 400; dx += 10) {
     for (let dz = -400; dz <= 400; dz += 10) {
       const s = hm.slopeDeg(cx + dx, cz + dz);
       // On the mountainside, not the side of a hummock on the glacier.
       if (hm.glacierAt(cx + dx, cz + dz) > 0.2) continue;
-      if (s >= lo && s < hi && (!best || s > best.s)) best = { s, x: cx + dx, z: cz + dz };
+      if (s >= lo && s < hi && (!best || s > best.s) && keep(cx + dx, cz + dz)) best = { s, x: cx + dx, z: cz + dz };
     }
   }
   if (!best) throw new Error(`no ground between ${lo} and ${hi} degrees`);

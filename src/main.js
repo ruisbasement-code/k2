@@ -12,6 +12,7 @@ import { Heightmap } from './world/heightmap.js';
 import { createTerrain, createDetailPatch } from './world/terrain.js';
 import { buildFineTerrain } from './world/fineTerrain.js';
 import { GlacierBlocks } from './world/glacierBlocks.js';
+import { HorizonMaps } from './world/horizon.js';
 import { TerrainDetail, campFlats } from './world/terrainDetail.js';
 import { FixedRopes } from './world/fixedRopes.js';
 import { createCamps } from './world/camps.js';
@@ -57,7 +58,7 @@ const params = new URLSearchParams(location.search);
 const loading = document.getElementById('loading');
 const hm = await Heightmap.load();
 // The mountain's benches, ribs, buttresses and glacier hummocks, before anything stands on it.
-buildFineTerrain(hm, route.places);
+buildFineTerrain(hm, route.places, route.fixed_ropes);
 const terrain = createTerrain(hm);
 scene.add(terrain);
 const ropes = new FixedRopes(hm, route.fixed_ropes);
@@ -344,6 +345,14 @@ if (params.has('hour')) climber.mountainSeconds = +params.get('hour') * 3600;
 climber.weather = new Weather(params.has('seed') ? +params.get('seed') : Math.floor(Math.random() * 1e9), climber.mountainSeconds);
 if (params.has('weather')) climber.weather.force(params.get('weather'), 48);
 if (params.has('avalanche')) climber.avalanches.releaseAbove(climber.position.x, climber.position.z);
+
+// The mountain's own shadows (ridges, buttresses, steps) and darker gullies, on
+// everything lit. ?flatlight leaves them off, to compare.
+if (!params.has('flatlight')) {
+  const horizon = new HorizonMaps(renderer, hm);
+  horizon.shade(glacierBlocks.mat);
+  horizon.shadeAll(scene);
+}
 
 loading.remove();
 const start = document.getElementById('start');

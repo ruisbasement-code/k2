@@ -12,7 +12,7 @@ export function loadHeightmap(detail = true, fine = true) {
   const meta = JSON.parse(readFileSync(new URL('../public/data/k2_heightmap_meta.json', import.meta.url)));
   const bytes = readFileSync(new URL('../public/data/k2_heightmap.f32', import.meta.url));
   const hm = new Heightmap(meta, new Float32Array(Uint8Array.from(bytes).buffer));
-  if (fine) buildFineTerrain(hm, route.places);
+  if (fine) buildFineTerrain(hm, route.places, route.fixed_ropes);
   if (detail) hm.detail = new TerrainDetail(hm, campFlats(hm, route.places));
   return hm;
 }

@@ -55,8 +55,15 @@ describe('collapsing in the cold', () => {
     const c = new Climber(hm, ropes, route.places);
     const p = route.places.find((x) => x.name === 'Camp 3') ?? route.places[3];
     const [x, z] = hm.gridToWorld(p.r, p.c);
-    // Well away from the camp's tents.
-    c.placeAt(x + 300, z + 300, 0, 0);
+    // Well away from the camp's tents, on ground you can stand on.
+    let spot = null;
+    for (let d = 300; d < 600 && !spot; d += 10) {
+      for (let a = 0; a < 16 && !spot; a++) {
+        const sx = x + d * Math.cos(a * 0.39), sz = z + d * Math.sin(a * 0.39);
+        if (hm.slopeDeg(sx, sz) < 20) spot = [sx, sz];
+      }
+    }
+    c.placeAt(spot[0], spot[1], 0, 0);
     c.mountainSeconds = 2 * 3600;
     c.environment = { airTempC: -35, windMs: 25 };
     c.clipped && c.toggleClip();
