@@ -54,7 +54,7 @@ import { Pack } from '../sim/pack.js';
 import { airAt } from '../sim/environment.js';
 import { SnowTrail, Rockfall, isLoose, ledgeAt } from '../sim/hazards.js';
 import { weatherTuning as W } from '../sim/weather.js';
-import { Avalanches, isSlabSlope } from '../sim/avalanche.js';
+import { Avalanches, isSlabSlope, slabLoad } from '../sim/avalanche.js';
 import { TerrainFeatures } from '../sim/terrainFeatures.js';
 
 const { tuning } = Pace;
@@ -182,6 +182,12 @@ export class Climber {
      * dangling (seconds until you regrab it from its leash after losing your grip).
      */
     this.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
+    /**
+     * Trekking poles (if packed): out in your hands or strapped to the pack. They
+     * help on gentle ground and skate on steep ground, where the axe belongs.
+     */
+    this.poles = { inHand: false };
+    this._polesWarned = false;
     /** Grip on the axe while hanging on a steep wall, 0..100. */
     this.grip = 100;
     /** On snow or ice too steep to walk, hanging on the axe between swings. */
@@ -265,9 +271,13 @@ export class Climber {
 
   /** The steepest ground you can go up right now. */
   get maxClimbDeg() {
-    if (this.clipped) return 90;
+    const snowIce = AXE_GROUND.has(this.surface?.key);
+    // The rope catches a fall, but on snow and ice it doesn't pull you up: you
+    // still kick steps and plant the axe, and swing up the steepest of it.
+    // On rock (and walls too steep to swing up) you jumar up the rope.
+    if (this.clipped && (!snowIce || this.slope > tuning.axe_wall_max_deg)) return 90;
     // Kicking steps and planting the axe gets you up steeper snow and ice.
-    if (this.axeReady && AXE_GROUND.has(this.surface?.key)) return tuning.axe_climb_max_deg;
+    if (this.axeReady && snowIce) return tuning.axe_climb_max_deg;
     return tuning.no_rope_max_deg;
   }
 
@@ -292,7 +302,55 @@ export class Climber {
     } else {
       a.inHand = true;
       a.drawing = tuning.axe_draw_s;
-      if (!this.falling) this.onMessage('Ice axe in hand: steeper snow and ice, and a real self-arrest.');
+      const swapped = this.poles.inHand;
+      this.poles.inHand = false;
+      if (!this.falling) this.onMessage(`${swapped ? 'Poles strapped to your pack. ' : ''}Ice axe in hand: steeper snow and ice, and a real self-arrest.`);
+    }
+  }
+
+  /** Trekking poles out and in your hands. */
+  get polesReady() {
+    return this.poles.inHand && this.pack.gear.has('poles');
+  }
+
+  /** Poles out on gentle ground: a quicker, easier stride. */
+  get polesHelp() {
+    return this.polesReady && this.groundMode === Mode.WALK && this.slope < tuning.poles_gentle_deg;
+  }
+
+  /** Poles out on steep ground, unroped: they skate where an axe would bite. */
+  get polesOnSteep() {
+    return this.polesReady && !this.clipped && this.slope > tuning.poles_steep_deg;
+  }
+
+  /** Take the trekking poles out (stowing the axe) or strap them to the pack. */
+  togglePoles() {
+    if (!this.pack.gear.has('poles')) {
+      this.onMessage('You have no trekking poles. Pack a pair at Base Camp.');
+      return;
+    }
+    if (this.poles.inHand) {
+      this.poles.inHand = false;
+      this.onMessage('Poles strapped to your pack.');
+      return;
+    }
+    const hadAxe = this.axe.inHand;
+    if (hadAxe) this.axe = { ...this.axe, inHand: false, drawing: 0, dangling: 0 };
+    this.poles.inHand = true;
+    this.onMessage(`${hadAxe ? 'Axe stowed. ' : ''}Trekking poles out: quicker and easier on gentle ground. Swap to the axe (I) before it gets steep.`);
+  }
+
+  /** Warn once each time you take poles onto steep ground. */
+  _notePoles() {
+    if (this.polesOnSteep) {
+      if (!this._polesWarned) {
+        this._polesWarned = true;
+        this.onMessage(this.axe.have
+          ? 'Your poles skate on ground this steep. Get the ice axe out (I) or you will slip.'
+          : 'Your poles skate on ground this steep. Tread very carefully.');
+      }
+    } else if (this.slope < tuning.poles_steep_deg - 3 || !this.polesReady) {
+      this._polesWarned = false;
     }
   }
 
@@ -337,9 +395,15 @@ export class Climber {
       this.position.addScaledVector(this._swingDir, t.axe_swing_m * step * Math.cos(slope));
       this.hm.clampInside(this.position);
       this.position.y = this._groundAt(this.position.x, this.position.z);
+      if (this.clipped) this._keepOnLeash();
       this.heading = Math.atan2(-gx, -gz); // facing into the slope
       this.moving = true;
       this.effort = t.push_effort;
+    } else if (this.clipped) {
+      // Clipped in, you can sit back on the rope between swings and get your breath back.
+      this.grip = Math.min(100, this.grip + t.axe_grip_regen_per_s * dt);
+      this.moving = false;
+      this.effort = 0;
     } else {
       // Hanging: arms and calves burn; more on steeper ground and when spent.
       const steep = 1 + (this.slope - 45) / 20;
@@ -349,7 +413,8 @@ export class Climber {
     }
     if (this.grip <= 0 || (this.body.exhausted && this._swing <= 0)) {
       this.grip = 0;
-      this._startFall(gx, gz, "Your grip gave out and you came off the wall! Hold Space to arrest with the axe.", { back: false, head: false });
+      if (this.clipped) this._startRopeFall('Your grip gave out and you came off the wall! The rope will catch you.');
+      else this._startFall(gx, gz, "Your grip gave out and you came off the wall! Hold Space to arrest with the axe.", { back: false, head: false });
     }
   }
 
@@ -838,7 +903,7 @@ export class Climber {
       this._noteCamp();
     }
     this._rocks(dt, dtM);
-    this._weatherStep(dt, dtM, wasFalling);
+    this._weatherStep(dt, dtM, wasFalling, !!input.arrest);
     this._icefall(dt, dtM);
     this.shake *= Math.exp(-dt * 2.5);
     this._axeStep(dt);
@@ -877,6 +942,7 @@ export class Climber {
     // A small ledge underfoot gives you somewhere flatter to stand.
     this.onLedge = !!ledgeAt(this.position.x, this.position.z, this.slope);
     this._noteFeatures();
+    this._notePoles();
     const footing = this._footingSlope(this.slope, this.onLedge);
     // Crampons kicked in and the axe planted hold you on steep snow and ice.
     const axeBites = this.axeReady && AXE_GROUND.has(this.surface.key);
@@ -885,7 +951,8 @@ export class Climber {
     const clipped = this.clipped;
     // On steep ground, clipped in means jumaring.
     if (clipped && this.groundMode !== Mode.WALK) this.mode = Mode.ROPE;
-    this.onAxeWall = !clipped && axeBites && !this.onLedge
+    // Clipped in or not: the rope only protects you while you swing up.
+    this.onAxeWall = axeBites && !this.onLedge
       && this.slope >= tuning.axe_climb_max_deg && this.slope <= tuning.axe_wall_max_deg;
     if (this.onAxeWall) {
       this._axeWall(dtM, dt, gx, gz, input);
@@ -926,6 +993,7 @@ export class Climber {
         target = Pace.groundSpeed(climbing, this.slope, grade, this.breathAltitude) * ground;
         if (rope) target = this._ropeAssist(target, dir, grade, rope);
         target *= amount * this.body.speedFactor() * this.mods.speed;
+        if (this.polesHelp) target *= t.poles_speed;
         if (this.zone) target *= this.zone.speed;
         if (this.pushing) target *= Pace.pushFactor(this.breathAltitude);
         target *= this._windPace(dir);
@@ -948,7 +1016,7 @@ export class Climber {
     }
     const climbing = this.groundMode !== Mode.WALK;
     this.effort = wants && target > 0 ? Pace.effort(climbing, grade, this.pushing) * (1 + t.sink_effort * this.sink) * this.mods.effort
-      * (axeBites && climbing ? t.axe_climb_effort : 1) : 0;
+      * (axeBites && climbing ? t.axe_climb_effort : 1) * (this.polesHelp ? t.poles_effort : 1) : 0;
     if (this.gasping) this.effort = 0.3;
     this.moving = this.pace > 0;
     this._breathPace(dtM, grade, climbing);
@@ -1045,6 +1113,8 @@ export class Climber {
     if (SNOW.has(this.surface.key)) chance *= 1 - 0.5 * this.packing;
     // Each step backed by a planted axe: a stumble is held before it becomes a slip.
     if (this.axeReady && AXE_GROUND.has(this.surface.key)) chance *= t.axe_slip_mult;
+    // Leaning on poles that skate: a stumble becomes a slip.
+    if (this.polesOnSteep) chance *= t.poles_steep_slip_mult;
     if (this.zone && !clipped) chance *= this.zone.slip;
     if (clipped) chance *= t.rope_slip_mult;
     chance *= this.mods.slip;
@@ -1076,6 +1146,7 @@ export class Climber {
     if (this.clipped) return;
     let perMin = Pace.slipChancePerMin(this.slope, this.pushing, this.surface.key, moving) * this.mods.slip;
     if (this.axeReady && AXE_GROUND.has(this.surface.key)) perMin *= tuning.axe_slip_mult;
+    if (this.polesOnSteep) perMin *= tuning.poles_steep_slip_mult;
     if (perMin <= 0) return;
     if (Math.random() < (perMin * dtM) / 60) {
       this._startFall(gx, gz, `You slipped on the ${this.surface.label.toLowerCase()}! Hold Space to self-arrest.`);
@@ -1371,7 +1442,7 @@ export class Climber {
    * Wind and debris move in real seconds; the chance of a slide or calving is per
    * mountain hour.
    */
-  _weatherStep(dt, dtM, wasFalling) {
+  _weatherStep(dt, dtM, wasFalling, arrest = false) {
     const w = this.weather;
     if (w) {
       w.update(this.mountainSeconds, dt);
@@ -1383,9 +1454,16 @@ export class Climber {
     const c = this.conditions;
     if (w && !this.dead && !fly) {
       if (!this.falling) this._wind(dt, c);
-      const natural = W.natural_per_hour * c.avalancheDanger ** 2;
+      // Slides come down somewhere above you now and then, far more often after
+      // storms and fresh snow; others pour down faces across the mountain.
+      const wind = { x: c.windX, z: c.windZ, slab: w.windSlab };
+      const natural = W.natural_per_hour * (W.natural_base + c.avalancheDanger ** 1.5);
       if (Math.random() < (natural * dtM) / 3600) {
-        const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour);
+        const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour, Math.random, { wind });
+        if (slide) this._announceSlide(slide);
+      }
+      if (Math.random() < (W.distant_per_hour * c.avalancheDanger * dtM) / 3600) {
+        const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour, Math.random, { wind, spread: W.distant_spread_m });
         if (slide) this._announceSlide(slide);
       }
       this._seracFall(dtM, c);
@@ -1395,20 +1473,44 @@ export class Climber {
       body.y += 0.9;
       const hit = this.avalanches.step(dt, this.dead || fly ? null : body);
       if (hit) this._caughtInAvalanche(hit);
-      // Debris carries you along with it.
+      // Debris carries you along with it. Holding Space you swim for the surface:
+      // the longer you fight, the less likely it buries you, and with luck you
+      // break out on top and can dig the axe in.
       if (this.falling && this.fall.avalanche) {
+        const f = this.fall;
         const blob = this.avalanches.nearestMoving(this.position, 20);
-        if (blob) this.velocity.lerp(blob.velocity, 1 - Math.exp(-dt * 1.5));
+        if (arrest) {
+          if (!f.swim) this.onMessage('Swimming hard for the surface!');
+          f.swim = (f.swim ?? 0) + dt;
+          if (f.phase === 'tumble' && f.swim > 1 && Math.random() < W.swim_surface_per_s * dt) {
+            this._settle();
+            this.onMessage('You fought your way to the top of the debris. Dig in!');
+          }
+        }
+        if (blob) this.velocity.lerp(blob.velocity, 1 - Math.exp(-dt * (f.arresting ? 0.4 : 1.5)));
       }
     }
-    if (wasFalling && !this.falling && !this.dead && this.fall?.avalanche) {
-      this.fall.avalanche = false;
-      if (Math.random() < W.burial_chance) {
-        this._hurt(W.burial_damage, 'You were buried by the avalanche.');
-        this.mountainSeconds += 1200;
-        if (!this.dead) this.onMessage(`Buried! It took twenty minutes to dig yourself out of the debris. Health ${Math.round(this.health)}.`);
-      }
+    if (wasFalling && !this.falling && !this.dead && this.fall?.avalanche) this._avalancheStops();
+  }
+
+  /** The debris stops and sets like concrete: on top, buried shallow, or buried deep. */
+  _avalancheStops() {
+    const f = this.fall;
+    f.avalanche = false;
+    const fought = Math.min((f.swim ?? 0) / W.swim_full_s, 1);
+    if (Math.random() >= W.burial_chance * (1 - W.swim_save * fought)) {
+      this.onMessage(fought > 0.3 ? 'You kept on top of the debris as it stopped. Lucky.' : 'The debris stopped with you on top. Lucky.');
+      return;
     }
+    if (Math.random() < W.deep_burial_chance * (1 - 0.5 * fought)) {
+      this._hurt(W.deep_burial_damage * (0.8 + 0.4 * Math.random()), 'You were buried deep in avalanche debris.');
+      this.mountainSeconds += 3600;
+      if (!this.dead) this.onMessage(`Buried deep! An hour clawing at the set snow before you broke out. Health ${Math.round(this.health)}.`);
+      return;
+    }
+    this._hurt(W.burial_damage * (0.5 + Math.random()), 'You were buried by the avalanche.');
+    this.mountainSeconds += 1200;
+    if (!this.dead) this.onMessage(`Buried! It took twenty minutes to dig yourself out of the debris. Health ${Math.round(this.health)}.`);
   }
 
   /** Strong wind pushes you downwind; a hard gust can throw you off steep ground. */
@@ -1442,7 +1544,8 @@ export class Climber {
   _maybeTriggerSlab() {
     const c = this.conditions;
     if (!c || !isSlabSlope(this.hm, this.position.x, this.position.z, this.hour)) return;
-    if (Math.random() >= W.trigger_per_step * c.avalancheDanger ** 2) return;
+    const load = slabLoad(this.hm, this.position.x, this.position.z, c.windX, c.windZ, this.weather?.windSlab ?? 0);
+    if (Math.random() >= W.trigger_per_step * c.avalancheDanger ** 1.5 * load) return;
     const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
     const g = Math.hypot(gx, gz) || 1;
     const [w0, w1] = W.slab_width_m;
@@ -1455,10 +1558,11 @@ export class Climber {
 
   _announceSlide(slide) {
     const d = slide.origin.distanceTo(this.position);
-    if (d > 1200) return;
+    if (d > W.distant_spread_m) return;
     this.shake = Math.max(this.shake, Math.min(1, 300 / d));
     const above = slide.origin.y > this.position.y + 20;
-    this.onMessage(above ? `Avalanche! A slope ${Math.round(d)} m above you has broken loose.` : `An avalanche thunders down ${Math.round(d)} m away.`);
+    if (d > 1200) this.onMessage(`A distant roar: an avalanche is pouring down a face ${(d / 1000).toFixed(1)} km away.`);
+    else this.onMessage(above ? `Avalanche! A slope ${Math.round(d)} m above you has broken loose. Get out of its path!` : `An avalanche thunders down ${Math.round(d)} m away.`);
   }
 
   /**
@@ -1500,7 +1604,7 @@ export class Climber {
     }
     if (!this.falling) {
       const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
-      this._startFall(gx, gz, 'Avalanche! You are swept away. Fight to stay on top!');
+      this._startFall(gx, gz, 'Avalanche! You are swept away. Hold Space to swim for the surface!');
     }
     this.velocity.copy(blob.velocity);
     this.fall.phase = 'tumble';

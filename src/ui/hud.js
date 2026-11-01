@@ -7,7 +7,7 @@ import { Mode, CLIP_RANGE } from '../player/climber.js';
 import { tuning } from '../sim/paceModel.js';
 import { compass, dangerLabel } from '../sim/weather.js';
 import { hasGear } from '../sim/gear.js';
-import { hotbarItems } from './inventory.js';
+import { hotbarItems, SIGNALS } from './inventory.js';
 import { icon } from './icons.js';
 import route from '../data/route.json';
 import featureDefs from '../data/features.json';
@@ -112,6 +112,10 @@ export class Hud {
     if (c.collapsed) {
       const min = Math.ceil(c.collapseHoursLeft * 60);
       $('collapsed-left').textContent = `About ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min before you freeze.`;
+      // Signalling gear comes first on the hotbar when you're down.
+      const sig = hotbarItems(c).map((it, i) => [i + 1, it]).filter(([, it]) => SIGNALS.includes(it.id));
+      $('collapsed-signal').hidden = !sig.length;
+      $('collapsed-signal').innerHTML = sig.map(([k, it]) => `<kbd>${k}</kbd> ${it.id === 'flares' ? `Fire a flare (${it.count} left)` : it.id === 'strobe' ? (c.signals?.strobeOn ? 'Strobe off' : 'Strobe on') : 'Blow the whistle'}`).join(' &nbsp; ');
     }
     this._prompt();
     this._chips();
@@ -125,7 +129,7 @@ export class Hud {
     const c = this.climber;
     this.hot = hotbarItems(c);
     const html = this.hot.map((it, i) => {
-      const on = it.id === this.held || ((it.id === 'axe' || it.id === 'axe_tech') && c.axe.inHand) || (it.id === 'oxygen' && c.phys.flow > 0);
+      const on = it.id === this.held || ((it.id === 'axe' || it.id === 'axe_tech') && c.axe.inHand) || (it.id === 'poles' && c.poles.inHand) || (it.id === 'oxygen' && c.phys.flow > 0) || (it.id === 'strobe' && c.signals?.strobeOn);
       return `<div class="hs${on ? ' on' : ''}" title="${it.label}"><b>${i + 1}</b>${icon(it.id)}${it.count !== undefined ? `<span>${it.count}</span>` : ''}</div>`;
     }).join('');
     if (html !== this._hotHtml) $('hotbar').innerHTML = this._hotHtml = html;
@@ -192,9 +196,13 @@ export class Hud {
       acts.push(['Click', 'Swing'], ['S + Click', 'Down']);
       if (c.grip < 30) alert ||= 'Grip failing';
     }
+    if (c.polesOnSteep) {
+      alert ||= 'Poles on steep ground';
+      if (c.axe.have) acts.push(['I', 'Axe']);
+    }
     if (c.blocked) {
       const axeGround = ['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier', 'ice'].includes(c.surface.key);
-      if (axeGround && !c.axeReady && c.slope < tuning.axe_climb_max_deg && c.axe.have) acts.push(['I', 'Axe']);
+      if (axeGround && !c.axeReady && !c.polesOnSteep && c.slope <= tuning.axe_wall_max_deg && c.axe.have) acts.push(['I', 'Axe']);
       else alert ||= 'Too steep';
     }
 

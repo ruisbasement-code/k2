@@ -21,8 +21,8 @@ export class Pack {
   gear = new Set(DEFAULT_GEAR);
   /** Which pack: sets how many litres fit. */
   size = 'pack45';
-  /** First-aid kits and hand warmers, packed at Base Camp. */
-  extra = { firstaid: 0, warmers: 0 };
+  /** First-aid kits, hand warmers and signal flares, packed at Base Camp. */
+  extra = { firstaid: 0, warmers: 0, flares: 0 };
 
   /** How many of an item you have, in the units camps stock it (canisters for gas, bottles for oxygen). */
   count(item) {
