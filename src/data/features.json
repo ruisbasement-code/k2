@@ -14,6 +14,11 @@
     {"name": "Bottleneck serac", "from": [325.3, 326.6], "to": [321.6, 330.4], "height_m": [35, 70], "depth_m": 26, "icefall": true}
   ],
 
+  "_couloirs": "Gullies cut into the face by the fine terrain (fineTerrain.js): a rounded snow floor width_m across and depth_m deep, with ragged rock walls up to walls_m high either side, narrowing at its neck. The Bottleneck is the couloir the route climbs to the Traverse.",
+  "couloirs": [
+    {"name": "The Bottleneck", "points": [[335.4, 339.2], [333, 336], [329, 331], [327.6, 329.2]], "width_m": 26, "depth_m": 9, "walls_m": 16}
+  ],
+
   "_cornices": "Wind-built snow lips overhanging the lee side of ridge crests, on whichever side of the crest drops away (the lee hint picks the side when both do; the prevailing wind is westerly). 'overhang' is the same thing on the edge of a rock step. Walk out onto one and it can break off under you.",
   "cornices": [
     {"name": "Summit ridge cornice", "kind": "cornice", "from": [324, 325], "to": [320.5, 320.5], "width_m": [3, 7], "lee": [1, -0.4]},
