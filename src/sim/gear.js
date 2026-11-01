@@ -96,6 +96,7 @@ export function difficulty(c) {
   let d = Math.max(0, gust - 5) / 25
     + Math.max(0, -feels - 10) / 40
     + (c.phys?.frostbite ?? 0) * 0.8
+    + (c.phys?.numb ?? 0) * tuning.numb_fiddly
     + Math.max(0, 1 - c.health / 100) * 0.5
     + (c.body?.exhausted ? 0.2 : 0)
     - (hasGear(c.pack, 'gloves') ? 0.08 : 0);
