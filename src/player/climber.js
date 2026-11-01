@@ -203,6 +203,16 @@ export class Climber {
     /** The weather where the climber is, from Weather.conditionsAt; null without weather. */
     this.conditions = null;
     this.avalanches = new Avalanches(hm);
+    /** Slabs that have cracked above you and will let go in a few seconds: {x, z, width, in}. */
+    this.pendingSlides = [];
+    /**
+     * Warning cues for the screen and sound, drained by the game each frame:
+     * {kind: 'crack' | 'whumpf' | 'roar', at: Vector3, strength 0..1}.
+     */
+    this.cues = [];
+    /** How ready the slope underfoot is to slide, 0..1 (danger × load on a slab slope). */
+    this.slabRisk = 0;
+    this._whumpfCool = 0;
     const [sr, sc] = W.serac_grid;
     const [sx, sz] = hm.gridToWorld(sr, sc);
     this.serac = new THREE.Vector3(sx, hm.heightAt(sx, sz), sz);
@@ -224,6 +234,8 @@ export class Climber {
     this.yaw = Math.atan2(-(faceX - x), -(faceZ - z));
     this.heading = this.yaw;
     this._altLog = [];
+    this.pendingSlides = [];
+    this.slabRisk = 0;
     this._noteCamp();
   }
 
@@ -1563,8 +1575,8 @@ export class Climber {
       const wind = { x: c.windX, z: c.windZ, slab: w.windSlab };
       const natural = W.natural_per_hour * (W.natural_base + c.avalancheDanger ** 1.5);
       if (Math.random() < (natural * dtM) / 3600) {
-        const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour, Math.random, { wind });
-        if (slide) this._announceSlide(slide);
+        const crown = this.avalanches.findAbove(this.position.x, this.position.z, this.hour, Math.random, { wind });
+        if (crown) this._crackAbove(crown);
       }
       if (Math.random() < (W.distant_per_hour * c.avalancheDanger * dtM) / 3600) {
         const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour, Math.random, { wind, spread: W.distant_spread_m });
@@ -1572,6 +1584,8 @@ export class Climber {
       }
       this._seracFall(dtM, c);
     }
+    this._releaseCracked(dt);
+    this._whumpfCool -= dt;
     if (this.avalanches.active) {
       const body = this.position.clone();
       body.y += 0.9;
@@ -1644,11 +1658,60 @@ export class Climber {
     return Math.min(Math.max(1 - W.headwind_slow_per_m_s * into + 0.004 * Math.max(0, along) * c.wind, 0.3), 1.1);
   }
 
+  /** Queue a warning cue for the screen and sound (the game drains them; tests don't). */
+  _cue(cue) {
+    this.cues.push(cue);
+    if (this.cues.length > 16) this.cues.shift();
+  }
+
+  /**
+   * A slab above you has cracked: you hear it and see where, and it lets go a
+   * few seconds later. Far off, it just goes.
+   */
+  _crackAbove(crown) {
+    const y = this.hm.heightAt(crown.x, crown.z);
+    const d = Math.hypot(crown.x - this.position.x, y - this.position.y, crown.z - this.position.z);
+    if (d > W.warning_near_m || this.dead) {
+      const slide = this.avalanches.release(crown.x, crown.z, crown.width);
+      if (slide) this._announceSlide(slide);
+      return;
+    }
+    this.pendingSlides.push({ ...crown, in: W.warning_s });
+    const at = new THREE.Vector3(crown.x, y, crown.z);
+    this._cue({ kind: 'crack', at, strength: Math.min(1, 400 / Math.max(d, 50)) });
+    this.shake = Math.max(this.shake, Math.min(0.5, 120 / Math.max(d, 1)));
+    const above = y > this.position.y + 20;
+    this.onMessage(above
+      ? `Crack! The snow ${Math.round(d)} m above you is fracturing. Get out of the fall line, now!`
+      : `Crack! A slope ${Math.round(d)} m away is fracturing.`);
+  }
+
+  /** Cracked slabs let go when their few seconds are up. */
+  _releaseCracked(dt) {
+    if (!this.pendingSlides.length) return;
+    for (const p of this.pendingSlides) p.in -= dt;
+    const due = this.pendingSlides.filter((p) => p.in <= 0);
+    if (!due.length) return;
+    this.pendingSlides = this.pendingSlides.filter((p) => p.in > 0);
+    for (const p of due) {
+      const slide = this.avalanches.release(p.x, p.z, p.width);
+      if (slide) this._announceSlide(slide);
+    }
+  }
+
   /** A step onto a loaded slope can break the slab you're standing on. */
   _maybeTriggerSlab() {
     const c = this.conditions;
-    if (!c || !isSlabSlope(this.hm, this.position.x, this.position.z, this.hour)) return;
+    if (!c || !isSlabSlope(this.hm, this.position.x, this.position.z, this.hour)) { this.slabRisk = 0; return; }
     const load = slabLoad(this.hm, this.position.x, this.position.z, c.windX, c.windZ, this.weather?.windSlab ?? 0);
+    this.slabRisk = Math.min(1, c.avalancheDanger * load * 1.6);
+    // The snowpack settles with a whumpf under a loaded slope: a warning before it breaks.
+    if (this._whumpfCool <= 0 && Math.random() < W.whumpf_per_step * c.avalancheDanger * load) {
+      this._whumpfCool = W.whumpf_gap_s;
+      this.shake = Math.max(this.shake, 0.25);
+      this._cue({ kind: 'whumpf', at: this.position.clone(), strength: 0.5 + 0.5 * this.slabRisk });
+      this.onMessage('Whumpf! The snowpack dropped under your feet: this slope is loaded. Get off it.');
+    }
     if (Math.random() >= W.trigger_per_step * c.avalancheDanger ** 1.5 * load) return;
     const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
     const g = Math.hypot(gx, gz) || 1;
@@ -1656,6 +1719,7 @@ export class Climber {
     const slide = this.avalanches.release(this.position.x + (gx / g) * 12, this.position.z + (gz / g) * 12, w0 + (w1 - w0) * Math.random());
     if (slide) {
       this.shake = 1;
+      this._cue({ kind: 'crack', at: slide.origin.clone(), strength: 1 });
       this.onMessage('Whumpf! The slope fractured under your feet. Avalanche!');
     }
   }
@@ -1665,6 +1729,7 @@ export class Climber {
     if (d > W.distant_spread_m) return;
     this.shake = Math.max(this.shake, Math.min(1, 300 / d));
     const above = slide.origin.y > this.position.y + 20;
+    this._cue({ kind: 'roar', at: slide.origin.clone(), strength: Math.min(1, 300 / Math.max(d, 1)), above: above && d <= 1200 });
     if (d > 1200) this.onMessage(`A distant roar: an avalanche is pouring down a face ${(d / 1000).toFixed(1)} km away.`);
     else this.onMessage(above ? `Avalanche! A slope ${Math.round(d)} m above you has broken loose. Get out of its path!` : `An avalanche thunders down ${Math.round(d)} m away.`);
   }
