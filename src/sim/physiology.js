@@ -26,6 +26,11 @@
 //   hypothermia even on the move.
 // - Hypothermia slowly ticks your health down, faster the colder your core gets.
 //   Cooling to the point of death makes you collapse rather than die on the spot.
+// - Numb hands: out in a storm (snow or hard wind in bitter cold) your hands
+//   go numb, faster in wet clothes and without spare mitts. Numb fingers grip
+//   badly, so climbing steep ground and fixed ropes gets slower and fiddly jobs
+//   harder. Only a tent or a camp really warms them back up; a snow cave
+//   slowly, calm milder air barely at all.
 // - Frostbite builds in hard wind chill, faster when you are cold, dry, short of
 //   oxygen or not moving. It heals while still shallow; deep frostbite is a
 //   permanent injury.
@@ -49,6 +54,7 @@ const STAGES = {
   damp: [[0.4, 'Wet through', 'Snow has soaked through your clothes. Wet clothes hold little warmth: dry out in a tent.']],
   chill: [[0.3, 'Cold', 'The cold is getting to you. Keep moving, wear warm gear or get out of the wind.'], [0.8, 'Freezing', 'Freezing: the cold is draining your health. Get into a tent or a snow cave.']],
   cold: [[35, 'Hypothermia', 'Mild hypothermia: shivering hard and clumsy. Keep moving or get into a tent.'], [32, 'Moderate hypothermia', 'Moderate hypothermia: you have stopped shivering and are confused. Get into a tent.']],
+  numb: [[0.3, 'Numb hands', 'Your hands are going numb in the storm. Climbing is slower: warm them up in a tent.'], [0.7, 'Frozen hands', 'Your hands are frozen stiff and barely grip. Get into a tent to warm them.']],
   frostbite: [[0.25, 'Frostnip', 'Your fingers and toes are numb: frostnip.'], [0.5, 'Frostbite', 'Frostbite: your fingers are clumsy and white. Get warm in a tent.']],
   ams: [[0.25, 'Mild AMS', 'Your head is pounding: mild altitude sickness. Rest, drink, or go down.'], [0.5, 'AMS', 'Altitude sickness: nausea and a splitting headache. Go down or use oxygen.'], [0.8, 'Severe AMS', 'Severe altitude sickness: you are vomiting. Go down now.']],
   hace: [[0.3, 'HACE', 'Cerebral oedema (HACE): you are stumbling and confused. Descend now, use oxygen, take dex (P).'], [0.7, 'Severe HACE', 'Severe HACE. You will die if you do not descend.']],
@@ -68,6 +74,8 @@ export class Physiology {
   chill = 0;
   /** How soaked your clothes are from snow, 0..1. Wet clothes insulate less. */
   damp = 0;
+  /** How numb your hands are from storm exposure, 0..1. Numb hands climb slower. */
+  numb = 0;
   /** Frostbite in hands and feet, 0..1 (0.8 is deep and permanent). */
   frostbite = 0;
   /** Gear: a down suit multiplies insulation; mitts, goggles and warmers slow frostbite. */
@@ -167,6 +175,21 @@ export class Physiology {
     const fromCore = (t.core_normal_c - 0.5 - this.core) / (t.core_normal_c - t.hypothermia_moderate_c);
     const chill = clamp(Math.max(fromAir, fromCore), 0, 1.5);
     this.chill = inCamp || sheltered || chill < t.cold_chill_min ? 0 : chill;
+
+    // Numb hands: storms numb them; tents and camps warm them back up.
+    if (sheltered || inCamp) {
+      this.numb = Math.max(0, this.numb - t.numb_warm_tent_per_h * dtH);
+    } else {
+      const storm = clamp(Math.max(wet, ((air.windMs ?? 0) - t.numb_wind_from_m_s) / (t.numb_wind_full_m_s - t.numb_wind_from_m_s)), 0, 1);
+      const bite = outOfWind ? 0 : storm * clamp((t.numb_from_c - air.feelsLikeC) / t.numb_full_c, 0, 1.5);
+      if (bite > 0) {
+        this.numb += t.numb_per_h * bite * (1 + t.numb_damp_boost * this.damp) * this.frostbiteMult * (effort < 0.2 ? 1.2 : 1) * dtH;
+      } else {
+        const warmish = outOfWind || air.feelsLikeC > t.numb_from_c + 10;
+        this.numb -= (outOfWind ? t.numb_warm_cave_per_h : warmish ? t.numb_warm_open_per_h : 0) * dtH;
+      }
+      this.numb = clamp(this.numb, 0, 1);
+    }
 
     // Frostbite.
     if (!sheltered && air.feelsLikeC < t.frostbite_from_c) {
@@ -298,6 +321,8 @@ export class Physiology {
         * (mild ? 0.9 : 1) * (moderate ? 0.6 : 1)
         * (this.ams > 0.5 ? 0.88 : 1) * (this.ams > 0.8 ? 0.8 : 1)
         * (this.hace > 0.3 ? 0.7 : 1) * (this.hape > 0.3 ? 0.7 : 1),
+      /** Extra speed multiplier on steep ground and fixed ropes, where you climb with your hands. */
+      grip: 1 - t.numb_climb_slow * this.numb,
       effort: Math.max(0.6, 1 + t.pack_effort_per_kg * over) * (this.hape > 0.3 ? 1.3 : 1),
       staminaCap: (1 - 0.4 * this.deterioration) * (this.hape > 0.3 ? 1 - 0.5 * this.hape : 1)
         * (this.food <= 0 ? 0.6 : 1) * (1 - 0.3 * this.rebound),
