@@ -180,15 +180,19 @@ describe('snow', () => {
 describe('breath pace', () => {
   const climbHigh = (push) => {
     const c = new Climber(hm, ropes, route.places);
-    const p = ropes.ropes[1][2];
+    // High on the summit-day rope, on ground you walk up with the axe rather than swing up.
+    const p = ropes.ropes[1].find((q) => q.y > 7900 && hm.slopeDeg(q.x, q.z) < tuning.axe_climb_max_deg - 3);
     c.placeAt(p.x, p.z, 0, 0);
     c.toggleClip();
+    c.toggleAxe();
+    c.axe.drawing = 0;
     let gasped = false;
     c.onMessage = (t) => { if (/Gasping/.test(t)) gasped = true; };
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     for (let t = 0; t < 30; t += FRAME) {
       const tan = ropes.tangentAt(c.ropeId, c.ropeS);
       c.yaw = Math.atan2(-tan.x, -tan.z);
+      if (c.onAxeWall) c.swingAxe();
       c.update(FRAME, { x: 0, y: 1, push });
       if (!c.clipped) break;
     }

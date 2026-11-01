@@ -25,6 +25,7 @@
 <div id="day"><span id="day-num">Day 1</span><span id="day-time">05:00</span><span id="day-speed"></span></div>
 
 <div id="held"></div>
+<div id="hotbar"></div>
 <div id="sleep"></div>
 <div id="prompt"><div id="alert"></div><div id="actions"></div></div>
 <div id="message"></div>
@@ -36,7 +37,18 @@
   <div class="card panel">
     <h1>You died</h1>
     <p id="death-cause"></p>
-    <p class="act"><kbd>R</kbd> Rescue to <b id="death-camp">Base Camp</b></p>
+    <button id="respawn">Respawn at Base Camp</button>
+    <p class="hint"><kbd>R</kbd></p>
+  </div>
+</div>
+
+<div id="collapsed" hidden>
+  <div class="card panel">
+    <h1>You collapsed</h1>
+    <p>Too cold and weak to move. Someone has to find you before the cold does.</p>
+    <p id="collapsed-left"></p>
+    <p id="collapsed-signal" class="act" hidden></p>
+    <p class="act"><kbd>R</kbd> Give up</p>
   </div>
 </div>
 

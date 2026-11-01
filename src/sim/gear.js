@@ -14,29 +14,33 @@ const ICE = new Set(['ice', 'glacier']);
 /**
  * Every piece of gear. litres is the room it takes in the pack; kg its weight.
  * unlock: only after a summit and a safe return. replaces: the better version of.
+ * where: worn (head, body, feet), on the harness (axe) or in a pocket instead of
+ * in the pack, so it weighs but takes no pack room.
  */
 export const GEAR = {
-  gps: { label: 'Wympr GPS', kg: 0.22, litres: 0.3, group: 'Devices', note: 'Satellite GPS and messenger: altitude, pace, weather and forecast. Halves rescue time.' },
-  monitor: { label: 'Vitals monitor', kg: 0.12, litres: 0.2, group: 'Devices', note: 'Wrist pulse oximeter: food, water, warmth, oxygen and how your body is coping.' },
-  map: { label: 'Topo map', kg: 0.1, litres: 0.1, group: 'Devices', note: 'Paper map of K2 and the Godwin-Austen Glacier, with the route and camps.' },
-  radio: { label: 'Radio', kg: 0.3, litres: 0.4, group: 'Devices', note: 'Hear the weather forecast anywhere, not just in camp.' },
-  axe: { label: 'Ice axe', kg: 0.6, litres: 2, group: 'Climbing', note: 'Climb steeper snow and ice, and self-arrest.' },
-  axe_tech: { label: 'Technical ice axe', kg: 0.5, litres: 2, group: 'Climbing', unlock: true, replaces: 'axe', note: 'Curved pick: holds better, fewer slips with it out.' },
-  crampons: { label: 'Crampons', kg: 0.9, litres: 2.5, group: 'Climbing', note: 'Without them, snow and ice are treacherous.' },
-  crampons_pro: { label: 'Steel-front crampons', kg: 0.8, litres: 2, group: 'Climbing', unlock: true, replaces: 'crampons', note: 'Aggressive front points: a quarter fewer slips on snow and ice.' },
+  gps: { label: 'Wympr GPS', kg: 0.22, litres: 0.3, group: 'Devices', note: 'Satellite GPS: altitude, pace, weather and forecast.', where: 'pocket' },
+  monitor: { label: 'Vitals monitor', kg: 0.12, litres: 0.2, group: 'Devices', note: 'Wrist pulse oximeter: food, water, warmth, oxygen and how your body is coping.', where: 'pocket' },
+  map: { label: 'Topo map', kg: 0.1, litres: 0.1, group: 'Devices', note: 'Paper map of K2 and the Godwin-Austen Glacier, with the route and camps.', where: 'pocket' },
+  whistle: { label: 'Whistle', kg: 0.01, litres: 0.02, group: 'Signals', note: 'Three blasts: the distress call. Heard about a kilometre off in still air.', where: 'pocket' },
+  strobe: { label: 'Strobe light', kg: 0.08, litres: 0.1, group: 'Signals', note: 'Bright white flashes on your shoulder strap, seen kilometres away at night. Lasts about 60 h.', where: 'pocket' },
+  radio: { label: 'Radio', kg: 0.3, litres: 0.4, group: 'Devices', note: 'Hear the weather forecast anywhere, not just in camp.', where: 'pocket' },
+  axe: { label: 'Ice axe', kg: 0.6, litres: 2, group: 'Climbing', note: 'Climb steeper snow and ice, and self-arrest.', where: 'axe' },
+  axe_tech: { label: 'Technical ice axe', kg: 0.5, litres: 2, group: 'Climbing', unlock: true, replaces: 'axe', note: 'Curved pick: holds better, fewer slips with it out.', where: 'axe' },
+  crampons: { label: 'Crampons', kg: 0.9, litres: 2.5, group: 'Climbing', note: 'Without them, snow and ice are treacherous.', where: 'feet' },
+  crampons_pro: { label: 'Steel-front crampons', kg: 0.8, litres: 2, group: 'Climbing', unlock: true, replaces: 'crampons', note: 'Aggressive front points: a quarter fewer slips on snow and ice.', where: 'feet' },
   rope: { label: 'Rope, 30 m', kg: 2.2, litres: 6, group: 'Climbing', note: 'With screws or pickets, protect a steep pitch (E). Climb out of crevasses.' },
   screws: { label: 'Ice screws ×4', kg: 0.6, litres: 1.5, group: 'Climbing', note: 'Protection on ice and glacier ice. Needs the rope.' },
   pickets: { label: 'Snow pickets ×2', kg: 0.7, litres: 2, group: 'Climbing', note: 'Protection in snow. Needs the rope.' },
-  poles: { label: 'Trekking poles', kg: 0.5, litres: 1, group: 'Climbing', note: 'Easier walking on gentle ground.' },
+  poles: { label: 'Trekking poles', kg: 0.5, litres: 1, group: 'Climbing', note: 'Faster, less tiring walking on gentle ground. On steep ground they skate: use the axe.' },
   probe: { label: 'Avalanche probe', kg: 0.3, litres: 1, group: 'Climbing', note: 'Probe for hidden crevasses (X). An axe shaft works too.' },
   tent: { label: 'Storm tent', kg: 2.4, litres: 9, group: 'Shelter', note: 'Pitch it anywhere not too steep (Z), then sleep and cook in it.' },
   tent_ul: { label: 'Ultralight storm tent', kg: 1.3, litres: 5, group: 'Shelter', unlock: true, replaces: 'tent', note: 'Same shelter, half the weight and room.' },
   bivy: { label: 'Bivy sack', kg: 0.5, litres: 2, group: 'Shelter', note: 'Crawl in and sleep where you stand (Z). No cooking.' },
   shovel: { label: 'Snow shovel', kg: 0.7, litres: 3, group: 'Shelter', note: 'Dig a snow cave to sleep in (Z), on snow.' },
   stove: { label: 'Stove', kg: 0.4, litres: 1.5, group: 'Shelter', note: 'Cook and melt snow in your own shelter (K). Camps have kitchens.' },
-  down_suit: { label: 'Down suit', kg: 2.2, litres: 8, group: 'Clothing', note: 'Far warmer in the cold up high.' },
+  down_suit: { label: 'Down suit', kg: 2.2, litres: 8, group: 'Clothing', note: 'Far warmer in the cold up high.', where: 'body' },
   gloves: { label: 'Spare mitts', kg: 0.3, litres: 1, group: 'Clothing', note: 'Dry spares: much slower frostbite.' },
-  goggles: { label: 'Goggles', kg: 0.15, litres: 0.5, group: 'Clothing', note: 'Keep wind off your face: slower frostbite.' },
+  goggles: { label: 'Goggles', kg: 0.15, litres: 0.5, group: 'Clothing', note: 'Keep wind off your face: slower frostbite.', where: 'head' },
 };
 
 /** The pack itself sets how much fits. */
@@ -46,12 +50,13 @@ export const PACKS = {
 };
 
 /** Room each unit of a consumable takes, in litres. */
-export const CONSUMABLE_LITRES = { snack: 0.15, meal: 0.6, gas: 1, water: 1, oxygen: 5, dex: 0.02, firstaid: 1, warmers: 0.1 };
+export const CONSUMABLE_LITRES = { snack: 0.15, meal: 0.6, gas: 1, water: 1, oxygen: 5, dex: 0.02, firstaid: 1, warmers: 0.1, flares: 0.3 };
 
 /** Consumables beyond the camps' stores, packed only at Base Camp. */
 export const EXTRAS = {
   firstaid: { label: 'First-aid kit', kg: 0.3, heal: 25 },
   warmers: { label: 'Hand warmers', kg: 0.05, hours: 6 },
+  flares: { label: 'Signal flares', kg: 0.2 },
 };
 
 /** What the climber starts with outside the game (tests, the sim on its own). */
@@ -66,7 +71,7 @@ export function gearKg(pack) {
 
 export function gearLitres(pack) {
   let l = 0;
-  for (const id of pack.gear) l += GEAR[id]?.litres ?? 0;
+  for (const id of pack.gear) if (!GEAR[id]?.where) l += GEAR[id]?.litres ?? 0;
   for (const [id, n] of Object.entries(pack.extra)) l += (CONSUMABLE_LITRES[id] ?? 0) * n;
   return l;
 }
@@ -141,6 +146,7 @@ export class Expedition {
   /** Whether an item would fit, swapping out what it replaces. */
   fits(id) {
     const g = GEAR[id];
+    if (g.where) return true;
     let free = this.free();
     if (g.replaces && this.pack.gear.has(g.replaces)) free += GEAR[g.replaces].litres;
     for (const [k, o] of Object.entries(GEAR)) if (o.replaces === id && this.pack.gear.has(k)) free += o.litres;
@@ -153,6 +159,7 @@ export class Expedition {
     if (pack.gear.has(id)) {
       pack.gear.delete(id);
       if (id === 'axe' || id === 'axe_tech') this.c.axe = { have: false, inHand: false, drawing: 0, dangling: 0 };
+      if (id === 'poles') this.c.poles.inHand = false;
       return true;
     }
     if (!this.fits(id)) return false;
@@ -162,6 +169,8 @@ export class Expedition {
     for (const [k, o] of Object.entries(GEAR)) if (o.replaces === id) pack.gear.delete(k);
     pack.gear.add(id);
     if (id === 'axe' || id === 'axe_tech') this.c.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
+    // Bought for the walk in: poles come out in your hands, the axe stays on the pack.
+    if (id === 'poles') this.c.poles.inHand = !this.c.axe.inHand;
     return true;
   }
 
@@ -221,11 +230,79 @@ export class Expedition {
     if (c.nearestTent()) return null;
     const pack = this.pack;
     const steep = c.slope > tuning.shelter_max_deg && !c.onLedge;
-    const tent = pack.gear.has('tent_ul') ? 'tent_ul' : pack.gear.has('tent') ? 'tent' : null;
-    if (tent && !steep) return { kind: 'tent', item: tent, label: 'Pitch tent' };
+    const tent = this.carriesTent();
+    if (tent && !this.pitchProblem()) return { kind: 'tent', item: tent, label: 'Pitch tent' };
     if (pack.gear.has('shovel') && SNOW_ICE.has(c.surface?.key) && !ICE.has(c.surface?.key) && !steep) return { kind: 'cave', label: 'Dig snow cave' };
     if (pack.gear.has('bivy')) return { kind: 'sack', label: 'Bivouac' };
     return null;
+  }
+
+  /** The tent in your pack ('tent_ul' or 'tent'), or null. */
+  carriesTent() {
+    const g = this.pack.gear;
+    return g.has('tent_ul') ? 'tent_ul' : g.has('tent') ? 'tent' : null;
+  }
+
+  /**
+   * Why a tent won't go up where you stand, or null if the ground will take one.
+   * It needs a patch about the size of the tent that is close to level and fairly
+   * smooth (a ledge counts flatter, as it does underfoot), snow or scree to stake
+   * into, and no known crevasse, serac or cornice under or beside it. The camps
+   * are always good ground.
+   */
+  pitchProblem() {
+    const c = this.c;
+    if (c._campNearby()) return null;
+    const t = tuning;
+    const { x, z } = c.position;
+    const f = c.features;
+    if (f) {
+      if (f.corniceAt(x, z)) return 'On a cornice: it could break off';
+      const r = t.tent_crevasse_clear_m;
+      for (let k = 0; k < 9; k++) {
+        const a = (k / 8) * Math.PI * 2, d = k === 8 ? 0 : r;
+        const hit = f.holeAt(x + Math.cos(a) * d, z + Math.sin(a) * d) || (d && f.holeAt(x + Math.cos(a) * d / 2, z + Math.sin(a) * d / 2));
+        if (hit && f.isKnown(hit.hole)) return 'Too close to a crevasse';
+        if (f.seracAt(x + Math.cos(a) * d * 0.6, z + Math.sin(a) * d * 0.6)) return 'Ice blocks in the way';
+      }
+    }
+    const key = c.surface?.key;
+    if (!c.onLedge && key === 'rock') return 'Bare rock: the stakes won\'t hold';
+    if (!c.onLedge && key === 'ice') return 'Hard ice: no platform to stamp out';
+    const { tilt, bump } = this.footprint();
+    const relief = c.onLedge ? t.ledge_relief_deg : 0;
+    if (c.slope - relief > t.shelter_max_deg || tilt - relief > t.tent_max_tilt_deg) return 'Too steep to pitch a tent';
+    if (bump > t.tent_max_bump_m * (c.onLedge ? 2 : 1)) return 'Too rough and uneven to pitch';
+    return null;
+  }
+
+  /**
+   * The ground under a tent where you stand: the tilt in degrees of the plane
+   * that best fits it, and the most any point sticks up or dips from that plane.
+   */
+  footprint() {
+    const hm = this.c.hm;
+    const { x, z } = this.c.position;
+    const half = tuning.tent_footprint_m / 2, n = 5;
+    const pts = [];
+    let sum = 0, sxx = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const dx = -half + (2 * half * i) / (n - 1), dz = -half + (2 * half * j) / (n - 1);
+        const h = hm.groundAt(x + dx, z + dz);
+        pts.push([dx, dz, h]);
+        sum += h;
+        sxx += dx * dx;
+      }
+    }
+    // A square grid centred on you: the least-squares plane separates by axis.
+    const mean = sum / pts.length;
+    let sxh = 0, szh = 0;
+    for (const [dx, dz, h] of pts) { sxh += dx * (h - mean); szh += dz * (h - mean); }
+    const a = sxh / sxx, b = szh / sxx;
+    let bump = 0;
+    for (const [dx, dz, h] of pts) bump = Math.max(bump, Math.abs(h - mean - a * dx - b * dz));
+    return { tilt: Math.atan(Math.hypot(a, b)) * 180 / Math.PI, bump };
   }
 
   /** Put up a shelter where you stand: it joins the tents you can sleep in. */
@@ -285,6 +362,35 @@ export class Expedition {
     return true;
   }
 
+  /**
+   * Fire a signal flare into the sky ahead of where you look. Works lying
+   * collapsed too: it's how you call for help. Returns the signal event
+   * (what multiplayer would send to others), or null.
+   */
+  flare() {
+    const c = this.c;
+    if (!this.pack.extra.flares || c.dead || !c.signals) return null;
+    this.pack.extra.flares--;
+    const w = c.conditions;
+    const wind = { x: (w?.windX ?? 0) * (w?.wind ?? 0), z: (w?.windZ ?? 0) * (w?.wind ?? 0) };
+    const p = c.position;
+    return c.signals.fireFlare({ x: p.x, y: p.y + (c.collapsed ? 0.4 : 1.6), z: p.z }, c.yaw, wind);
+  }
+
+  /** Three blasts on the whistle. Returns the event, or null. */
+  whistle() {
+    const c = this.c;
+    if (!this.pack.gear.has('whistle') || c.dead || !c.signals) return null;
+    return c.signals.blowWhistle(c.position);
+  }
+
+  /** Switch the strobe on or off. Returns the event, or null (no strobe, flat battery). */
+  strobe() {
+    const c = this.c;
+    if (!this.pack.gear.has('strobe') || c.dead || !c.signals) return null;
+    return c.signals.toggleStrobe(c.position);
+  }
+
   /** Each frame, after the climber has moved. */
   update() {
     const c = this.c;
@@ -292,6 +398,8 @@ export class Expedition {
     const dS = Math.max(0, c.mountainSeconds - this._lastSeconds);
     this._lastSeconds = c.mountainSeconds;
     this.warmerLeft = Math.max(0, this.warmerLeft - dS);
+    // A strobe left behind at Base Camp, or flashing on a dead climber, goes off.
+    if (c.signals?.strobeOn && (!pack.gear.has('strobe') || c.dead)) c.signals.toggleStrobe(c.position);
 
     // The axe and the pack agree: lose it on a fall and it's gone from the pack.
     const axeId = pack.gear.has('axe_tech') ? 'axe_tech' : pack.gear.has('axe') ? 'axe' : null;
@@ -306,7 +414,8 @@ export class Expedition {
       : !crampons ? { label: 'No crampons', slip: tuning.no_crampons_slip, speed: ICE.has(key) ? 0.85 : 1 }
         : pack.gear.has('crampons_pro') ? { slip: 0.75 } : null);
     set('gear:axe', pack.gear.has('axe_tech') && c.axeReady ? { slip: 0.8 } : null);
-    set('gear:poles', pack.gear.has('poles') && c.mode === 'walk' && !c.axeReady ? { effort: 0.92 } : null);
+    if (!pack.gear.has('poles')) c.poles.inHand = false;
+    set('gear:poles', c.polesOnSteep ? { label: 'Poles on steep ground' } : null);
     if (this.anchor && !this.protectedNow) this.anchor = null;
     if (c.clipped || c.dead) this.anchor = null;
     set('gear:protection', this.protectedNow ? { slip: 0.35 } : null);

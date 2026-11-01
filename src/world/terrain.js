@@ -19,6 +19,13 @@ import { smooth } from './heightmap.js';
 import { tuning } from '../sim/paceModel.js';
 import { moraineAt } from './terrainDetail.js';
 
+/**
+ * The square the detail patch covers right now. The fine terrain under it is not
+ * drawn: the patch replaces it, so the two never fight over the same pixels (the
+ * logarithmic depth buffer ignores polygon offset, which shimmered in stripes).
+ */
+const PATCH_CUT = new THREE.Vector4(1e9, 1e9, -1e9, -1e9);
+
 /** How many open holes the terrain shader can cut out at once. */
 export const MAX_TERRAIN_HOLES = 32;
 
@@ -144,7 +151,7 @@ function createFineTerrain(hm, holes) {
       surf[k * 4 + 3] = glacier > 0.01 ? moraineAt(x, z) : 0;
     }
   }
-  const mat = terrainMaterial(false, holes);
+  const mat = terrainMaterial(false, holes, PATCH_CUT, 'fine');
   const group = new THREE.Group();
   const chunks = (n - 1) / CH;
   for (let cj = 0; cj < chunks; cj++) {
@@ -276,14 +283,17 @@ export function createDetailPatch(hm, holes = null) {
     geo.computeVertexNormals();
     geo.computeBoundingSphere();
     mesh.visible = true;
+    // Hide the fine terrain under the patch, all but a thin rim where they meet.
+    const inset = 1.5;
+    PATCH_CUT.set(centre.x - half + inset, centre.y - half + inset, centre.x + half - inset, centre.y + half - inset);
   };
   return mesh;
 }
 
-function terrainMaterial(flatGround, holes = null, cut = null) {
+function terrainMaterial(flatGround, holes = null, cut = null, name = '') {
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 });
   // Each variant needs its own shader program (three would otherwise share one).
-  mat.customProgramCacheKey = () => `terrain-${flatGround}-${!!holes}-${!!cut}`;
+  mat.customProgramCacheKey = () => `terrain-${flatGround}-${!!holes}-${!!cut}-${name}`;
   mat.onBeforeCompile = (sh) => {
     if (holes) Object.assign(sh.uniforms, holes);
     if (cut) sh.uniforms.uCut = { value: cut };

@@ -14,11 +14,13 @@ export const CONTROLS = [
   ]],
   ['Gear', [
     [['Tab'], 'Inventory'],
+    [['1', '9'], 'Hotbar: hold or use what\'s in that slot (trekking poles: out / away)'],
     [['G'], 'Gear up at Base Camp · restock at a camp · strike your tent'],
     [['J'], 'Hold the Wympr GPS'],
     [['U'], 'Hold the vitals monitor'],
     [['M'], 'Hold the map'],
     [['L'], 'Headlamp: off, on, high beam, red'],
+    [['1', '9'], 'Signal flare, strobe or whistle from the hotbar: call for help, even collapsed'],
   ]],
   ['Survive', [
     [['Z'], 'Sleep in a tent · pitch a tent, dig a cave or bivouac'],
@@ -28,7 +30,7 @@ export const CONTROLS = [
     [['O'], 'Oxygen flow'],
     [['P'], 'Take dexamethasone'],
     [['Y'], 'Turnaround time'],
-    [['R'], 'Be rescued, after dying'],
+    [['R'], 'Respawn at Base Camp after dying · give up when collapsed'],
   ]],
   ['View', [
     [['Mouse'], 'Look (click to capture)'],
@@ -37,7 +39,6 @@ export const CONTROLS = [
     [['T'], 'Time speed'],
   ]],
   ['Dev', [
-    [['1', '9'], 'Jump to a camp'],
     [['F'], 'Scout fly (E up, Q down)'],
     [['N'], 'Next weather'],
   ]],

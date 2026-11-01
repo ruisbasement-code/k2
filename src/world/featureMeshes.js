@@ -140,6 +140,35 @@ function glowTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+/**
+ * Fade a path-light material out with distance from the climber, so a lamp only
+ * shows within `range` metres. Glows fade softly over the last part of the
+ * range; solid parts are dropped once they've faded out.
+ */
+function fadeWithRange(mat, uniforms, soft) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uLightAt = uniforms.uLightAt;
+    sh.uniforms.uLightRange = uniforms.uLightRange;
+    sh.vertexShader = sh.vertexShader
+      .replace('void main() {', 'uniform vec3 uLightAt;\nuniform float uLightRange;\nvarying float vLightFade;\nvoid main() {')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+  vec4 lightWorld = vec4(transformed, 1.0);
+  #ifdef USE_INSTANCING
+    lightWorld = instanceMatrix * lightWorld;
+  #endif
+  lightWorld = modelMatrix * lightWorld;
+  float lightD = distance(lightWorld.xyz, uLightAt);
+  vLightFade = 1.0 - smoothstep(uLightRange * 0.6, uLightRange, lightD);`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('void main() {', 'varying float vLightFade;\nvoid main() {')
+      .replace('#include <alphatest_fragment>', soft
+        ? 'diffuseColor.a *= vLightFade;\n#include <alphatest_fragment>'
+        : 'if (vLightFade < 0.5) discard;\n#include <alphatest_fragment>');
+  };
+  mat.customProgramCacheKey = () => `pathlight-${soft}`;
+  return mat;
+}
+
 export class FeatureMeshes extends THREE.Group {
   /**
    * @param terrain the terrain group from createTerrain (to cut holes out of)
@@ -282,8 +311,9 @@ export class FeatureMeshes extends THREE.Group {
 
   /**
    * Lamp posts along the way from Base Camp to Camp 1: across the glacier on the
-   * wanded trail, then up beside the fixed rope. They glow at night and through
-   * storms (no fog on the glow), so the way stays visible.
+   * wanded trail, then up beside the fixed rope. They glow at night with no fog
+   * on the glow, but only as far as you can see: in storms, low visibility or
+   * when you're ill, only the lamps a few metres away show.
    */
   _pathLights() {
     const f = this.features;
@@ -315,14 +345,15 @@ export class FeatureMeshes extends THREE.Group {
     const postGeo = new THREE.CylinderGeometry(0.035, 0.05, 1.3, 6).translate(0, 0.65, 0);
     const postMat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.6, metalness: 0.5 });
     const lampGeo = new THREE.SphereGeometry(0.11, 8, 6).translate(0, 1.38, 0);
-    const lampMat = new THREE.MeshBasicMaterial({ color: 0xffd38a, toneMapped: false });
+    this.lightUniforms = { uLightAt: { value: new THREE.Vector3() }, uLightRange: { value: tuning.path_light_draw_m } };
+    const lampMat = fadeWithRange(new THREE.MeshBasicMaterial({ color: 0xffd38a, toneMapped: false }), this.lightUniforms, false);
     // The glow: a halo that scales with distance, and a small core that stays a
     // few pixels wide however far away, drawn over the fog so it shows in storms.
     const map = glowTexture();
-    const glowMat = (size, attenuate, color) => new THREE.PointsMaterial({
+    const glowMat = (size, attenuate, color) => fadeWithRange(new THREE.PointsMaterial({
       size, sizeAttenuation: attenuate, map, color,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false,
-    });
+    }), this.lightUniforms, true);
     const halo = glowMat(5, true, 0xffb85c), core = glowMat(6, false, 0xffd9a0);
     this.lightGroups = [];
     const size = 8;
@@ -342,15 +373,39 @@ export class FeatureMeshes extends THREE.Group {
       at.computeBoundingSphere();
       lamps.add(post, lamp, new THREE.Points(at, halo), new THREE.Points(at, core));
       lamps.userData.centre = at.boundingSphere.center.clone();
+      lamps.userData.radius = at.boundingSphere.radius;
       this.lightGroups.push(lamps);
       this.add(lamps);
     }
   }
 
-  /** Hide the lights beyond their draw distance. */
-  _cullLights(position) {
-    const far = tuning.path_light_draw_m;
-    for (const g of this.lightGroups ?? []) g.visible = g.userData.centre.distanceTo(position) < far;
+  /**
+   * How far you can make out a path light: the draw distance in clear weather,
+   * closing in to a few metres in storms and low visibility, and when illness
+   * or injury blurs your vision.
+   */
+  _lightRange(climber) {
+    const far = tuning.path_light_draw_m, near = tuning.path_light_near_m;
+    if (!climber) return far;
+    const smooth = (a, b, x) => { const t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); };
+    const w = climber.conditions;
+    const vis = w ? w.visibility : 80000;
+    const clear = Math.min(far, Math.max(near, vis * 2));
+    // Storms and murk: from 1.5 km visibility down to 300 m, the lamps close in.
+    const murk = smooth(tuning.path_light_clear_vis_m, tuning.path_light_storm_vis_m, vis);
+    // Illness (blurred vision) and injury (from 70 health down).
+    const ill = smooth(0.05, 0.4, climber.mods?.blur ?? 0);
+    const hurt = climber.dead ? 1 : smooth(70, 35, climber.health ?? 100);
+    const k = Math.max(murk, ill, hurt);
+    return Math.exp(Math.log(clear) + (Math.log(near) - Math.log(clear)) * k);
+  }
+
+  /** Hide the lights beyond how far you can see them. */
+  _cullLights(position, climber) {
+    const range = this._lightRange(climber);
+    this.lightUniforms?.uLightAt.value.copy(position);
+    if (this.lightUniforms) this.lightUniforms.uLightRange.value = range;
+    for (const g of this.lightGroups ?? []) g.visible = g.userData.centre.distanceTo(position) < range + g.userData.radius;
   }
 
   /**
@@ -405,9 +460,9 @@ export class FeatureMeshes extends THREE.Group {
   }
 
   /** Rebuild what's near the climber when they move or something collapses. */
-  update(position) {
+  update(position, climber) {
     this.icefall.update();
-    this._cullLights(position);
+    this._cullLights(position, climber);
     const moved = Math.hypot(position.x - this.centre.x, position.z - this.centre.z) > 80;
     if (!moved && this.version === this.features.version) return;
     this.centre.copy(position);

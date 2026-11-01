@@ -49,6 +49,7 @@ lists every control (`src/ui/controls.js`), with the sound switch.
 | Click | Swing the axe on a steep wall (S + click to climb down) |
 | X | Probe ahead for hidden crevasses (needs a probe or an axe) |
 | Tab | Inventory: click a device to hold it, a supply to use it |
+| 1 – 9 | Hotbar along the bottom: hold or use what's in that slot |
 | G | Gear up at Base Camp · restock at a camp · strike your own tent |
 | J / U / M | Hold the Wympr GPS / the vitals monitor / the map |
 | L | Headlamp: off, on, high beam, red |
@@ -56,9 +57,9 @@ lists every control (`src/ui/controls.js`), with the sound switch.
 | K | Cook in a tent (your own needs your stove) |
 | B / H / O / P | Eat / drink / oxygen flow / dexamethasone |
 | Y | Turnaround time |
-| R | After dying: be rescued (twice as fast with the GPS) |
+| R | After dying: respawn at Base Camp, everything fresh (summit unlocks kept) |
 | Mouse, wheel, V, T | Look, zoom, first / third person, time speed |
-| 1 – 9, F, N | Dev: jump to a camp, scout fly, next weather |
+| F, N | Dev: scout fly, next weather (`?place=2` in the URL jumps to a camp) |
 
 ### Gear
 
@@ -71,11 +72,19 @@ room in a 45 L pack, and a heavier pack is slower and harder work.
   coping) and a paper topo map with the route and camps. Hold one up at a time.
 - **Climbing**: ice axe, crampons (without them, snow and ice are much more
   slippery), a 30 m rope with ice screws or snow pickets to protect a steep pitch,
-  trekking poles, an avalanche probe.
+  trekking poles (faster, easier walking on gentle ground; swap to the axe when it
+  steepens), an avalanche probe.
 - **Shelter**: a storm tent you can pitch anywhere not too steep, a bivy sack, a snow
   shovel for a snow cave, and a stove to cook in your own tent.
 - **Clothing**: a down suit, spare mitts and goggles keep the cold and frostbite off.
 - **Supplies**: snacks, meals, gas, water, oxygen, dex, first-aid kits, hand warmers.
+- **Signals**: hand-fired red flares (pack space, about 40 s alight, seen for
+  kilometres through cloud and snow), a whistle (three blasts, heard about a
+  kilometre off) and a strobe for your shoulder strap. Use them from the hotbar (1-9)
+  or the pack, even lying collapsed, when they move to the front of the hotbar.
+  Every signal is also a small JSON event on `climber.signals` (`onEvent`), and
+  `receive(event, age)` draws another player's flare on the same path, ready for
+  multiplayer. `?signals` in the URL packs some to try.
 
 Pitching a tent, digging a cave, placing a screw or picket and lighting the stove
 are short hands-on jobs (timing, alternating keys, pumping), harder in wind and cold,
@@ -104,8 +113,10 @@ realistic pace still gets you somewhere. All the speeds below are in mountain ti
   your harness to a carabiner on the rope, hanging slack and lying on the snow until
   you reach its end or it catches a fall. You are not locked to
   the line: you move freely up to 8 m from it. Moving along the rope gets the jumar's
-  speed, the rope gently steers you back toward its line as you drift, it lets you
-  climb anything near it, and slips are rarer. If you do slip, the jumar locks and you
+  speed, the rope gently steers you back toward its line as you drift, it gets you up
+  rock of any steepness near it, and slips are rarer. On snow and ice the rope only
+  protects you: past 35° you still need the ice axe out, and past 40° you swing up
+  it click by click, though you can sit back on the rope between swings to rest. If you do slip, the jumar locks and you
   drop (and swing, if you were off to the side) until the rope comes tight; a hard
   jolt hurts. Fixed ropes are old: each time one takes a fall there is a small chance
   (about 2–5%) that the anchor rips out and you fall on, unroped. Reach either
@@ -162,7 +173,15 @@ come off. Ledges, easier ground and the fixed ropes let it recover. Holding Spac
 bites over half a second and stops you from up to 14 m/s on snow, but it mostly
 skates on hard ice. Arresting very fast can wrench it from your grip, and in a tumble
 you often lose it: it hangs on its leash until you grab it again, unless the leash
-snaps and it's gone. Camps have spares (G).
+snaps and it's gone. Camps have spares (G). The axe is big and blue in your hand,
+in third person and in your first person view, and strapped to your pack when stowed.
+
+**Trekking poles.** Packed at Base Camp, they come out in both hands (orange shafts,
+baskets and wrist straps) and take a hotbar slot to put them away or get them out
+again. On walking ground gentler than 20° they make you about 10% faster and 15% less
+tired. On steeper ground they skate: unroped past 25°, slips are three times as likely
+and you can only self-arrest with your hands. Getting the axe out (I) straps the poles
+to your pack.
 
 **Rock and ice fall** is built (`rockfall_enabled` in `tuning.json`) but switched off
 for now: loose holds still crumble, but send no rocks down.
@@ -311,7 +330,9 @@ so the same `?seed=` gives the same season.
   throw you off steep unroped ground. **Feels like** is the wind chill.
 - **Visibility** follows the weather: 60 km on a clear day, tens of metres in fog, and only a
   few metres in a snowstorm or whiteout, where sky and snow merge into one grey. Storms are
-  common but mostly short (2 to 14 hours): about two days in three have one at some point.
+  common but mostly short (2 to 14 hours): about four days in five have one at some point,
+  and snow, storms, whiteouts or fog fill nearly half the time. The expedition starts after
+  recent snowfall, with only a few calm hours before the weather turns.
   In third person the fog starts at the climber, so you still see yourself.
   On cloudy days a cloud band sits between about 6,300 and 7,600 m, so you climb up into it
   and out above it. Fog and cloud drift through, so visibility comes and goes over minutes,
@@ -320,11 +341,16 @@ so the same `?seed=` gives the same season.
 - **Avalanches.** Snowfall builds up fresh snow, the wind drifts it into slabs, and both
   settle over a few days, faster when it's warm. The HUD shows the danger on the usual
   scale (Low, Moderate, Considerable, High, Extreme). Slabs break on snow slopes between
-  28° and 50°: natural slides start somewhere above you, and crossing a loaded slope can
-  break one under your feet. The debris pours down the fall line under a powder cloud.
-  If it reaches you, you're swept away tumbling and carried with it; on the rope it pours
-  over you and the rope holds. Half the time you end up buried and lose time and health
-  digging out.
+  28° and 50°, most often on 35-45° lee slopes the wind has loaded. Natural slides start
+  somewhere above you fairly often (about one an hour of mountain time when the danger is
+  high, far fewer on settled snow), others pour down faces across the mountain where you
+  can watch them, and crossing a loaded slope can break one under your feet. The debris
+  pours down the fall line under a powder cloud. If it reaches you, you're swept away
+  tumbling and carried with it; on the rope it pours over you and the rope holds. Hold
+  **Space** to swim for the surface: the longer you fight, the less likely you're buried,
+  and with luck you break out on top and can dig the axe in. When the debris stops you may
+  be on top, buried shallow (twenty minutes digging out) or buried deep (an hour, and a lot
+  of health).
 - **Serac fall.** Ice breaks off the hanging serac above the Bottleneck now and then, most
   in the warmth of the afternoon, and the blocks come down the couloir.
 - **Radio forecast.** In a camp a box under the clock gives the forecast for the next day
