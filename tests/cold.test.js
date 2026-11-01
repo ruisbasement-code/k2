@@ -176,3 +176,40 @@ describe('collapsing in the cold', () => {
     expect(c.dead).toBe(true);
   });
 });
+
+describe('numb hands', () => {
+  const blizzard = airAt(7900, 3, { windMs: 22, wet: 0.8, airTempC: night.airTempC - 5 });
+  const run = (ph, hours, ctx) => { for (let i = 0; i < hours * 10; i++) ph.step(0.1, { altitude: 7900, effort: 0.6, health: 100, ...ctx }); };
+
+  it('a storm numbs your hands; calm warm air does not', () => {
+    const ph = new Physiology();
+    run(ph, 1, { air: blizzard });
+    expect(ph.numb).toBeGreaterThan(0.6);
+    expect(ph.conditions().some((c) => c.id === 'numb')).toBe(true);
+    const calm = new Physiology();
+    run(calm, 1, { air: midday, altitude: 5000 });
+    expect(calm.numb).toBe(0);
+  });
+
+  it('numb hands slow climbing until a tent warms them up', () => {
+    const ph = new Physiology();
+    run(ph, 1.5, { air: blizzard });
+    const grip = ph.modifiers().grip;
+    expect(grip).toBeLessThan(0.75);
+    // Out of the storm but still in the open cold: they stay numb.
+    run(ph, 1, { air: night });
+    expect(ph.modifiers().grip).toBeLessThan(0.8);
+    // In a tent they warm back up.
+    run(ph, 1, { air: night, sheltered: true });
+    expect(ph.numb).toBe(0);
+    expect(ph.modifiers().grip).toBe(1);
+  });
+
+  it('spare mitts slow the numbness', () => {
+    const bare = new Physiology(), mitts = new Physiology();
+    mitts.frostbiteMult = 0.6;
+    run(bare, 0.5, { air: blizzard });
+    run(mitts, 0.5, { air: blizzard });
+    expect(mitts.numb).toBeLessThan(bare.numb);
+  });
+});

@@ -195,7 +195,11 @@ export class Inventory {
         <div class="inv-foot"><span class="note">${note}</span><button id="set-off">Set off</button></div>
       </div>`;
     }
+    // Re-rendering replaces the scrolling columns, so carry their scroll over.
+    const scrollers = () => [this.el, ...this.el.querySelectorAll('.inv, .inv-col')];
+    const kept = scrollers().map((s) => s.scrollTop);
     this.el.innerHTML = `<div class="inv${this.store ? ' wide' : ''}">${pack}${store}</div>`;
+    scrollers().forEach((s, i) => { if (kept[i]) s.scrollTop = kept[i]; });
   }
 
   /** How long what you carry lasts, and what the weight costs you. */

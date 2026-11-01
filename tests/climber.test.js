@@ -2,6 +2,7 @@
 // the fixed ropes, steep ground, falls, death and rescue, and the day counter.
 
 import { describe, it, expect, vi } from 'vitest';
+import * as THREE from 'three';
 import { Climber, Mode } from '../src/player/climber.js';
 import * as Pace from '../src/sim/paceModel.js';
 
@@ -160,7 +161,10 @@ describe('climber', () => {
     const runsOn = (x, z) => {
       const [gx, gz] = hm.gradient(x, z);
       const g = Math.hypot(gx, gz);
-      return [3, 6, 9, 12, 15, 18, 21, 24].every((d) => hm.slopeDeg(x - (gx / g) * d, z - (gz / g) * d) > tuning.climb_start_deg + 3);
+      // Steep both by the wider slope and by the ground right underfoot: the fine
+      // terrain has flatter benches in steep faces that you'd rightly stop on.
+      const steep = (px, pz) => Math.min(hm.slopeDeg(px, pz), Math.acos(hm.normalAt(px, pz, new THREE.Vector3()).y) * 180 / Math.PI);
+      return [3, 6, 9, 12, 15, 18, 21, 24].every((d) => steep(x - (gx / g) * d, z - (gz / g) * d) > tuning.climb_start_deg + 3);
     };
     const spot = steepest(at('Advanced Base Camp'), tuning.climb_start_deg + 5, tuning.no_rope_max_deg, runsOn);
     const c = new Climber(hm, ropes, route.places);
@@ -179,6 +183,74 @@ describe('climber', () => {
     run(c, 20, { x: 0, y: 0 });
     expect(c.position.y).toBeLessThan(y0 - 5);
     expect(c.fall.distance).toBeGreaterThan(5);
+  });
+
+  it('never leaves you lying stuck where a slide stops, and R gets you up', () => {
+    // Slides started all over the lower mountain: each one either stops with you
+    // on your feet, or, if you are left lying still, Get up finds you footing.
+    const [cx, cz] = at('Advanced Base Camp');
+    let tried = 0;
+    let lying = 0;
+    for (let dx = -300; dx <= 300 && tried < 30; dx += 37) {
+      for (let dz = -300; dz <= 300 && tried < 30; dz += 41) {
+        const x = cx + dx, z = cz + dz;
+        if (hm.slopeDeg(x, z) < tuning.climb_start_deg + 8) continue;
+        tried++;
+        const c = new Climber(hm, ropes, route.places);
+        c.placeAt(x, z, x, z);
+        const [gx, gz] = hm.gradient(x, z);
+        c._startFall(gx, gz, 'test');
+        run(c, 25, { x: 0, y: 0 });
+        if (c.dead || c.mode === Mode.HOLE || c.velocity.length() > tuning.get_up_below_m_s) continue;
+        if (c.falling) {
+          lying++;
+          expect(c.getUp()).toBe(true);
+        }
+        // On your feet, and you stay there.
+        expect(c.falling).toBe(false);
+        const p = c.position.clone();
+        run(c, 3, { x: 0, y: 0 });
+        expect(c.falling).toBe(false);
+        expect(c.position.distanceTo(p)).toBeLessThan(0.5);
+      }
+    }
+    expect(tried).toBeGreaterThan(10);
+    expect(lying).toBeLessThan(tried);
+  });
+
+  it('gets you up from lying still on a steep bench, onto nearby ground you can stand on', () => {
+    const spot = steepest(at('Camp 2'), 45, 60);
+    const c = new Climber(hm, ropes, route.places);
+    c.placeAt(spot.x, spot.z, 0, 0);
+    const [gx, gz] = hm.gradient(spot.x, spot.z);
+    c._startFall(gx, gz, 'test');
+    // Pinned where you lie, as on a bench the ground holds you on.
+    c.velocity.set(0, 0, 0);
+    let said = '';
+    c.onMessage = (m) => { said = m; };
+    const clock = c.mountainSeconds;
+    expect(c.getUp()).toBe(true);
+    expect(said).toMatch(/pick yourself up/);
+    expect(c.falling).toBe(false);
+    expect(c._canStandAt(c.position.x, c.position.z)).toBe(true);
+    expect(Math.hypot(c.position.x - spot.x, c.position.z - spot.z)).toBeLessThanOrEqual(tuning.get_up_search_m + 1);
+    expect(c.mountainSeconds - clock).toBeGreaterThanOrEqual(tuning.get_up_minutes * 60);
+    run(c, 3, { x: 0, y: 0 });
+    expect(c.falling).toBe(false);
+  });
+
+  it("won't get you up mid-slide or when you're already standing", () => {
+    const [x, z] = at('Base Camp');
+    const c = new Climber(hm, ropes, route.places);
+    c.placeAt(x, z, 0, 0);
+    expect(c.getUp()).toBe(false);
+    const spot = steepest(at('Camp 2'), 45, 60);
+    c.placeAt(spot.x, spot.z, 0, 0);
+    const [gx, gz] = hm.gradient(spot.x, spot.z);
+    c._startFall(gx, gz, 'test');
+    c.velocity.set(0, -5, 5);
+    expect(c.getUp()).toBe(false);
+    expect(c.falling).toBe(true);
   });
 
   it('can self-arrest a slide on snow by holding Space with the axe, but not on ice or without it', () => {
