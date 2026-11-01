@@ -299,6 +299,14 @@
   "frostbite_heal_per_h": 0.03,
   "frostbite_permanent_health": 20,
 
+  "_injuries": "Every physical injury (impacts, rock, rope jolts, falling objects, avalanches, crevasse falls) leaves a share of its damage for good, lowering max health: injury_permanent_share for the first, plus injury_permanent_share_per_injury for each injury already taken (counting hits of injury_min_damage or more), up to injury_permanent_max_share. Scrapes under injury_scar_min_damage heal completely. Max health never drops below injury_min_max_health from injuries. Cold and illness heal fully. Death resets it all.",
+  "injury_permanent_share": 0.1,
+  "injury_permanent_share_per_injury": 0.05,
+  "injury_permanent_max_share": 0.5,
+  "injury_min_damage": 5,
+  "injury_scar_min_damage": 1,
+  "injury_min_max_health": 30,
+
   "acclimatized_start_m": 5000,
   "acclimatize_m_per_h": 18,
   "acclimatize_max_m": 7000,

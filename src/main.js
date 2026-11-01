@@ -383,6 +383,7 @@ if (params.has('pitch')) view.pitch = (+params.get('pitch') * Math.PI) / 180;
 if (params.has('dist')) view.distance = +params.get('dist');
 if (params.has('fp')) view.firstPerson = true;
 if (params.has('fly')) { climber.toggleFly(); climber.position.y += +params.get('fly'); }
+if (params.has('injure')) for (const hit of params.get('injure').split(',')) climber._injure(+hit);
 if (params.has('lamp')) headlamp.set(+params.get('lamp'));
 if (params.has('hour')) climber.mountainSeconds = +params.get('hour') * 3600;
 climber.weather = new Weather(params.has('seed') ? +params.get('seed') : Math.floor(Math.random() * 1e9), climber.mountainSeconds);

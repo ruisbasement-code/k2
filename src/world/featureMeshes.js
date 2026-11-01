@@ -395,7 +395,7 @@ export class FeatureMeshes extends THREE.Group {
     const murk = smooth(tuning.path_light_clear_vis_m, tuning.path_light_storm_vis_m, vis);
     // Illness (blurred vision) and injury (from 70 health down).
     const ill = smooth(0.05, 0.4, climber.mods?.blur ?? 0);
-    const hurt = climber.dead ? 1 : smooth(70, 35, climber.health ?? 100);
+    const hurt = climber.dead ? 1 : smooth(70, 35, climber.feltHealth ?? climber.health ?? 100);
     const k = Math.max(murk, ill, hurt);
     return Math.exp(Math.log(clear) + (Math.log(near) - Math.log(clear)) * k);
   }
