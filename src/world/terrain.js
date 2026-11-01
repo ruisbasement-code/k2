@@ -615,6 +615,12 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   vec3 ice = mix(vec3(0.46, 0.58, 0.68), vec3(0.66, 0.75, 0.82), smoothstep(0.35, 0.7, streaks));
   ice = mix(ice, vec3(0.85, 0.89, 0.93), 0.6 * blockCrack * near + 0.3 * smoothstep(0.6, 0.8, streaksNear) * near);
 
+  // Rime: wind-driven frost plastered on the windward (westerly) side of rock up
+  // high, a smooth pale glaze rather than speckle.
+  float windward = smoothstep(0.05, 0.6, -n.x);
+  float rime = windward * smoothstep(6600.0, 7600.0, h) * smoothstep(0.3, 0.7, big + (streaks - 0.5) * 0.4) * 0.45;
+  rock = mix(rock, vec3(0.70, 0.74, 0.79), rime);
+
   vec3 col = rock;
   col = mix(col, scree, screeAmt);
   col = mix(col, glacierCol, glacier);
