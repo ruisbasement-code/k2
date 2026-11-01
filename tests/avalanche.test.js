@@ -132,4 +132,51 @@ describe('avalanches', () => {
     expect(swept).toBe(true);
     expect(said.some((m) => /Swimming hard/.test(m))).toBe(true);
   });
+
+  it('cracks a slab above you a few seconds before it lets go', () => {
+    vi.spyOn(Math, 'random').mockImplementation(mulberry32(7));
+    const c = new Climber(hm, ropes, route.places);
+    const [x, z] = at('Camp 2');
+    c.placeAt(x, z, 0, 0);
+    let crown = null;
+    for (let i = 0; i < 50 && !crown; i++) crown = c.avalanches.findAbove(x, z);
+    expect(crown).not.toBeNull();
+    const said = [];
+    c.onMessage = (m) => said.push(m);
+    c._crackAbove({ ...crown, x: x + 200, z });
+    expect(c.pendingSlides.length).toBe(1);
+    expect(c.avalanches.slides.length).toBe(0);
+    expect(c.cues.some((q) => q.kind === 'crack')).toBe(true);
+    expect(said.some((m) => /^Crack!/.test(m))).toBe(true);
+    c._releaseCracked(W.warning_s - 0.5);
+    expect(c.avalanches.slides.length).toBe(0);
+    c._releaseCracked(1);
+    expect(c.pendingSlides.length).toBe(0);
+  });
+
+  it('whumpfs underfoot on a loaded slope before it breaks', () => {
+    vi.spyOn(Math, 'random').mockImplementation(mulberry32(3));
+    const [cx, cz] = at('Camp 2');
+    let spot = null;
+    for (let i = 0; i < 900 && !spot; i++) {
+      const x = cx + ((i % 30) - 15) * 30, z = cz + (Math.floor(i / 30) - 15) * 30;
+      if (isSlabSlope(hm, x, z) && hm.slopeDeg(x, z) > 36 && hm.slopeDeg(x, z) < 44) spot = [x, z];
+    }
+    expect(spot).not.toBeNull();
+    const [gx, gz] = hm.gradient(spot[0], spot[1]);
+    const g = Math.hypot(gx, gz);
+    const c = new Climber(hm, ropes, route.places);
+    c.placeAt(spot[0], spot[1], 0, 0);
+    c.conditions = { avalancheDanger: 0.9, windX: -gx / g, windZ: -gz / g };
+    c.weather = { windSlab: 1 };
+    const said = [];
+    c.onMessage = (m) => said.push(m);
+    for (let i = 0; i < 300; i++) { c._whumpfCool = 0; c._maybeTriggerSlab(); }
+    expect(c.slabRisk).toBeGreaterThan(0.3);
+    expect(said.some((m) => /^Whumpf!/.test(m))).toBe(true);
+    // A settling whumpf comes far more often than the slab actually breaking.
+    const whumpfs = said.filter((m) => /^Whumpf!/.test(m)).length;
+    const breaks = said.filter((m) => /fractured under your feet/.test(m)).length;
+    expect(whumpfs).toBeGreaterThan(breaks * 3);
+  });
 });
