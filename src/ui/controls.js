@@ -6,6 +6,7 @@ export const CONTROLS = [
     [['W', 'A', 'S', 'D'], 'Move'],
     [['Shift'], 'Push the pace'],
     [['Space'], 'Self-arrest (hold, with the ice axe in hand)'],
+    [['Q'], 'Catch your footing when it flashes up on steep ground, before the ring runs out'],
     [['C'], 'Clip into / unclip from a fixed rope (at an anchor: clip past it)'],
     [['E'], 'Place an ice screw or snow picket (rope needed)'],
     [['I'], 'Hold / stow the ice axe (needed on steep snow and ice)'],
@@ -13,7 +14,7 @@ export const CONTROLS = [
   ]],
   ['Gear', [
     [['Tab'], 'Inventory'],
-    [['1', '9'], 'Hotbar: hold or use what\'s in that slot (trekking poles: out / away)'],
+    [['1', '9'], 'Hotbar: hold or use what\'s in that slot (trekking poles: out / away; crampons: strap on / take off, on a ledge, gentle ground or the rope)'],
     [['G'], 'Gear up at Base Camp · restock at a camp · strike your tent'],
     [['J'], 'Hold the Wympr GPS'],
     [['U'], 'Hold the vitals monitor'],

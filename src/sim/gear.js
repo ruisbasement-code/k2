@@ -410,10 +410,16 @@ export class Expedition {
     const key = c.surface?.key;
     const set = (id, e) => (e ? c.effects.set(id, e) : c.effects.delete(id));
     const onSnow = SNOW_ICE.has(key) && c.mode !== 'fly';
-    const crampons = hasGear(pack, 'crampons');
-    set('gear:crampons', !onSnow ? null
-      : !crampons ? { label: 'No crampons', slip: tuning.no_crampons_slip, speed: ICE.has(key) ? 0.85 : 1 }
-        : pack.gear.has('crampons_pro') ? { slip: 0.75 } : null);
+    // Crampons on bite into snow and ice; carried in the pack they do nothing, and
+    // worn on bare rock they skate and catch.
+    const worn = c.cramponsOn ?? hasGear(pack, 'crampons');
+    const onRock = (key === 'rock' || key === 'scree') && c.mode !== 'fly';
+    set('gear:crampons', onSnow
+      ? (!worn ? (ICE.has(key)
+        ? { label: hasGear(pack, 'crampons') ? 'Crampons off on ice' : 'No crampons on ice', slip: tuning.no_crampons_ice_slip, speed: tuning.no_crampons_ice_speed }
+        : { label: hasGear(pack, 'crampons') ? 'Crampons off' : 'No crampons', slip: tuning.no_crampons_slip })
+        : pack.gear.has('crampons_pro') ? { slip: 0.75 } : null)
+      : onRock && worn ? { label: 'Crampons on rock', slip: tuning.crampons_rock_slip, speed: tuning.crampons_rock_speed } : null);
     set('gear:axe', pack.gear.has('axe_tech') && c.axeReady ? { slip: 0.8 } : null);
     if (!pack.gear.has('poles')) c.poles.inHand = false;
     set('gear:poles', c.polesOnSteep ? { label: 'Poles on steep ground' } : null);

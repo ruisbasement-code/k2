@@ -23,6 +23,22 @@ canvas#c { display: block; width: 100vw; height: 100vh; }
   backdrop-filter: blur(var(--blur)) saturate(0.6); -webkit-backdrop-filter: blur(var(--blur)) saturate(0.6);
   mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 15%));
   -webkit-mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 15%)); }
+/* Cold: frost ferns creep in from the edges as you chill, with a blue-white tint. */
+#frost { position: fixed; inset: 0; pointer-events: none; --inner: 78%; --tint: 0; opacity: 0; transition: opacity .4s;
+  background-size: cover; background-position: center; background-color: rgba(200, 225, 255, var(--tint));
+  mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 22%));
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 22%)); }
+/* A marker on a slope that has cracked above you, or an arrow at the edge toward it. */
+#threat { position: fixed; left: 0; top: 0; pointer-events: none; opacity: 0; display: none; }
+#threat.on { display: block; }
+#threat .label, #threat .arrow { position: absolute; left: 0; top: 0; }
+#threat .label { transform: translate(-50%, -64px); padding: 2px 9px; border-radius: 10px; white-space: nowrap; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: #fff; background: rgba(200, 40, 30, .8); border: 1px solid rgba(255, 140, 120, .9); box-shadow: 0 0 14px rgba(255, 60, 40, .6); animation: threat-pulse .5s ease-in-out infinite alternate; }
+#threat.edge .label { transform: translate(-50%, -150%); }
+#threat .arrow { width: 0; height: 0; margin: -14px 0 0 -12px; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 24px solid rgba(255, 70, 50, .95);
+  transform-origin: 12px 14px; filter: drop-shadow(0 0 6px rgba(255, 60, 40, .8)); }
+#threat:not(.edge) .arrow { margin-top: -38px; }
+@keyframes threat-pulse { from { opacity: .75; } to { opacity: 1; } }
 kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font: 11px ui-monospace, monospace; color: var(--text); }
 #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; background: #0d1117; }
 
@@ -38,6 +54,13 @@ kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); bord
 .vital[hidden] { display: none; }
 #health-cap, #stamina-cap { position: absolute; top: 0; width: 2px; height: 100%; margin-left: -1px; background: rgba(0, 0, 0, .55); }
 #health-cap[hidden] { display: none; }
+/* Permanent injuries: the part of the bar you can never heal back, hatched. */
+#health-scar { position: absolute; top: 0; right: 0; height: 100%; background: repeating-linear-gradient(-45deg, rgba(120, 20, 25, .9) 0 3px, rgba(40, 8, 10, .9) 3px 6px); }
+#health-scar[hidden], #health-max[hidden] { display: none; }
+#health-max { flex: none; font: 600 10px ui-monospace, monospace; color: #ff9a9a; text-shadow: 0 1px 2px #000; min-width: 22px; }
+#health-loss { position: absolute; left: 100%; margin-left: 4px; font: 700 11px ui-monospace, monospace; color: #ff6b6b; text-shadow: 0 1px 2px #000; white-space: nowrap; opacity: 0; transition: opacity .4s; }
+#health-loss.show { opacity: 1; transition: none; }
+.vital { position: relative; }
 #vital-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 #vital-chips span, .conds span { padding: 0 7px; border-radius: 9px; font-size: 11px; background: rgba(255, 170, 60, .25); border: 1px solid rgba(255, 170, 60, .5); }
 #vital-chips span.bad, .conds span.bad { background: rgba(255, 80, 70, .3); border-color: rgba(255, 80, 70, .7); }
@@ -49,6 +72,21 @@ kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); bord
 
 /* ---- Prompts and messages ---- */
 #prompt { position: fixed; left: 50%; bottom: 112px; transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; pointer-events: none; }
+/* Footing check: Q in a ring that drains; red as it runs out. */
+#footing { position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 8px; pointer-events: none; --left: 1; }
+#footing[hidden] { display: none; }
+#footing .ring { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle, rgba(0, 0, 0, .55) 58%, transparent 60%),
+    conic-gradient(var(--ring, #ffd98a) calc(var(--left) * 360deg), rgba(255, 255, 255, .14) 0); box-shadow: 0 2px 12px rgba(0, 0, 0, .5); }
+#footing kbd { font-size: 30px; font-weight: 700; padding: 2px 12px; border-width: 2px; background: rgba(0, 0, 0, .5); }
+#footing .say { font-size: 20px; font-weight: 700; color: #ffd98a; text-shadow: 0 1px 4px #000; letter-spacing: .03em; }
+#footing.up .ring { animation: footing-pulse .45s ease-in-out infinite alternate; }
+#footing.up.late { --ring: #ff8a55; }
+#footing.held { --ring: #6fcf8a; --left: 1 !important; }
+#footing.held .say { color: #6fcf8a; }
+#footing.slipped { --ring: #ff6a55; }
+#footing.slipped .say { color: #ff6a55; }
+@keyframes footing-pulse { to { transform: scale(1.08); } }
 #alert { font-size: 18px; font-weight: 600; color: #ffd98a; text-shadow: 0 1px 4px #000; letter-spacing: .02em; }
 #alert:empty { display: none; }
 #actions { display: flex; gap: 14px; }
@@ -142,7 +180,7 @@ button#set-off, #menu-resume, #start button { background: var(--accent); color: 
 .ghost { background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 7px; font: inherit; padding: 8px 14px; cursor: pointer; }
 
 /* ---- Minigames ---- */
-#mini { position: fixed; left: 50%; top: 58%; transform: translateX(-50%); width: 300px; padding: 10px 12px 8px; text-align: center; background: rgba(12, 16, 24, .6); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); }
+#mini { position: fixed; left: 50%; top: 34%; transform: translateX(-50%); width: 300px; padding: 10px 12px 8px; text-align: center; background: rgba(12, 16, 24, .6); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); }
 .mini-title { font-size: 13px; font-weight: 600; letter-spacing: .03em; }
 #mini canvas { width: 300px; height: 74px; display: block; margin: 2px auto 0; }
 .mini-keys { display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }

@@ -88,6 +88,8 @@ export function campMaterials() {
   return {
     fabric: std({ roughness: 0.75, flatShading: true }),
     soft: std({ roughness: 0.8 }),
+    // Old, torn fabric: seen from both sides through the rips.
+    worn: std({ roughness: 0.95, flatShading: true, side: THREE.DoubleSide }),
     stone: std({ roughness: 0.95, flatShading: true }),
     snow: std({ roughness: 0.85, flatShading: true }),
     metal: std({ roughness: 0.35, metalness: 0.7 }),

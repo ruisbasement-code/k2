@@ -1,7 +1,7 @@
 // Drawing for the terrain features: crevasse and pit walls (the terrain shader
 // cuts their openings out of the surface), snow bridges you've found and the
 // faint sag of hidden ones, the Bottleneck serac's ice cliff, cornices and snow
-// overhangs, snow caves, the lamp posts along the path from Base Camp to Camp 1,
+// overhangs, snow caves, the lamp posts along the glacier trail from Base Camp,
 // and serac ice coming down.
 
 import * as THREE from 'three';
@@ -310,10 +310,11 @@ export class FeatureMeshes extends THREE.Group {
   }
 
   /**
-   * Lamp posts along the way from Base Camp to Camp 1: across the glacier on the
-   * wanded trail, then up beside the fixed rope. They glow at night with no fog
-   * on the glow, but only as far as you can see: in storms, low visibility or
-   * when you're ill, only the lamps a few metres away show.
+   * Lamp posts along the wanded trail across the glacier, from Base Camp to the
+   * foot of the mountain. The mountain itself is left dark: no lamps on the ropes.
+   * They glow at night with no fog on the glow, but only as far as you can see:
+   * in storms, low visibility or when you're ill, only the lamps a few metres
+   * away show.
    */
   _pathLights() {
     const f = this.features;
@@ -332,14 +333,6 @@ export class FeatureMeshes extends THREE.Group {
       }
     };
     if (f.trail) along(f.trail.points, tuning.path_light_every_m, 2);
-    // Up the rope as far as Camp 1.
-    const c1 = f.camps[2];
-    if (this.ropes && c1) {
-      const rope = this.ropes.ropes[0];
-      const end = rope.reduce((best, p, i) => (Math.hypot(p.x - c1.x, p.z - c1.z) < Math.hypot(rope[best].x - c1.x, rope[best].z - c1.z) ? i : best), 0);
-      const pts = rope.slice(0, end + 1).filter((_, i) => i % 3 === 0 || i === end);
-      along(pts, tuning.path_light_every_m * 0.7, 1.6);
-    }
     if (!spots.length) return;
     // In small groups, so each group is culled when it's off screen or far away.
     const postGeo = new THREE.CylinderGeometry(0.035, 0.05, 1.3, 6).translate(0, 0.65, 0);
@@ -395,7 +388,7 @@ export class FeatureMeshes extends THREE.Group {
     const murk = smooth(tuning.path_light_clear_vis_m, tuning.path_light_storm_vis_m, vis);
     // Illness (blurred vision) and injury (from 70 health down).
     const ill = smooth(0.05, 0.4, climber.mods?.blur ?? 0);
-    const hurt = climber.dead ? 1 : smooth(70, 35, climber.health ?? 100);
+    const hurt = climber.dead ? 1 : smooth(70, 35, climber.feltHealth ?? climber.health ?? 100);
     const k = Math.max(murk, ill, hurt);
     return Math.exp(Math.log(clear) + (Math.log(near) - Math.log(clear)) * k);
   }
@@ -409,45 +402,70 @@ export class FeatureMeshes extends THREE.Group {
   }
 
   /**
-   * A hanging serac as a single ice cliff: a face of blue-white ice, slightly
-   * overhanging at its lip, with a snow-covered top running back into the slope.
+   * A hanging serac as a single ice cliff: a face of blue-white ice, fluted and
+   * stepped where blocks have broken away, bulging and overhanging near its lip,
+   * with a snow-covered top running back into the slope. Its height wanders
+   * along it and dies away at both ends, so it grows out of the slope instead of
+   * standing on it like a wall.
    */
   _iceCliff(ice) {
     const hm = this.hm;
     const tris = new Tris();
-    const n = Math.max(2, Math.round(ice.length / 4));
+    const n = Math.max(4, Math.round(ice.length / 2.5));
     const back = { x: -ice.face.x, z: -ice.face.z };
-    const faceCol = new THREE.Color(0xbcdcec), deepCol = new THREE.Color(0x7fb2cf), snow = new THREE.Color(0xf1f5f9);
+    const faceCol = new THREE.Color(0xc4dfec), deepCol = new THREE.Color(0x6f9fbd), snow = new THREE.Color(0xf1f5f9);
+    const dirty = new THREE.Color(0x9fb7c4);
+    const len = Math.hypot(ice.along.x, ice.along.z) || 1;
+    const ax = ice.along.x / len, az = ice.along.z / len;
+    // Repeatable bumps along the cliff, at a few scales.
+    const wave = (t, k) => Math.sin(t * 7.1 + k) * 0.5 + Math.sin(t * 17.3 + k * 2.1) * 0.3 + Math.sin(t * 41.0 + k * 3.7) * 0.2;
+    // Rows up the face: [height fraction, how far it stands out from the base].
+    const prof = [[0, 0], [0.18, 0.4], [0.42, 0.2], [0.62, 1.1], [0.82, 2.2], [0.94, 3.0], [1, 2.4]];
     const rows = [];
     for (let i = 0; i <= n; i++) {
       const t = i / n;
-      const bx = ice.x + ice.along.x * t, bz = ice.z + ice.along.z * t;
-      // Height swells in the middle and wanders, so the lip isn't a ruler line.
-      const h = (24 + 18 * Math.sin(Math.PI * t)) * (0.85 + 0.15 * Math.sin(i * 1.7) * Math.cos(i * 0.6));
-      const base = hm.heightAt(bx, bz) - 3;
-      const lipX = bx + ice.face.x * 2.5, lipZ = bz + ice.face.z * 2.5;
-      const depth = 28 + 6 * Math.sin(i * 0.9);
+      // Ragged plan: the face line pushes out and in by a few metres.
+      const push = 3.5 * wave(t, 1.3);
+      const bx = ice.x + ice.along.x * t + ice.face.x * push, bz = ice.z + ice.along.z * t + ice.face.z * push;
+      const taper = Math.sin(Math.PI * Math.min(1, Math.max(0, t * 1.15 - 0.075))) ** 0.6;
+      const h = Math.max(2, (30 + 16 * Math.sin(Math.PI * t) + 9 * wave(t, 4.2)) * taper);
+      const base = hm.heightAt(bx, bz) - 2;
+      // Flutes: some columns stand proud, some are recessed where ice has fallen.
+      const flute = 1.6 * Math.sin(i * 2.3 + Math.sin(i * 0.7) * 2) * taper;
+      const col = [];
+      for (const [f, out] of prof) {
+        const o = (out + (f > 0 && f < 1 ? flute * (0.4 + f) : 0)) * taper;
+        // Side-to-side jitter on the inner rows breaks the vertical lines.
+        const j = f > 0 && f < 1 ? 0.6 * Math.sin(i * 3.1 + f * 9) : 0;
+        col.push(new THREE.Vector3(bx + ice.face.x * o + ax * j, base + h * f, bz + ice.face.z * o + az * j));
+      }
+      const depth = 26 + 6 * wave(t, 7.7);
       const rx = bx + back.x * depth, rz = bz + back.z * depth;
-      rows.push({
-        base: new THREE.Vector3(bx, base, bz),
-        mid: new THREE.Vector3(bx + ice.face.x * 1.2, base + h * 0.55, bz + ice.face.z * 1.2),
-        lip: new THREE.Vector3(lipX, base + h, lipZ),
-        top: new THREE.Vector3(bx + back.x * 4, base + h + 1.2, bz + back.z * 4),
-        rear: new THREE.Vector3(rx, Math.max(hm.heightAt(rx, rz), base + h * 0.5) - 1, rz),
-        shade: i % 3 === 0 ? deepCol : faceCol,
+      const top = new THREE.Vector3(bx + back.x * 5, base + h + 1.5 * taper, bz + back.z * 5);
+      const rear = new THREE.Vector3(rx, Math.max(hm.heightAt(rx, rz), base + h * 0.4) - 1, rz);
+      // Layered ice: bands of cleaner and dirtier ice up the face, shade varying per column.
+      const k = 0.5 + 0.5 * Math.sin(i * 1.37 + 0.6);
+      const shades = prof.map(([f], r) => {
+        const band = 0.5 + 0.5 * Math.sin(f * 11 + t * 2);
+        const c = deepCol.clone().lerp(faceCol, Math.min(1, f * 1.3 + 0.15 * k));
+        return r === prof.length - 1 ? snow : c.lerp(dirty, 0.25 * band * (1 - f));
       });
+      rows.push({ col, top, rear, shades });
     }
+    const m = prof.length;
     for (let i = 0; i < n; i++) {
       const a = rows[i], b = rows[i + 1];
-      tris.quad(a.base, b.base, b.mid, a.mid, deepCol, deepCol, b.shade, a.shade);
-      tris.quad(a.mid, b.mid, b.lip, a.lip, a.shade, b.shade, faceCol, faceCol);
-      tris.quad(a.lip, b.lip, b.top, a.top, snow);
+      for (let r = 0; r < m - 1; r++) tris.quad(a.col[r], b.col[r], b.col[r + 1], a.col[r + 1], a.shades[r], b.shades[r], b.shades[r + 1], a.shades[r + 1]);
+      tris.quad(a.col[m - 1], b.col[m - 1], b.top, a.top, snow);
       tris.quad(a.top, b.top, b.rear, a.rear, snow);
     }
-    // Close off the two ends.
-    for (const r of [rows[0], rows[n]]) {
-      tris.quad(r.base, r.mid, r.lip, r.top, deepCol, faceCol, faceCol, snow);
-      tris.tri(r.base, r.top, r.rear, deepCol, snow, snow);
+    // Close off the two ends (low there, as the cliff dies into the slope).
+    for (const [r, s] of [[rows[0], 1], [rows[n], -1]]) {
+      const pts = [...r.col, r.top, r.rear];
+      for (let q = 1; q + 1 < pts.length; q++) {
+        if (s > 0) tris.tri(pts[0], pts[q + 1], pts[q], deepCol, snow, faceCol);
+        else tris.tri(pts[0], pts[q], pts[q + 1], deepCol, faceCol, snow);
+      }
     }
     return tris.geometry();
   }

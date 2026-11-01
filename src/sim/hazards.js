@@ -23,8 +23,34 @@ export function isLoose(x, z, surface) {
 }
 
 /**
+ * What a ledge is like underfoot. Most are sound. Some are glazed with verglas
+ * (a thin skin of water ice, drawn glassy blue): treacherous without crampons.
+ * Some have a rotten ice lip along their outer, downhill edge (drawn pale with a
+ * dark crack): stand out on it and it can break away under you.
+ */
+export function ledgeKind(i, j) {
+  const r = hash2(i - 4421, j + 7741);
+  if (r < tuning.verglas_share) return 'verglas';
+  if (r < tuning.verglas_share + tuning.rotten_lip_share) return 'rotten';
+  return 'sound';
+}
+
+/**
+ * How far out toward the downhill edge of a ledge (x, z) is: 0 at the centre or
+ * on the uphill side, 1 at the very lip. gx, gz: the uphill gradient there.
+ */
+export function ledgeOut(ledge, x, z, gx, gz) {
+  const g = Math.hypot(gx, gz);
+  if (g < 1e-6) return 0;
+  const down = ((ledge.x - x) * gx + (ledge.z - z) * gz) / g;
+  // A ledge is drawn 1.9 times shorter down the slope than across it (terrain.js).
+  return Math.max(0, Math.min(1, (down * 1.9) / tuning.ledge_radius_m));
+}
+
+/**
  * The ledge at this spot, if any: small terraces and steps on steep faces that the
- * elevation grid is too coarse to show. Returns its centre {x, z} or null.
+ * elevation grid is too coarse to show. Returns {x, z (its centre), i, j (its
+ * cell), kind (see ledgeKind)} or null.
  */
 export function ledgeAt(x, z, slopeDeg) {
   const t = tuning;
@@ -36,7 +62,7 @@ export function ledgeAt(x, z, slopeDeg) {
   const room = cell / 2 - t.ledge_radius_m;
   const cx = (i + 0.5) * cell + (hash2(i, j + 31) - 0.5) * 2 * room;
   const cz = (j + 0.5) * cell + (hash2(i + 17, j) - 0.5) * 2 * room;
-  return Math.hypot(x - cx, z - cz) <= t.ledge_radius_m ? { x: cx, z: cz } : null;
+  return Math.hypot(x - cx, z - cz) <= t.ledge_radius_m ? { x: cx, z: cz, i, j, kind: ledgeKind(i, j) } : null;
 }
 
 /** Every ledge centre within radius of a point, for drawing. */
@@ -52,7 +78,7 @@ export function ledgesNear(hm, x, z, radius) {
       const cz = (j + 0.5) * cell + (hash2(i + 17, j) - 0.5) * 2 * room;
       if (Math.abs(cx) > hm.size / 2 - 50 || Math.abs(cz) > hm.size / 2 - 50) continue;
       const s = hm.slopeDeg(cx, cz);
-      if (s >= t.ledge_min_deg && s <= t.ledge_max_deg) out.push({ x: cx, z: cz, slope: s });
+      if (s >= t.ledge_min_deg && s <= t.ledge_max_deg) out.push({ x: cx, z: cz, slope: s, kind: ledgeKind(i, j) });
     }
   }
   return out;

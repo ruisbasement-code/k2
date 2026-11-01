@@ -3,6 +3,11 @@ import { Heightmap } from '../src/world/heightmap.js';
 import { TerrainDetail, campFlats } from '../src/world/terrainDetail.js';
 import { buildFineTerrain } from '../src/world/fineTerrain.js';
 import route from '../src/data/route.json';
+import { tuning } from '../src/sim/paceModel.js';
+
+// Footing checks wait for a key press nobody makes in a test: off here, and
+// tests/footing.test.js turns them back on.
+tuning.footing.enabled = false;
 
 /**
  * Loads the heightmap from public/data, the same files the game fetches, with the

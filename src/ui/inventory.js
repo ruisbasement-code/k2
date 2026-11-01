@@ -2,7 +2,7 @@
 // hold it, a consumable to use it. At Base Camp the gear store opens beside it
 // (G) for gearing up: pick a pack, gear and supplies within the room you have.
 
-import { GEAR, PACKS, EXTRAS, CONSUMABLE_LITRES } from '../sim/gear.js';
+import { GEAR, PACKS, EXTRAS, CONSUMABLE_LITRES, hasGear } from '../sim/gear.js';
 import { tuning } from '../sim/paceModel.js';
 import { ITEMS } from '../sim/pack.js';
 import { icon } from './icons.js';
@@ -13,7 +13,7 @@ export const DEVICES = ['gps', 'monitor', 'map'];
 export const SIGNALS = ['flares', 'strobe', 'whistle'];
 
 /** Hotbar order: what you'd reach for, first nine you carry get keys 1 to 9. */
-const HOTBAR = ['gps', 'monitor', 'map', 'axe', 'poles', 'snack', 'water', 'oxygen', 'firstaid', 'flares', 'strobe', 'whistle', 'dex', 'warmers', 'radio'];
+const HOTBAR = ['gps', 'monitor', 'map', 'axe', 'poles', 'crampons', 'snack', 'water', 'oxygen', 'firstaid', 'flares', 'strobe', 'whistle', 'dex', 'warmers', 'radio'];
 
 /** The items on the hotbar right now, [{id, label, count}]. Collapsed, the signals come first. */
 export function hotbarItems(climber) {
@@ -21,6 +21,7 @@ export function hotbarItems(climber) {
   const out = [];
   const order = climber.collapsed ? [...SIGNALS, ...HOTBAR.filter((id) => !SIGNALS.includes(id))] : HOTBAR;
   for (const id of order) {
+    if (id === 'crampons') { if (hasGear(p, 'crampons')) out.push({ id: p.gear.has('crampons_pro') ? 'crampons_pro' : 'crampons', label: climber.cramponsOn ? 'Crampons (on): take off' : 'Crampons (packed): strap on' }); continue; }
     if (id === 'axe') { if (climber.axe.have) out.push({ id: p.gear.has('axe_tech') ? 'axe_tech' : 'axe', label: 'Ice axe' }); continue; }
     if (GEAR[id]) { if (p.gear.has(id) && id !== 'radio') out.push({ id, label: GEAR[id].label }); continue; }
     const n = id in EXTRAS ? p.extra[id] : id === 'water' ? p.water : p.count(id);
