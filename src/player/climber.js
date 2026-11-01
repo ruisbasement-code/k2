@@ -60,6 +60,7 @@ import { TerrainFeatures } from '../sim/terrainFeatures.js';
 const { tuning } = Pace;
 const DEG = 180 / Math.PI;
 const _UP = new THREE.Vector3(0, 1, 0);
+const _n = new THREE.Vector3();
 const SNOW = new Set(['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier']);
 /** Ground an ice axe bites into. */
 const AXE_GROUND = new Set(['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier', 'ice']);
@@ -759,6 +760,98 @@ export class Climber {
     return onLedge ? Math.max(0, slope - tuning.ledge_relief_deg) : slope;
   }
 
+  /**
+   * The slope you stand or lie on at (x, z): the face's slope, unless the ground
+   * right here is a flatter bench in it. A slide feels the ground within a few
+   * metres, so standing has to judge it the same way, or you can come to rest on
+   * a bench that is "too steep" by the wider slope and never get up.
+   */
+  _standSlope(x, z) {
+    const local = Math.acos(Math.min(this.hm.normalAt(x, z, _n).y, 1)) * DEG;
+    return Math.min(this.hm.slopeDeg(x, z), local);
+  }
+
+  /** The steepest footing you can stand on here: steeper on snow and ice with the axe in hand. */
+  _standLimit(surface = this.surface) {
+    const axeBites = this.axeReady && AXE_GROUND.has(surface.key);
+    return axeBites ? Math.max(surface.stand_deg, tuning.axe_stand_deg) : surface.stand_deg;
+  }
+
+  /** Whether the ground at (x, z) would hold you standing, unroped. */
+  _canStandAt(x, z) {
+    const slope = this.hm.slopeDeg(x, z);
+    const y = this._groundAt(x, z);
+    const surface = Pace.surfaceAt(y, slope, this.hm.glacierAt(x, z), this.hour);
+    const footing = this._footingSlope(this._standSlope(x, z), !!ledgeAt(x, z, slope));
+    return footing <= this._standLimit(surface);
+  }
+
+  /** Stuck: lying still in a fall that the ground holds but won't let you stand from. */
+  get stuck() {
+    return this.falling && !this.fall.hole && !this.tumbling && (this.fall.still ?? 0) > tuning.stuck_after_s;
+  }
+
+  /**
+   * Get up (R): when you're lying still on ground you can't stand on, crawl to
+   * the nearest spot that will hold you standing. Near the fall line and a
+   * little downhill is preferred; it costs a few minutes and some stamina.
+   */
+  getUp() {
+    if (this.mode === Mode.FLY || this.dead || this.collapsed || this.mode === Mode.HOLE) return false;
+    if (this.falling) {
+      if (this.fall.hole) return false;
+      if (this.velocity.length() > tuning.get_up_below_m_s) {
+        this.onMessage("You can't get up while you're still sliding.");
+        return false;
+      }
+    } else if (this.clipped || this._canStandAt(this.position.x, this.position.z)) {
+      this.onMessage("You're already on your feet.");
+      return false;
+    }
+    const spot = this._safeSpotNear(this.position.x, this.position.z);
+    if (!spot) {
+      this.onMessage('Nowhere nearby is flat enough to stand. Hold on and call for help.');
+      return false;
+    }
+    const from = this.position.clone();
+    const yaw = this.yaw;
+    this.fall = null;
+    this.placeAt(spot.x, spot.z, spot.x, spot.z);
+    this.yaw = this.heading = yaw;
+    this.mode = Mode.WALK;
+    this.slope = this.hm.slopeDeg(spot.x, spot.z);
+    this._updateGroundMode(this.slope);
+    const dist = Math.round(from.distanceTo(this.position));
+    this.mountainSeconds += tuning.get_up_minutes * 60;
+    this.body.stamina = Math.max(0, this.body.stamina - tuning.get_up_stamina);
+    this.onMessage(dist < 1 ? 'You pick yourself up and get your feet under you.' : `You pick yourself up and scramble ${dist} m to safer footing.`);
+    return true;
+  }
+
+  /** The nearest standable spot within reach, out of any crevasse and ice wall. */
+  _safeSpotNear(x, z) {
+    const t = tuning;
+    const f = this.features;
+    const [gx, gz] = this.hm.gradient(x, z);
+    const g = Math.hypot(gx, gz) || 1;
+    let best = null;
+    for (let r = 0; r <= t.get_up_search_m; r += 1) {
+      const n = r === 0 ? 1 : Math.ceil((2 * Math.PI * r) / 1);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * 2 * Math.PI;
+        const px = x + r * Math.cos(a), pz = z + r * Math.sin(a);
+        if (f?.holeAt(px, pz) || f?.seracAt(px, pz)) continue;
+        if (!this._canStandAt(px, pz)) continue;
+        // Uphill is harder to reach than across or down.
+        const up = ((px - x) * gx + (pz - z) * gz) / g;
+        const cost = r + Math.max(0, up);
+        if (!best || cost < best.cost) best = { x: px, z: pz, cost };
+      }
+      if (best && best.cost <= r) break;
+    }
+    return best;
+  }
+
   /** Sliding with no chance to dig in yet: too fast to self-arrest. */
   get runaway() {
     return this.falling && !this.tumbling && !this.fall.rope && this.axeReady && this.velocity.length() >= this._arrestTool().maxSpeed;
@@ -884,10 +977,10 @@ export class Climber {
     this.onLedge = !!ledgeAt(this.position.x, this.position.z, this.slope);
     this._noteFeatures();
     this._notePoles();
-    const footing = this._footingSlope(this.slope, this.onLedge);
+    const footing = this._footingSlope(this._standSlope(this.position.x, this.position.z), this.onLedge);
     // Crampons kicked in and the axe planted hold you on steep snow and ice.
     const axeBites = this.axeReady && AXE_GROUND.has(this.surface.key);
-    const standLimit = axeBites ? Math.max(this.surface.stand_deg, tuning.axe_stand_deg) : this.surface.stand_deg;
+    const standLimit = this._standLimit();
     this.sink = this.surface.sink_m * (1 - this.packing);
     const clipped = this.clipped;
     // On steep ground, clipped in means jumaring.
@@ -1251,8 +1344,14 @@ export class Climber {
       return;
     }
     this.onLedge = !!ledgeAt(p.x, p.z, this.slope);
-    const standable = this._footingSlope(this.slope, this.onLedge) < this.surface.stand_deg;
-    if (touching && v.length() < t.stand_up_below_m_s && standable) {
+    // Judged just as standing is, so stopping here never starts you sliding again.
+    const standable = this._footingSlope(this._standSlope(p.x, p.z), this.onLedge) <= this._standLimit();
+    const still = touching && v.length() < t.stand_up_below_m_s;
+    this.fall.still = still ? (this.fall.still ?? 0) + dt : 0;
+    if (this.fall.still > t.stuck_after_s && this.fall.still - dt <= t.stuck_after_s && !standable) {
+      this.onMessage("You're stuck: the ground holds you but it's too steep to stand. Press R to get up.");
+    }
+    if (still && standable) {
       v.set(0, 0, 0);
       const how = this.fall.phase === 'slide' && this.fall.arresting ? 'You self-arrested'
         : this.onLedge ? 'You caught on a ledge' : 'You came to a stop';

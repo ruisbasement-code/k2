@@ -158,6 +158,7 @@ export class Hud {
     if (c.collapsed) return out('Collapsed');
     if (c.tumbling) return out('Tumbling');
     if (c.falling && (c.fall.rope || c.fall.hole)) return out('Falling');
+    if (c.stuck) { acts.push(['R', 'Get up']); return out('Stuck'); }
     if (c.falling) {
       if (!c.axe.have) return out('No axe to arrest with');
       if (!c.axeReady) {

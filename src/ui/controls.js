@@ -29,7 +29,7 @@ export const CONTROLS = [
     [['O'], 'Oxygen flow'],
     [['P'], 'Take dexamethasone'],
     [['Y'], 'Turnaround time'],
-    [['R'], 'Respawn at Base Camp after dying · give up when collapsed'],
+    [['R'], 'Get up when stuck lying on steep ground · respawn after dying · give up when collapsed'],
   ]],
   ['View', [
     [['Mouse'], 'Look (click to capture)'],
@@ -59,10 +59,11 @@ export class ControlsMenu {
     const groups = CONTROLS.map(([name, rows]) => `<section><h2>${name}</h2>${rows.map(([keys, label]) =>
       `<div class="ctl"><span>${keys.map((k) => `<kbd>${k}</kbd>`).join(keys.length === 2 && keys[0] === '1' ? '–' : '')}</span><span>${label}</span></div>`).join('')}</section>`).join('');
     this.el.innerHTML = `<div class="card panel"><h1>Paused</h1><div class="ctl-grid">${groups}</div>
-      <div class="menu-buttons"><button id="menu-mute" class="ghost">${this.isMuted() ? 'Sound off' : 'Sound on'}</button><button id="menu-resume">Resume</button></div></div>`;
+      <div class="menu-buttons"><button id="menu-getup" class="ghost" title="Crawl to the nearest spot you can stand on (R)">Get up</button><button id="menu-mute" class="ghost">${this.isMuted() ? 'Sound off' : 'Sound on'}</button><button id="menu-resume">Resume</button></div></div>`;
     this.el.hidden = false;
     this.el.querySelector('#menu-mute').onclick = () => { this.onMute(); this.show(); };
     this.el.querySelector('#menu-resume').onclick = () => this.hide();
+    this.el.querySelector('#menu-getup').onclick = () => { this.hide(); this.onGetUp?.(); };
   }
 
   hide() {
