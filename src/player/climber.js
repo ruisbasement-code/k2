@@ -924,6 +924,8 @@ export class Climber {
         target = Pace.groundSpeed(climbing, this.slope, grade, this.breathAltitude) * ground;
         if (rope) target = this._ropeAssist(target, dir, grade, rope);
         target *= amount * this.body.speedFactor() * this.mods.speed;
+        // Numb hands grip badly: slower wherever you climb with them.
+        if (climbing || rope) target *= this.mods.grip ?? 1;
         if (this.polesHelp) target *= t.poles_speed;
         if (this.zone) target *= this.zone.speed;
         if (this.pushing) target *= Pace.pushFactor(this.breathAltitude);
