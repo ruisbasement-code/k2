@@ -1463,7 +1463,8 @@ export class Climber {
     }
     if (this.clipped) {
       const name = this.ropes.names[this.ropeId];
-      if (Math.random() < t.clip_fail_chance) {
+      const fresh = this.ropes.isPlaced?.(this.ropeId) ? tuning.placed_rope_fail_mult : 1;
+      if (Math.random() < t.clip_fail_chance * fresh) {
         this._startFall(gx, gz, `${what} and your clip on the ${name} tore free! You're falling unroped. ${this._arrestHint()}`);
       } else this._startRopeFall(`${what}! The clip held: you drop onto the rope.`);
       return;
@@ -1780,7 +1781,9 @@ export class Climber {
     // The first real jolt tests the anchor: old fixed ropes sometimes fail.
     if (out > 0.5 && !this.fall.rope.tested) {
       this.fall.rope.tested = true;
-      if (Math.random() < t.rope_fail_chance + t.rope_fail_per_m_s * out) {
+      // A line a climber just fixed is new rope on fresh screws and pickets: it fails less.
+      const fresh = this.ropes.isPlaced?.(this.fall.rope.id) ? t.placed_rope_fail_mult : 1;
+      if (Math.random() < (t.rope_fail_chance + t.rope_fail_per_m_s * out) * fresh) {
         this._ropeFails();
         return false;
       }

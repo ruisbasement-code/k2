@@ -29,6 +29,7 @@ import { Sky } from './world/sky.js';
 import { RockfallMesh, FootprintMesh } from './world/hazardMeshes.js';
 import { Tether } from './world/tether.js';
 import { ProtectionView } from './world/protectionView.js';
+import { SharedRopes } from './world/sharedRopes.js';
 import { Weather, weatherTuning } from './sim/weather.js';
 import { Precipitation, AvalancheMesh } from './world/weatherView.js';
 import { WindAudio } from './player/windAudio.js';
@@ -118,6 +119,11 @@ const headlamp = new Headlamp(scene);
 // Flares, whistle and strobe. Every signal is also an event on climber.signals
 // (onEvent) that multiplayer can send to other players, who pass it to receive().
 climber.signals = new Signals('You');
+// The ropes you fix: each screw or picket you put in within reach of the last
+// one carries the rope on, and from the second piece the line is a fixed rope
+// your teammates can clip into. Each change is an event (onEvent) multiplayer
+// sends to the others, whose games pass it to sharedRopes.receive().
+const sharedRopes = new SharedRopes(ropes, protection, climber.signals.who);
 const signalView = new SignalView();
 scene.add(signalView);
 const summitPlace = route.places.find((p) => p.name === 'Summit');
@@ -140,7 +146,10 @@ climber.onMessage = (t) => hud.showMessage(t);
 climber.protectionKind = () => (expedition.protectedNow ? expedition.anchor.kind : null);
 climber.onProtectionLost = () => {
   expedition.anchor = null;
-  if (myPiece != null) protection.remove(myPiece);
+  if (myPiece != null) {
+    sharedRopes.lost(myPiece);
+    protection.remove(myPiece);
+  }
   myPiece = null;
 };
 const audio = new BreathAudio(climber.body);
@@ -335,7 +344,9 @@ async function cook() {
 /** Put a screw or picket in where you stand and clip your rope to it. */
 function placeProtection(kind) {
   expedition.protect(kind);
-  myPiece = protection.place(expedition.anchor).id;
+  const piece = protection.place(expedition.anchor);
+  myPiece = piece.id;
+  return sharedRopes.placed(piece);
 }
 
 async function protect() {
@@ -346,8 +357,10 @@ async function protect() {
     return;
   }
   if (await job(p.kind)) {
-    placeProtection(p.kind);
-    hud.showMessage(p.kind === 'screw' ? 'Screw in, rope clipped' : 'Picket in, rope clipped');
+    const line = placeProtection(p.kind);
+    const what = p.kind === 'screw' ? 'Screw in, rope clipped' : 'Picket in, rope clipped';
+    const n = line >= 0 ? ropes.anchorsOf(line).length : 1;
+    hud.showMessage(n > 1 ? `${what}. ${n} pieces fixed: the team can clip into your rope` : what);
   } else hud.showMessage(p.kind === 'screw' ? "The screw won't bite" : "The picket won't hold");
 }
 
@@ -772,6 +785,12 @@ function frame(now) {
   // Paused in the menu; standing still while busy with your hands or your pack.
   if (climber.dead && document.pointerLockElement) release(); // free the mouse for the respawn button
   if (!menu.open) {
+    // A fixed line taken down (its pieces cleaned or ripped) leaves you on nothing.
+    if (climber.clipped && !ropes.isActive(climber.ropeId)) {
+      climber.unclip();
+      hud.showMessage('The rope you were on came down. Unclipped');
+    }
+    if (climber.falling && climber.fall?.rope && !ropes.isActive(climber.fall.rope.id)) climber._ropeFails();
     const still = minigame.busy || inventory.open;
     const before = climber.mountainSeconds;
     climber.update(dt, still ? { x: 0, y: 0, push: false, up: false, down: false, arrest: false } : input.movement());
@@ -809,7 +828,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__k2 = { climber, protection, placeProtection, ropeMesh, signals: climber.signals, signalView, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
+window.__k2 = { climber, protection, placeProtection, sharedRopes, ropeMesh, signals: climber.signals, signalView, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
 
 /** Read and clear a one-off flag that survives a reload. */
 function takeFlag(key) {

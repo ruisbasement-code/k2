@@ -284,7 +284,7 @@ export class FeatureMeshes extends THREE.Group {
           const t = rnd();
           const ang = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * z.radius_m;
           const x = a.x + (b.x - a.x) * t + Math.cos(ang) * r, zz = a.z + (b.z - a.z) * t + Math.sin(ang) * r;
-          if (this.ropes && this.ropes.nearest(new THREE.Vector3(x, hm.heightAt(x, zz), zz)).distance < 7) continue;
+          if (this.ropes && this.ropes.nearest(new THREE.Vector3(x, hm.heightAt(x, zz), zz), { placed: false }).distance < 7) continue;
           const yaw = rnd() * Math.PI;
           rocks.push({ x, z: zz, ux: Math.cos(yaw), uz: Math.sin(yaw), halfL: 1 + rnd() * 3, halfD: 0.8 + rnd() * 2, height: 1.5 + rnd() * 4 });
         }
