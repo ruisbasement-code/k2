@@ -13,17 +13,17 @@
 import * as THREE from 'three';
 import W from '../data/weather.json';
 
-const RADIUS = 60000; // metres: how far a layer reaches from the camera
+const RADIUS = 60000; // metres: the sheets' size; each layer fades out by its own reach
 
 /**
  * The layers. cover: sky cover on a clear day and how much more full cloud adds.
  * scale: size of the cloud shapes, metres. stretch: drawn out east to west, along the prevailing westerly.
  */
 const LAYERS = [
-  { name: 'cirrus', y: 10800, scale: 5200, stretch: [3.2, 1], clear: 0.32, cloudy: 0.55, opacity: 0.55, drift: 30, soft: 0.4 },
-  { name: 'band-top', y: W.cloud_top_m - 80, scale: 2600, stretch: [1.3, 1], clear: 0.0, cloudy: 0.85, opacity: 0.95, drift: 14, soft: 0.22, band: true },
-  { name: 'band-base', y: W.cloud_base_m + 60, scale: 2600, stretch: [1.3, 1], clear: 0.0, cloudy: 0.85, opacity: 0.95, drift: 14, soft: 0.22, band: true },
-  { name: 'valley', y: 5650, scale: 1500, stretch: [1.15, 1], clear: 0.34, cloudy: 0.3, opacity: 0.9, drift: 9, soft: 0.2 },
+  { name: 'cirrus', y: 10800, scale: 5200, stretch: [3.2, 1], clear: 0.32, cloudy: 0.55, opacity: 0.55, drift: 30, soft: 0.4, reach: 60000 },
+  { name: 'band-top', y: W.cloud_top_m - 80, scale: 2600, stretch: [1.3, 1], clear: 0.0, cloudy: 0.85, opacity: 0.95, drift: 14, soft: 0.24, band: true, reach: 32000 },
+  { name: 'band-base', y: W.cloud_base_m + 60, scale: 2600, stretch: [1.3, 1], clear: 0.0, cloudy: 0.85, opacity: 0.95, drift: 14, soft: 0.24, band: true, reach: 32000 },
+  { name: 'valley', y: 5650, scale: 2400, stretch: [1.2, 1], clear: 0.3, cloudy: 0.3, opacity: 0.85, drift: 9, soft: 0.3, reach: 22000, cluster: 1 },
 ];
 
 const VERT = /* glsl */ `
@@ -40,7 +40,7 @@ void main() {
 const FRAG = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_fragment>
-uniform float uY, uScale, uCover, uOpacity, uSoft, uRadius, uFogDen, uDay;
+uniform float uCluster, uY, uScale, uCover, uOpacity, uSoft, uRadius, uFogDen, uDay;
 uniform vec2 uOff, uStretch;
 uniform vec3 uCam, uSunDir, uSunCol, uAmb, uFogCol;
 uniform sampler2D uH;
@@ -58,7 +58,7 @@ float fbm(vec2 p, float fw) {
   float s = 0.0, a = 0.5, f = 1.0, norm = 0.0;
   mat2 r = mat2(0.8, -0.6, 0.6, 0.8);
   for (int i = 0; i < 5; i++) {
-    float lod = 1.0 - smoothstep(0.15, 0.6, fw * f);
+    float lod = 1.0 - smoothstep(0.08, 0.35, fw * f);
     s += a * lod * vnoise(p * f);
     s += a * (1.0 - lod) * 0.5;
     norm += a;
@@ -80,13 +80,16 @@ void main() {
   // Cloud coordinates: fixed to the ground and drifting downwind.
   vec2 q = (vW.xz + uOff) / (uScale * uStretch);
   float fw = length(fwidth(q));
-  float d = fbm(q, fw);
+  // fbm sits mostly between 0.3 and 0.7: spread it so cover maps evenly onto the sky.
+  float d = clamp((fbm(q, fw) - 0.5) * 2.2 + 0.5, 0.0, 1.0);
   float edge = 1.0 - uCover;
   float a = smoothstep(edge, edge + uSoft, d);
+  // Valley cloud gathers in a few banks instead of an even carpet.
+  a *= mix(1.0, smoothstep(0.45, 0.8, vnoise(q * 0.18 + 3.7)), uCluster);
   if (a < 0.003) discard;
   // Light: thicker cloud toward the sun shades this side; seen from below it is greyer.
   vec2 sd = uSunDir.xz / uStretch;
-  float d2 = fbm(q + sd * 0.07, fw);
+  float d2 = clamp((fbm(q + sd * 0.07, fw) - 0.5) * 2.2 + 0.5, 0.0, 1.0);
   float lit = clamp(1.0 - (d2 - d) * 5.0, 0.35, 1.0);
   float below = step(uCam.y, uY);
   float thick = smoothstep(edge, edge + 0.45, d);
@@ -105,6 +108,7 @@ void main() {
   float r = length(vW.xz - uCam.xz);
   a *= 1.0 - smoothstep(uRadius * 0.45, uRadius * 0.95, r);
   a *= smoothstep(40.0, 260.0, abs(uCam.y - uY));
+  a *= smoothstep(0.02, 0.1, abs(v.y));
   if (a < 0.003) discard;
 
   gl_FragColor = vec4(col, a);
@@ -124,10 +128,10 @@ export class Clouds extends THREE.Group {
     tex.minFilter = tex.magFilter = THREE.NearestFilter;
     tex.needsUpdate = true;
     const geo = new THREE.PlaneGeometry(RADIUS * 2, RADIUS * 2, 1, 1).rotateX(-Math.PI / 2);
-    this.layers = LAYERS.map((L, i) => {
+    this.sheets = LAYERS.map((L, i) => {
       const uniforms = {
-        uY: { value: L.y }, uScale: { value: L.scale }, uStretch: { value: new THREE.Vector2(...L.stretch) },
-        uCover: { value: L.clear }, uOpacity: { value: L.opacity }, uSoft: { value: L.soft }, uRadius: { value: RADIUS },
+        uY: { value: L.y }, uCluster: { value: L.cluster || 0 }, uScale: { value: L.scale }, uStretch: { value: new THREE.Vector2(...L.stretch) },
+        uCover: { value: L.clear }, uOpacity: { value: L.opacity }, uSoft: { value: L.soft }, uRadius: { value: L.reach },
         uOff: { value: new THREE.Vector2(i * 7919, i * 3571) },
         uCam: { value: new THREE.Vector3() }, uSunDir: { value: new THREE.Vector3(0, 1, 0) },
         uSunCol: { value: new THREE.Color() }, uAmb: { value: new THREE.Color() },
@@ -157,12 +161,12 @@ export class Clouds extends THREE.Group {
     const cloud = weather ? weather.cloud : 0.05;
     const wx = weather ? weather.windX : 1, wz = weather ? weather.windZ : 0;
     // Farther layers draw first so nearer cloud lies over them.
-    const order = [...this.layers].sort((a, b) => Math.abs(b.y - cameraPos.y) - Math.abs(a.y - cameraPos.y));
-    for (const L of this.layers) {
+    const order = [...this.sheets].sort((a, b) => Math.abs(b.y - cameraPos.y) - Math.abs(a.y - cameraPos.y));
+    for (const L of this.sheets) {
       const u = L.u;
       L.mesh.position.set(cameraPos.x, L.y, cameraPos.z);
       L.mesh.renderOrder = -10 + order.indexOf(L);
-      const k = L.band ? smooth(0.45, 0.9, cloud) : Math.min(cloud / 0.65, 1);
+      const k = L.band ? smooth(0.3, 0.85, cloud) : Math.min(cloud / 0.65, 1);
       u.uCover.value = Math.min(L.clear + (L.cloudy - L.clear) * k, 0.92);
       L.mesh.visible = u.uCover.value > 0.02;
       u.uOff.value.x -= wx * L.drift * dt;
