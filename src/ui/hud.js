@@ -133,7 +133,7 @@ export class Hud {
     const c = this.climber;
     this.hot = hotbarItems(c);
     const html = this.hot.map((it, i) => {
-      const on = it.id === this.held || ((it.id === 'axe' || it.id === 'axe_tech') && c.axe.inHand) || (it.id === 'poles' && c.poles.inHand) || (it.id === 'oxygen' && c.phys.flow > 0) || (it.id === 'strobe' && c.signals?.strobeOn);
+      const on = it.id === this.held || ((it.id === 'axe' || it.id === 'axe_tech') && c.axe.inHand) || (it.id === 'poles' && c.poles.inHand) || (it.id.startsWith('crampons') && c.cramponsOn) || (it.id === 'oxygen' && c.phys.flow > 0) || (it.id === 'strobe' && c.signals?.strobeOn);
       return `<div class="hs${on ? ' on' : ''}" title="${it.label}"><b>${i + 1}</b>${icon(it.id)}${it.count !== undefined ? `<span>${it.count}</span>` : ''}</div>`;
     }).join('');
     if (html !== this._hotHtml) $('hotbar').innerHTML = this._hotHtml = html;
@@ -398,7 +398,8 @@ export class Hud {
     const c = this.climber;
     let text = c.surface.label;
     if (c.sink > 0.25) text += ', deep';
-    if (c.onLedge) text += ', ledge';
+    if (c.onLedge) text += c.ledge?.kind === 'verglas' ? ', glazed ledge' : c.ledge?.kind === 'rotten' ? ', ledge (rotten lip)' : ', ledge';
+    if (c.crampons?.fitting > 0) text += c.crampons.to ? ' · strapping crampons on' : ' · taking crampons off';
     return text;
   }
 

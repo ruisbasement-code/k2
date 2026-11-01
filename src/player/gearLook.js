@@ -58,7 +58,8 @@ export class GearLook {
     return {
       suit: g.has('down_suit') ? 'down' : 'shell',
       goggles: g.has('goggles'),
-      crampons: g.has('crampons_pro') ? 2 : g.has('crampons') ? 1 : 0,
+      // Drawn on the boots only while strapped on; in the pack they don't show.
+      crampons: !(c.cramponsOn ?? true) ? 0 : g.has('crampons_pro') ? 2 : g.has('crampons') ? 1 : 0,
       axeTech: g.has('axe_tech'),
       pack: p.size,
       rope: g.has('rope'),

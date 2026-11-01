@@ -69,8 +69,11 @@ room in a 45 L pack, and a heavier pack is slower and harder work.
 - **Devices**: the Wympr GPS (altitude, pace, weather, the forecast in camp or with
   the radio), the vitals monitor (food, water, warmth, oxygen, how your body is
   coping) and a paper topo map with the route and camps. Hold one up at a time.
-- **Climbing**: ice axe, crampons (without them, snow and ice are much more
-  slippery), a 30 m rope with ice screws or snow pickets to protect a steep pitch,
+- **Climbing**: ice axe, crampons (you leave Base Camp with them in the pack; strap
+  them on from the hotbar where you can stand, on gentle ground, a ledge or the rope,
+  which takes a few minutes and longer with cold hands. Without them on, ice is far
+  more slippery and you cannot stand on steep ice even with the axe; worn on bare rock
+  they skate), a 30 m rope with ice screws or snow pickets to protect a steep pitch,
   trekking poles (faster, easier walking on gentle ground; swap to the axe when it
   steepens), an avalanche probe.
 - **Shelter**: a storm tent you can pitch anywhere not too steep, a bivy sack, a snow
@@ -146,13 +149,23 @@ and hard ice only to 27°. Ice slides the furthest and is the hardest to stop on
 - **Sinking and trails.** You sink knee-deep into powder, which slows you and costs
   effort. Every step leaves a footprint that packs the snow, so going back along your
   own trail is faster and you sink less.
-- **Loose rock.** Some rock and much of the scree is loose. A step on it can crumble
-  the hold, send stones down the slope and make you slip.
+- **Loose rock.** Some rock and much of the scree is loose, drawn close up as patches
+  of paler, freshly broken blocks. A step on it can crumble the hold, send stones down
+  the slope and make you slip. Placing your feet carefully (not pushing the pace with
+  Shift) you usually feel the block shift and keep your weight off it.
 
 **Ledges.** The 31 m elevation grid smooths away the small steps and terraces of a
 real face, so steep ground is dotted with small ledges, drawn into the terrain as
 narrow snowy steps with a shadow under the lip. You can stand on one where the slope around it is too steep, and a slide
-across one loses a lot of speed.
+across one loses a lot of speed. Ledges are also where footing changes, so the hazards
+sit there rather than all over a face that is steep everywhere, and each one shows:
+
+- **Verglas**: some ledges are glazed with a skin of water ice, drawn glassy blue.
+  Without crampons on, every step on one can throw you off, and standing still on it
+  isn't safe. With crampons it's just another ledge.
+- **Rotten lips**: some ledges have a rotten ice lip along their outer, downhill edge,
+  drawn pale with a dark crack. Keep to the inside: step out onto the lip and it can
+  break away under you. Testing it carefully, you can often pull your foot back.
 
 **Mountain shape.** The 31 m elevation data only gives the broad form of the
 mountain, so from the summit down to Base Camp the ground is rebuilt on a grid four

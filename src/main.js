@@ -39,6 +39,7 @@ import { FeatureMeshes } from './world/featureMeshes.js';
 import featureDefs from './data/features.json';
 import { Expedition, GEAR, difficulty, hasGear } from './sim/gear.js';
 import { Inventory, hotbarItems } from './ui/inventory.js';
+import { ledgesNear } from './sim/hazards.js';
 import { Minigame } from './ui/minigame.js';
 import { ControlsMenu } from './ui/controls.js';
 import { Signals, flareSeenM, compassPoint } from './sim/signals.js';
@@ -89,6 +90,8 @@ const camps = createCamps(hm, route.places, ropes);
 scene.add(camps);
 
 const climber = new Climber(hm, ropes, route.places, features);
+// You walk out of Base Camp with your crampons in the pack: strap them on where the ice starts.
+climber.crampons.on = false;
 climber.tents = camps.userData.tents;
 const rockMesh = new RockfallMesh(climber.rockfall);
 scene.add(rockMesh);
@@ -236,6 +239,7 @@ function useSlot(i) {
   if (['gps', 'monitor', 'map'].includes(it.id)) holdDevice(it.id);
   else if (it.id === 'axe' || it.id === 'axe_tech') climber.toggleAxe();
   else if (it.id === 'poles') climber.togglePoles();
+  else if (it.id === 'crampons' || it.id === 'crampons_pro') climber.toggleCrampons();
   else inventory.actions.use(it.id);
 }
 
@@ -393,6 +397,13 @@ if (params.has('allgear')) {
 // ?hold=gps|map|monitor: hold a device up.
 if (params.has('hold')) hud.hold(params.get('hold'));
 if (params.has('place')) teleport(+params.get('place'));
+// Dev: stand on the nearest ledge of a kind (verglas, rotten, sound) to see its footing.
+if (params.has('ledge')) {
+  const p = climber.position;
+  const l = ledgesNear(hm, p.x, p.z, 900).filter((q) => q.kind === params.get('ledge') && q.slope < 40)
+    .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+  if (l) climber.placeAt(l.x, l.z, l.x, l.z - 1);
+}
 if (params.has('rope')) climber.toggleClip();
 if (params.has('yaw')) climber.yaw = (+params.get('yaw') * Math.PI) / 180;
 if (params.has('pitch')) view.pitch = (+params.get('pitch') * Math.PI) / 180;
