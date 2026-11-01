@@ -468,10 +468,14 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
   tent, a stone-walled kitchen under a tarp, dome tents on levelled stone platforms,
   a toilet tent, blue drums, duffels and a solar panel. A puja altar with a flag pole
   stands in the middle of camp, with strings of prayer flags that flutter in the wind.
+  Each compound flies its own flag pole and keeps a cache of drums under a stone-weighted
+  tarp. Out past the compounds lie what earlier seasons left: empty tent platforms, old
+  tents faded and slumped on theirs, and a memorial cairn hung with flags.
 - **ABC and Camps 1–4** are a few small tents on ledges dug into the slope, each with a
   built-up stone or snow-block wall on its downhill side, kept clear of the fixed rope.
   Oxygen bottles, packs and ice axes lie on the porches, and bamboo wands mark the
-  snow camps.
+  snow camps. Each camp also has an old torn tent from another year (half drifted over
+  in the snow camps), a cache of oxygen or drums, and prayer flags up to Camp 2.
 - **The climber** wears a red one-piece down suit, helmet, goggles and mask, a harness
   and a pack with a foam pad, and big double boots with crampons. They walk with the axe
   like a cane, plant it on the slope above on steep ground, and stow it to jumar up fixed ropes.

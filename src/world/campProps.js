@@ -310,3 +310,141 @@ export function chorten(b, base, rand) {
   b.add(GEO.cone, 'metal', 0xd4af37, at(base, 0, poleH + 0.15, 0, 0, 0.1, 0.3, 0.1));
   return V(0, poleH, 0).applyMatrix4(base);
 }
+
+/** A colour washed out by seasons of sun: greyed and paled toward bleached canvas. */
+export function faded(color, amount = 0.55) {
+  return new THREE.Color(color).lerp(new THREE.Color(0xbdb6aa), amount).getHex();
+}
+
+/**
+ * An old tent left from an earlier season: the fly faded, sagging flat with one
+ * side caved in, torn through in places with a few rags flapping, a snapped pole
+ * sticking up. buried: half drifted over with snow (high camps).
+ */
+export function oldTent(b, base, color, rand, { len = 2.1, wid = 1.4, h = 1.0, buried = false } = {}) {
+  const a = len / 2, c = wid / 2;
+  const col = faded(color, 0.45 + rand() * 0.25);
+  // The fly, slumped: low, lopsided, with a hollow where a pole has gone.
+  const g = GEO.dome.toNonIndexed();
+  const p = g.getAttribute('position');
+  const lean = (rand() - 0.5) * 0.8, dip = rand() * 2;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const cave = Math.exp(-((x - Math.cos(dip) * 0.4) ** 2 + (z - Math.sin(dip) * 0.4) ** 2) * 3);
+    const yy = y * (0.45 - 0.3 * cave) * (1 + lean * x * 0.4);
+    p.setXYZ(i, x * a * (1 + 0.12 * (1 - y)), Math.max(yy, 0.02) * h, z * c * (1 + 0.12 * (1 - y)));
+  }
+  // Torn through in places: drop some of the fly's facets.
+  const keep = [];
+  for (let t = 0; t < p.count; t += 3) {
+    if (p.getY(t) + p.getY(t + 1) + p.getY(t + 2) > 0.2 * h && rand() < 0.18) continue;
+    for (let k = 0; k < 3; k++) keep.push(p.getX(t + k), p.getY(t + k), p.getZ(t + k));
+  }
+  b.add(tris(chunk(keep)), 'worn', col, at(base, 0, 0, 0, Math.PI / 8), true);
+  b.add(GEO.cyl6, 'worn', 0x3a3a38, at(base, 0, 0.03, 0, 0, a * 1.02, 0.06, c * 1.02), true);
+  // Rags of fly that still flap in the wind.
+  for (let k = 0; k < 2 + Math.floor(rand() * 3); k++) {
+    const ang = rand() * Math.PI * 2;
+    const x = Math.cos(ang) * a * 0.8, z = Math.sin(ang) * c * 0.8, y = 0.25 * h;
+    const w = 0.25 + rand() * 0.3;
+    const rag = tris([[x, y, z], [x + w, y - 0.05, z + w * 0.3], [x + w * 0.4, y - 0.25, z + w * 0.6]]);
+    setFlutter(rag, [0, 1, 1]);
+    b.add(rag, 'flag', col, M().copy(base), true);
+  }
+  // A snapped pole poking up at an angle.
+  const pm = M().copy(base).multiply(M().makeTranslation(a * 0.3, 0.3 * h, -c * 0.2))
+    .multiply(M().makeRotationZ(0.6 + rand() * 0.5)).multiply(M().makeRotationX(rand() - 0.5))
+    .multiply(M().makeTranslation(0, 0.3, 0)).multiply(M().makeScale(0.014, 0.6, 0.014));
+  b.add(GEO.cyl6, 'metal', 0x55585e, pm);
+  if (buried) {
+    // A drift banked up against the windward side and over the foot.
+    for (let k = 0; k < 4; k++) {
+      const x = -a * 0.9 + k * a * 0.55, z = -c * (0.6 + rand() * 0.3);
+      stone(b, base, x, 0.05, z, 0.55 + rand() * 0.3, rand, pick(rand, SNOW_COLORS), 'snow');
+    }
+  } else {
+    // Stones that held the guy lines, the lines long gone.
+    for (let k = 0; k < 4; k++) stone(b, base, (k % 2 ? 1 : -1) * (a + 0.4), 0.05, (k < 2 ? 1 : -1) * (c + 0.3), 0.16, rand);
+  }
+}
+
+function chunk(flat) {
+  const out = [];
+  for (let i = 0; i < flat.length; i += 3) out.push([flat[i], flat[i + 1], flat[i + 2]]);
+  return out;
+}
+
+/**
+ * A gear cache: drums, duffels and a coiled rope under a tarp weighed down with
+ * stones (Base Camp), or stuff sacks and oxygen bottles marked with a wand and
+ * half snowed over (high camps).
+ */
+export function gearCache(b, base, rand, high = false) {
+  if (!high) {
+    const tarp = pick(rand, [0x2e63b8, 0x2e8b3e, 0x8a7a5a, 0x1f5fbf]);
+    barrel(b, at(base, -0.35, 0, -0.2), 0x1f4fa8);
+    barrel(b, at(base, 0.3, 0, -0.25), rand() < 0.5 ? 0x1f4fa8 : 0x2a2a2a);
+    duffel(b, at(base, 0, 0, 0.45, 0.1), pick(rand, [0xf2b705, 0xd62b1f, 0x1d2a44]));
+    duffel(b, at(base, 0.1, 0.42, 0.4, -0.2), pick(rand, [0x2a2a2a, 0x2e63b8, 0xe6a700]), 0.85);
+    // The tarp thrown over the pile, sagging to the ground at its edges.
+    const t = 1.05, d = 0.95, top = 0.95;
+    const sheet = tris([
+      [-t, 0.05, -d], [0, top, -0.1], [t, 0.05, -d],
+      [t, 0.05, -d], [0, top, -0.1], [t, 0.1, d],
+      [t, 0.1, d], [0, top, -0.1], [-t, 0.1, d],
+      [-t, 0.1, d], [0, top, -0.1], [-t, 0.05, -d],
+    ]);
+    b.add(sheet, 'worn', faded(tarp, 0.25), M().copy(base), true);
+    for (const [x, z] of [[-t, -d], [t, -d], [t, d], [-t, d], [0, d + 0.05], [0, -d - 0.05]]) stone(b, base, x, 0.12, z, 0.2, rand);
+    // A coil of rope and a spare stove box beside it.
+    const coil = new THREE.TorusGeometry(0.22, 0.05, 5, 12);
+    b.add(coil, 'soft', pick(rand, [0xd62b1f, 0x2e63b8, 0xe6a700]), M().copy(base).multiply(M().makeTranslation(t + 0.45, 0.05, 0.2)).multiply(M().makeRotationX(Math.PI / 2)));
+    b.add(GEO.box, 'plastic', 0x6b6b5e, at(base, -t - 0.4, 0.15, 0.3, 0.4, 0.45, 0.3, 0.35));
+    return;
+  }
+  for (let k = 0; k < 3; k++) {
+    const m = at(base, -0.2 + k * 0.18, 0, -0.1 + (k % 2) * 0.2, 0.2 * k);
+    oxygen(b, m);
+  }
+  // Stuff sacks tied together, and a snow drift creeping over the pile.
+  for (let k = 0; k < 2; k++) {
+    b.add(GEO.capsule, 'soft', pick(rand, [0xd62b1f, 0x1d2a44, 0xe6a700, 0x2e8b3e]),
+      M().copy(base).multiply(M().makeTranslation(0.45 - k * 0.4, 0.17, 0.35)).multiply(M().makeRotationZ(Math.PI / 2)).multiply(M().makeScale(0.15, 0.17, 0.15)));
+  }
+  for (let k = 0; k < 3; k++) stone(b, base, -0.5 + k * 0.45, 0.02, -0.4, 0.4 + rand() * 0.2, rand, pick(rand, SNOW_COLORS), 'snow');
+  wand(b, at(base, 0.7, 0, -0.2));
+}
+
+/**
+ * A tall prayer-flag pole (darchog) with a long banner down it. Returns the pole
+ * top, for stringing flags from it.
+ */
+export function flagPole(b, base, rand, height = 5) {
+  b.add(GEO.cyl6, 'soft', 0x8a6a45, at(base, 0, height / 2, 0, 0, 0.05, height, 0.05));
+  for (let k = 0; k < 5; k++) stone(b, base, Math.cos(k * 1.3) * 0.35, 0.1, Math.sin(k * 1.3) * 0.35, 0.22, rand);
+  // Banner: a column of flags down the pole, one colour above the next.
+  for (let k = 0; k < 5; k++) {
+    const y = height - 0.3 - k * 0.42;
+    const f = tris([[0.05, y, 0], [0.05, y - 0.4, 0], [0.5, y - 0.4, 0], [0.05, y, 0], [0.5, y - 0.4, 0], [0.5, y, 0]]);
+    setFlutter(f, [0, 0, 1, 0, 1, 1]);
+    b.add(f, 'flag', FLAG_COLORS[k], M().copy(base), true);
+  }
+  return V(0, height, 0).applyMatrix4(base);
+}
+
+/** A memorial cairn: a rough stone pyramid a couple of metres high, a few plaques on its face. */
+export function cairn(b, base, rand) {
+  for (let row = 0; row < 6; row++) {
+    const r = 1.3 - row * 0.2, n = Math.max(3, Math.round(r * 7));
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + row * 0.5;
+      stone(b, base, Math.cos(a) * r, 0.15 + row * 0.33, Math.sin(a) * r, 0.34 - row * 0.03, rand);
+    }
+  }
+  stone(b, base, 0, 2.1, 0, 0.3, rand);
+  for (let k = 0; k < 4; k++) {
+    const a = 0.2 + k * 0.35;
+    const r = 1.0 - (k % 2) * 0.25, y = 0.6 + (k % 2) * 0.5;
+    b.add(GEO.box, 'metal', pick(rand, [0xb9a46a, 0x9da3a8, 0xc8b88a]), at(base, Math.sin(a) * r, y, Math.cos(a) * r, a, 0.3, 0.22, 0.02));
+  }
+}
