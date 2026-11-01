@@ -161,18 +161,21 @@ describe('weather on the climber', async () => {
     const slide = av.release(crown[0], crown[1], 60);
     const y0 = slide.origin.y;
     let lowest = y0;
+    // Where the debris runs 30 m below the crown: it follows the gullies, not a straight line.
+    let below = null;
     for (let t = 0; t < 30 && av.active; t += FRAME) {
       av.step(FRAME);
-      for (const b of slide.blobs) lowest = Math.min(lowest, b.position.y);
+      for (const b of slide.blobs) {
+        lowest = Math.min(lowest, b.position.y);
+        if (!below && Math.hypot(b.position.x - crown[0], b.position.z - crown[1]) > 30) below = [b.position.x, b.position.z];
+      }
     }
     expect(y0 - lowest).toBeGreaterThan(100);
 
     const c = new Climber(hm, ropes, route.places);
     c.placeAt(crown[0], crown[1], 0, 0);
-    // Stand just under where the slab breaks.
-    const [gx, gz] = hm.gradient(crown[0], crown[1]);
-    const g = Math.hypot(gx, gz);
-    c.placeAt(crown[0] - (gx / g) * 30, crown[1] - (gz / g) * 30, 0, 0);
+    // Stand just under where the slab breaks, in the debris' path.
+    c.placeAt(below[0], below[1], 0, 0);
     c.avalanches.release(crown[0], crown[1], 60);
     const h0 = c.health;
     let swept = false;

@@ -82,7 +82,17 @@ export class Avalanches {
    * Find a slab somewhere above a point, up the fall line and a little to the
    * side, and release it. Returns the slide or null if nothing above can slide.
    */
-  releaseAbove(x, z, hour = null, rng = Math.random, { spread = 160, wind = null } = {}) {
+  releaseAbove(x, z, hour = null, rng = Math.random, opts = {}) {
+    const crown = this.findAbove(x, z, hour, rng, opts);
+    return crown ? this.release(crown.x, crown.z, crown.width, rng) : null;
+  }
+
+  /**
+   * Pick the slab that would break somewhere above a point, without releasing
+   * it: {x, z, width}, or null if nothing above can slide. Lets the game crack
+   * the slope first and release it a few seconds later.
+   */
+  findAbove(x, z, hour = null, rng = Math.random, { spread = 160, wind = null } = {}) {
     const hm = this.hm;
     for (let attempt = 0; attempt < 8; attempt++) {
       const p = new THREE.Vector3(x + (rng() - 0.5) * spread, 0, z + (rng() - 0.5) * spread);
@@ -99,7 +109,7 @@ export class Avalanches {
       // Steep, wind-loaded slopes are the ones that go.
       if (rng() > slabLoad(hm, p.x, p.z, wind?.x ?? 0, wind?.z ?? 0, wind?.slab ?? 0)) continue;
       const [w0, w1] = W.slab_width_m;
-      return this.release(p.x, p.z, w0 + (w1 - w0) * rng(), rng);
+      return { x: p.x, z: p.z, width: w0 + (w1 - w0) * rng() };
     }
     return null;
   }

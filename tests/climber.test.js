@@ -164,7 +164,17 @@ describe('climber', () => {
       // Steep both by the wider slope and by the ground right underfoot: the fine
       // terrain has flatter benches in steep faces that you'd rightly stop on.
       const steep = (px, pz) => Math.min(hm.slopeDeg(px, pz), Math.acos(hm.normalAt(px, pz, new THREE.Vector3()).y) * 180 / Math.PI);
-      return [3, 6, 9, 12, 15, 18, 21, 24].every((d) => steep(x - (gx / g) * d, z - (gz / g) * d) > tuning.climb_start_deg + 3);
+      // And the fall line stays the fall line: every step down it is lower still, so
+      // the slide doesn't veer off into a gully and onto a rise beside it.
+      let prev = hm.heightAt(x, z);
+      return [3, 6, 9, 12, 15, 18, 21, 24].every((d) => {
+        const px = x - (gx / g) * d, pz = z - (gz / g) * d;
+        const [qx, qz] = hm.gradient(px, pz);
+        const y = hm.heightAt(px, pz);
+        const ok = steep(px, pz) > tuning.climb_start_deg + 3 && y < prev - 1 && (qx * gx + qz * gz) / (Math.hypot(qx, qz) * g) > 0.8;
+        prev = y;
+        return ok;
+      });
     };
     const spot = steepest(at('Advanced Base Camp'), tuning.climb_start_deg + 5, tuning.no_rope_max_deg, runsOn);
     const c = new Climber(hm, ropes, route.places);
