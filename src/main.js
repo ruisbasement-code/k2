@@ -19,6 +19,7 @@ import { createCamps } from './world/camps.js';
 import { Climber, Mode, CLIP_RANGE } from './player/climber.js';
 import { tuning } from './sim/paceModel.js';
 import { ClimberModel } from './player/climberModel.js';
+import { GearLook } from './player/gearLook.js';
 import { BreathAudio } from './player/breathAudio.js';
 import { Input } from './player/input.js';
 import { Ragdoll } from './player/ragdoll.js';
@@ -106,6 +107,8 @@ const avalancheMesh = new AvalancheMesh(climber.avalanches);
 scene.add(avalancheMesh);
 const model = new ClimberModel();
 scene.add(model);
+// What the climber visibly carries and holds; plain data another player's game could draw.
+const gearLook = new GearLook();
 const ragdoll = new Ragdoll(model);
 const headlamp = new Headlamp(scene);
 // Flares, whistle and strobe. Every signal is also an event on climber.signals
@@ -380,6 +383,15 @@ if (params.has('signals')) {
   for (const id of ['whistle', 'strobe']) expedition.toggle(id);
   climber.pack.extra.flares = 3;
 }
+// ?allgear: carry everything, two oxygen bottles on and flowing, to see it all on the climber.
+if (params.has('allgear')) {
+  climber.pack.size = 'pack70';
+  for (const id of ['gps', 'monitor', 'map', 'axe', 'crampons_pro', 'rope', 'screws', 'pickets', 'probe', 'tent', 'bivy', 'shovel', 'down_suit', 'goggles', 'radio', 'whistle', 'strobe']) expedition.toggle(id);
+  climber.pack.bottles = [tuning.pack.oxygen.litres, tuning.pack.oxygen.litres];
+  climber.phys.flow = tuning.o2_flows.find((f) => f > 0) ?? 2;
+}
+// ?hold=gps|map|monitor: hold a device up.
+if (params.has('hold')) hud.hold(params.get('hold'));
 if (params.has('place')) teleport(+params.get('place'));
 if (params.has('rope')) climber.toggleClip();
 if (params.has('yaw')) climber.yaw = (+params.get('yaw') * Math.PI) / 180;
@@ -574,6 +586,7 @@ function animateModel(dt) {
   model.visible = !(view.firstPerson && c.mode === Mode.FLY);
   model.firstPerson = view.firstPerson;
   heldGear();
+  model.setGear(gearLook.update(c, hud.held, dt, inventory.open));
   const [gx, gz] = hm.gradient(c.position.x, c.position.z, 3);
   const riseAlong = (yaw) => -(gx * Math.sin(yaw) + gz * Math.cos(yaw));
   // Collapsed in the cold you crumple where you stand (and lie there if nobody comes).

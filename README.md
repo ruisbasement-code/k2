@@ -84,6 +84,17 @@ room in a 45 L pack, and a heavier pack is slower and harder work.
   Every signal is also a small JSON event on `climber.signals` (`onEvent`), and
   `receive(event, age)` draws another player's flare on the same path, ready for
   multiplayer. `?signals` in the URL packs some to try.
+- **Gear you can see**: what you carry shows on the climber. Oxygen bottles strap
+  up the back of the pack, and with the regulator on, a hose runs over the shoulder
+  to a mask. The rope coils on top, the tent and bivy sack hang underneath, shovel,
+  probe and pickets ride the sides, screws rack on the harness, radio, strobe (it
+  flashes) and whistle sit on the straps, and the pulse oximeter on your wrist.
+  Crampons, goggles, the down suit (a blue shell without it), the technical axe and
+  the 70 L pack all show. A device you hold up (GPS, map, monitor) is in your left
+  mitt, and whatever you just used (a snack, water, a flare, first aid) appears there
+  for a moment. All of it is one small plain object (`GearLook` in
+  `src/player/gearLook.js`), so another player's look can be sent and drawn the same
+  way. `?allgear` in the URL carries everything to see it; `?hold=gps` holds a device.
 
 Pitching a tent, digging a cave, placing a screw or picket and lighting the stove
 are short hands-on jobs (timing, alternating keys, pumping), harder in wind and cold,
