@@ -14,12 +14,18 @@
 // - Core temperature balances heat from effort and shivering against the wind
 //   chill through your clothes. Resting in the open cools you; a tent and
 //   sleeping bag warm you. Below 35 °C you are clumsy, below 32 °C confused and
-//   no longer shivering, at 28 °C you die.
+//   no longer shivering, and cooling to 30 °C makes you collapse.
 // - Cold exposure: whenever the air takes heat faster than resting and effort
 //   make it (so you would have to shiver to keep up), the cold slowly wears your
 //   health down, and faster the weaker you already are. Night, wind, storms and
 //   wet clothes make it worse; moving, a down suit, a snow cave out of the wind
 //   and above all a tent or a camp slow or stop it. Hurt and out in the cold, it can kill.
+// - Snow and storms: falling and blowing snow soaks your clothes (damp), which
+//   then hold less warmth until you dry out in a tent or camp, and a wind-driven
+//   blizzard strips heat on top of the wind chill. A snowstorm can give you
+//   hypothermia even on the move.
+// - Hypothermia slowly ticks your health down, faster the colder your core gets.
+//   Cooling to the point of death makes you collapse rather than die on the spot.
 // - Frostbite builds in hard wind chill, faster when you are cold, dry, short of
 //   oxygen or not moving. It heals while still shallow; deep frostbite is a
 //   permanent injury.
@@ -40,6 +46,7 @@ const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
 const STAGES = {
   food: [[20, 'Low blood sugar', 'You feel shaky and weak. Eat something (B).'], [0, 'Starving', 'You have nothing left to burn. Eat (B).']],
   water: [[60, 'Thirsty', 'You are getting dehydrated. Drink (H).'], [30, 'Dehydrated', 'Badly dehydrated: weak and headachy. Drink (H) or melt snow at a camp (K).'], [10, 'Severely dehydrated', 'Severely dehydrated. Drink now.']],
+  damp: [[0.4, 'Wet through', 'Snow has soaked through your clothes. Wet clothes hold little warmth: dry out in a tent.']],
   chill: [[0.3, 'Cold', 'The cold is getting to you. Keep moving, wear warm gear or get out of the wind.'], [0.8, 'Freezing', 'Freezing: the cold is draining your health. Get into a tent or a snow cave.']],
   cold: [[35, 'Hypothermia', 'Mild hypothermia: shivering hard and clumsy. Keep moving or get into a tent.'], [32, 'Moderate hypothermia', 'Moderate hypothermia: you have stopped shivering and are confused. Get into a tent.']],
   frostbite: [[0.25, 'Frostnip', 'Your fingers and toes are numb: frostnip.'], [0.5, 'Frostbite', 'Frostbite: your fingers are clumsy and white. Get warm in a tent.']],
@@ -59,6 +66,8 @@ export class Physiology {
   core = tuning.core_normal_c;
   /** Cold exposure: how hard the cold is on you now, 0 (fine) to 1.5 (killing you fast). */
   chill = 0;
+  /** How soaked your clothes are from snow, 0..1. Wet clothes insulate less. */
+  damp = 0;
   /** Frostbite in hands and feet, 0..1 (0.8 is deep and permanent). */
   frostbite = 0;
   /** Gear: a down suit multiplies insulation; mitts, goggles and warmers slow frostbite. */
@@ -139,10 +148,16 @@ export class Physiology {
 
     // Warmth.
     const outside = sheltered ? air.airTempC + t.tent_warmth_c : outOfWind ? air.airTempC : air.feelsLikeC;
-    const insulation = (sleeping ? t.sleeping_bag_insulation : t.insulation * (1 - 0.4 * clamp(air.wet ?? 0, 0, 1))) * this.insulationMult;
+    // Snow soaks you through; a tent or a camp dries you out.
+    const wet = sheltered || outOfWind ? 0 : clamp(air.wet ?? 0, 0, 1);
+    if (wet > this.damp) this.damp = Math.min(wet, this.damp + t.damp_wet_per_h * dtH);
+    else this.damp = Math.max(wet, this.damp - (sheltered || inCamp ? t.damp_dry_shelter_per_h : t.damp_dry_per_h) * dtH);
+    const insulation = (sleeping ? t.sleeping_bag_insulation : t.insulation * (1 - t.damp_insulation_loss * this.damp)) * this.insulationMult;
     let heat = t.heat_rest + t.heat_effort * effort + (this.shivering ? t.heat_shiver : 0);
     if (this.food <= 0) heat *= 0.6;
-    const loss = (this.core - outside) / insulation;
+    // A blizzard (snow driven by hard wind) strips heat beyond the wind chill.
+    const blizzard = wet * clamp((air.windMs ?? 0) / t.blizzard_full_wind_m_s, 0, 1);
+    const loss = ((this.core - outside) / insulation) * (1 + t.blizzard_loss * blizzard);
     this.core = Math.min(t.core_normal_c, this.core + (heat - loss) * t.heat_rate_c_per_h * dtH);
     this._health = health;
 
@@ -213,7 +228,7 @@ export class Physiology {
     const t = tuning;
     if (this.hace >= 1) return { damage: Infinity, cause: 'Your brain swelled from the altitude (HACE).' };
     if (this.hape >= 1) return { damage: Infinity, cause: 'Your lungs filled with fluid from the altitude (HAPE).' };
-    if (this.core <= t.hypothermia_death_c) return { damage: Infinity, cause: 'You froze to death.' };
+    if (this.core <= t.hypothermia_death_c) return { damage: Infinity, cause: 'You froze to death.', frozen: true };
     let damage = 0, cause = null;
     const add = (amount, why) => {
       if (amount <= 0) return;
@@ -224,9 +239,10 @@ export class Physiology {
     if (this.hace > 0.4) add(t.illness_health_per_h * (this.hace / 0.4) * dtH, 'HACE killed you.');
     if (this.hape > 0.4) add(t.illness_health_per_h * (this.hape / 0.4) * dtH, 'HAPE killed you.');
     if (this.ams > 0.8) add(2 * dtH, 'Altitude sickness wore you down until you could not go on.');
-    if (this.core < t.hypothermia_moderate_c) add(5 * dtH, 'You froze to death.');
-    // The cold wears you down, faster the weaker you are.
+    // The cold wears you down, faster the weaker you are; hypothermia more so the colder you get.
     const weak = 1 - clamp((this._health ?? 100) / 100, 0, 1);
+    const hypo = t.hypothermia_mild_c + 0.5 - this.core;
+    if (hypo > 0) add(t.hypothermia_health_per_c_h * hypo * (1 + t.cold_low_health_boost * weak) * dtH, 'Hypothermia: you froze to death.');
     add(t.cold_health_per_h * this.chill * (1 + t.cold_low_health_boost * weak) * dtH, 'The cold wore you down until you could not go on.');
     if (this.frostbite > 0.6) add(1 * dtH, 'Frostbite and the cold finished you.');
     if (this.deterioration > 0.5) add(2 * dtH, 'The death zone wore you out.');
