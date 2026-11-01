@@ -96,4 +96,38 @@ describe('sleep', () => {
     expect(sleepPlan(5.5).hours).toBeCloseTo(0.5, 5);
     expect(sleepPlan(10)).toEqual({ night: false, hours: tuning.nap_hours });
   });
+
+  it('injuries leave a lasting share that sleep cannot heal', () => {
+    const c = climberAtTent('Base Camp', 20);
+    c._injure(40, 'A rock hit you.');
+    expect(c.maxHealth).toBeCloseTo(100 - 40 * tuning.injury_permanent_share, 5);
+    c.sleep();
+    expect(c.health).toBeCloseTo(c.maxHealth, 5);
+    expect(c.health).toBeLessThan(100);
+    expect(c.permanentInjuries.some((i) => i.label === 'Old injuries')).toBe(true);
+  });
+
+  it('the more you are hurt, the more of it is permanent', () => {
+    const c = climberAtTent('Base Camp', 20);
+    const losses = [];
+    for (let k = 0; k < 4; k++) {
+      const before = c.maxHealth;
+      c.health = c.maxHealth;
+      c._injure(20);
+      losses.push(before - c.maxHealth);
+    }
+    for (let k = 1; k < losses.length; k++) expect(losses[k]).toBeGreaterThan(losses[k - 1]);
+    // But never past the floor.
+    for (let k = 0; k < 50; k++) { c.health = c.maxHealth; c._injure(20); }
+    expect(c.maxHealth).toBeCloseTo(tuning.injury_min_max_health, 5);
+    expect(c.dead).toBe(false);
+  });
+
+  it('cold and illness heal fully', () => {
+    const c = climberAtTent('Base Camp', 20);
+    c._hurt(40, 'cold');
+    c.sleep();
+    expect(c.maxHealth).toBe(100);
+    expect(c.health).toBe(100);
+  });
 });

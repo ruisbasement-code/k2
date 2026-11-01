@@ -82,11 +82,22 @@ export class Hud {
     $('health-fill').style.width = `${c.health}%`;
     $('health-cap').style.left = `${c.maxHealth}%`;
     $('health-cap').hidden = c.maxHealth >= 100;
+    const scarred = c.maxHealth < 99.5;
+    $('health-scar').hidden = !scarred;
+    $('health-scar').style.width = `${100 - c.maxHealth}%`;
+    $('health-max').hidden = !scarred;
+    $('health-max').textContent = `${Math.round(c.maxHealth)}`;
+    $('health-max').title = 'Max health: permanent injuries';
+    // A fresh permanent loss: "-N max" by the bar for a few seconds.
+    const scar = c.lastScar;
+    const fresh = scar && performance.now() - scar.at < 4000;
+    if (fresh) $('health-loss').textContent = `−${scar.amount} max health`;
+    $('health-loss').classList.toggle('show', !!fresh);
     $('stamina-fill').style.width = `${body.stamina}%`;
     $('stamina-fill').classList.toggle('low', body.exhausted || body.stamina < 25);
     $('stamina-cap').style.left = `${body.staminaCap(c.breathAltitude)}%`;
     // Quiet when all is well, clear when it isn't.
-    const fine = c.health > 90 && body.stamina > 85 && !body.exhausted;
+    const fine = c.health > 90 && body.stamina > 85 && !body.exhausted && !(scar && performance.now() - scar.at < 4000);
     $('vitals').classList.toggle('quiet', fine);
     if (this.held === 'map') this._drawMap();
     if (this.held === 'monitor') this._pulse(fill, hard);
@@ -133,6 +144,9 @@ export class Hud {
     const c = this.climber;
     const list = c.phys.conditions().filter((x) => x.severity >= 0.66);
     for (const e of c.effects.values()) if (e.label) list.push({ label: e.label, severity: 0.5 });
+    if (c.slabRisk > 0.3 && !c.falling) list.push({ label: 'Loaded slope', severity: c.slabRisk > 0.6 ? 0.7 : 0.5 });
+    // Injuries that never heal, with what they cost.
+    for (const i of c.permanentInjuries) if (i.health >= 0.5) list.push({ label: `${i.label} −${Math.round(i.health)}`, severity: 1 });
     const html = list.map((x) => `<span class="${x.severity >= 0.66 ? 'bad' : ''}">${x.label}</span>`).join('');
     if (html !== this._chipHtml) $('vital-chips').innerHTML = this._chipHtml = html;
   }
@@ -181,6 +195,12 @@ export class Hud {
     if (c.rockfall.rocks.some((r) => r.velocity.length() > 2 && r.position.distanceTo(c.position) < tuning.rock_warn_m && r.position.y > c.position.y)) alert = 'Rockfall';
     const ice = c.features?.icefall.rocks;
     if (ice?.some((r) => r.velocity.length() > 2 && r.position.distanceTo(c.position) < tuning.icefall_warn_m && r.position.y > c.position.y)) alert = 'Icefall';
+    // A slope cracking above you, or a slide pouring down toward you, beats everything.
+    if (c.pendingSlides?.length) alert = 'Slope cracking above: move sideways!';
+    else {
+      const blob = c.avalanches.nearestMoving(c.position, 250);
+      if (blob && blob.position.y > c.position.y + 5) alert = 'Avalanche: get out of its path!';
+    }
     if (c.phys.hace >= 0.3 || c.phys.hape >= 0.3) {
       alert ||= 'Altitude sickness: go down';
       if (pack.bottles.length && !c.phys.flow) acts.push(['O', 'Oxygen']);
@@ -230,7 +250,7 @@ export class Hud {
     if (ph.food < tuning.low_sugar_below && pack.snack > 0) acts.push(['B', 'Eat']);
     const w = c.conditions;
     if (w && w.visibility < 40) alert ||= 'Whiteout';
-    if (c.health < 50) alert ||= 'Injured';
+    if (c.health < 50 && c.health < c.maxHealth - 5) alert ||= 'Injured';
     if (body.stamina < 25 && !body.exhausted) alert ||= 'Rest';
     return { alert, actions: acts.slice(0, 4) };
   }
@@ -248,7 +268,7 @@ export class Hud {
     this.flash *= Math.exp(-dt * 2.2);
     // Vision closes in from 80 health down: red, dark, blurred edges, and near
     // death a narrow, pulsing tunnel with everything dim and grey.
-    const hurt = c.dead ? 1 : Math.min(Math.max((80 - c.health) / 75, 0), 1);
+    const hurt = c.dead ? 1 : Math.min(Math.max((80 - c.feltHealth) / 75, 0), 1);
     const deep = hurt * hurt;
     this.beat = (this.beat ?? 0) + dt * (1.2 + 1.6 * hurt);
     const pulse = deep * 0.5 * (1 + Math.sin(this.beat * Math.PI * 2)) * 0.5;
@@ -345,13 +365,16 @@ export class Hud {
     $('m-core').textContent = `${ph.core.toFixed(1)} °C`;
     $('m-air').textContent = air ? `${Math.round(air.feelsLikeC)} °C` : '—';
     const left = pack.bottles.length ? Math.round((pack.bottles[0] / tuning.pack.oxygen.litres) * 100) : 0;
-    $('m-o2').textContent = pack.bottles.length ? `${ph.flow ? `${ph.flow} L/min` : 'off'} · ${left}% · ${pack.bottles.length}` : 'none';
+    const o2Min = ph.flow ? pack.oxygenLitres / ph.flow : 0;
+    const o2Time = o2Min >= 60 ? `${Math.floor(o2Min / 60)}h${String(Math.floor(o2Min % 60)).padStart(2, '0')}` : `${Math.floor(o2Min)} min`;
+    $('m-o2').textContent = pack.bottles.length ? `${ph.flow ? `${ph.flow} L/min · ${o2Time} left` : 'off'} · ${left}% · ${pack.bottles.length}` : 'none';
     $('m-eff').textContent = `${Math.round(ph.effectiveAltitude).toLocaleString('en-US')} m`;
     $('m-acc').textContent = `${Math.round(ph.acclimatized).toLocaleString('en-US')} m`;
     $('m-pack').textContent = `${pack.kg.toFixed(1)} kg`;
     const list = ph.conditions();
     for (const e of c.effects.values()) if (e.label) list.push({ label: e.label, severity: 0.5 });
-    for (const i of c.permanentInjuries) list.push({ label: i.label, severity: 1 });
+    if (c.slabRisk > 0.3 && !c.falling) list.push({ label: 'Loaded slope', severity: c.slabRisk > 0.6 ? 0.7 : 0.5 });
+    for (const i of c.permanentInjuries) if (i.health >= 0.5) list.push({ label: `${i.label} (−${Math.round(i.health)} max health)`, severity: 1 });
     const html = list.map((x) => `<span class="${x.severity >= 0.66 ? 'bad' : ''}">${x.label}</span>`).join('');
     if (html !== this._condHtml) $('m-cond').innerHTML = this._condHtml = html;
   }

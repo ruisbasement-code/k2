@@ -23,6 +23,23 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 const SUIT = 0xd8361f; // red down suit
 const SUIT_DARK = 0x1b1d22; // black side and knee panels
 const ACCENT = 0xf2b705;
+const SHELL = 0x2b62a8; // blue shell jacket, without the down suit
+const AXE = 0x1f6fe0;
+const AXE_TECH = 0xe0551f;
+
+/** How the left arm holds each thing in the hand: [shoulder, elbow] swing forward. */
+const HAND_POSE = {
+  gps: [0.85, 1.35], monitor: [0.8, 1.6], map: [0.75, 1.15],
+  snack: [0.45, 2.35], water: [0.5, 2.3], dex: [0.45, 2.4], whistle: [0.45, 2.4],
+  firstaid: [0.7, 1.2], warmers: [0.6, 1.4], flare: [2.9, 0.15],
+};
+
+/** What the model shows before anyone tells it (see gearLook.js for the fields). */
+export const DEFAULT_LOOK = {
+  suit: 'down', goggles: true, crampons: 1, axeTech: false, pack: 'pack45',
+  rope: false, screws: false, pickets: false, shovel: false, probe: false, bivy: false,
+  tent: null, radio: false, whistle: false, monitor: false, strobe: 0, oxygen: 0, o2: false, hand: null,
+};
 
 /** Bone lengths in metres. */
 export const BONES = {
@@ -78,7 +95,21 @@ export class ClimberModel extends THREE.Group {
       head: mat(0xc4cad2, { roughness: 0.3, metalness: 0.35 }),
       pole: mat(0x2a2d33, { roughness: 0.4, metalness: 0.6 }),
       poleBand: mat(0xff7a1a, { roughness: 0.45, metalness: 0.3 }),
+      o2: mat(0xe8661c, { roughness: 0.35, metalness: 0.5 }),
+      rope: mat(0x22b3a6, { roughness: 0.85 }),
+      tent: mat(0x3f7f3a, { roughness: 0.8 }),
+      tentUl: mat(0xb8c92a, { roughness: 0.75 }),
+      bivy: mat(0x7a3fa0, { roughness: 0.8 }),
+      alu: mat(0x9fb4c9, { roughness: 0.35, metalness: 0.7 }),
+      paper: mat(0xebe3c9, { roughness: 0.95, side: THREE.DoubleSide }),
+      red: mat(0xc8202a, { roughness: 0.6 }),
+      white: mat(0xf2f2ee, { roughness: 0.7 }),
+      bottle: mat(0x2f7fd8, { roughness: 0.25, transparent: true, opacity: 0.85 }),
+      bag: mat(0x5aa86a, { roughness: 0.5, transparent: true, opacity: 0.8 }),
+      screen: new THREE.MeshStandardMaterial({ color: 0x0c2a1c, roughness: 0.2, emissive: 0x2fd27a, emissiveIntensity: 0.6 }),
+      strobe: new THREE.MeshStandardMaterial({ color: 0xdfe8ff, roughness: 0.2, emissive: 0x000000 }),
     };
+    this.M = M;
     const part = (parent, geo, material, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {
       const m = new THREE.Mesh(geo, material);
       m.position.set(x, y, z);
@@ -135,6 +166,50 @@ export class ClimberModel extends THREE.Group {
       part(this.stowedPoles, new THREE.CylinderGeometry(0.02, 0.018, 0.12, 8), M.grip, 0, 0.36, dz);
       part(this.stowedPoles, new THREE.CylinderGeometry(0.035, 0.035, 0.008, 10), M.grip, 0, -0.26, dz);
     }
+    this.pack = pack;
+
+    // Gear on the pack, each shown only while you carry it (see setGear).
+    const G = (this.gear = {});
+    const group = (parent, x = 0, y = 0, z = 0) => {
+      const g = new THREE.Group();
+      g.position.set(x, y, z);
+      parent.add(g);
+      return g;
+    };
+    // Oxygen bottles strapped up the back, regulator and gauge on the first.
+    G.bottles = [-0.085, 0.03].map((x, i) => {
+      const b = group(pack, x, 0, 0.17);
+      part(b, new THREE.CapsuleGeometry(0.05, 0.4, 4, 12), M.o2);
+      part(b, new THREE.CylinderGeometry(0.018, 0.022, 0.05, 8), M.metal, 0, 0.27, 0); // valve
+      if (i === 0) {
+        part(b, new THREE.CylinderGeometry(0.026, 0.026, 0.05, 10), M.steel, 0, 0.31, 0); // regulator
+        part(b, new THREE.CylinderGeometry(0.022, 0.022, 0.012, 12), M.white, 0.028, 0.31, 0, 0, 0, Math.PI / 2); // gauge
+      }
+      return b;
+    });
+    G.bottleStraps = group(pack);
+    for (const y of [-0.12, 0.12]) part(G.bottleStraps, new THREE.BoxGeometry(0.3, 0.025, 0.012), M.harness, -0.03, y, 0.222);
+    // Rope coiled on top, under the lid strap.
+    G.rope = part(pack, new THREE.TorusGeometry(0.13, 0.03, 6, 20), M.rope, 0, 0.46, 0, Math.PI / 2);
+    part(G.rope, new THREE.TorusGeometry(0.11, 0.024, 6, 18), M.rope, 0, 0, 0.03);
+    // Tent and bivy sack in stuff sacks strapped under the pack.
+    G.tent = part(pack, new THREE.CylinderGeometry(0.085, 0.085, 0.38, 12), M.tent, 0, -0.33, 0, 0, 0, Math.PI / 2);
+    G.tentUl = part(pack, new THREE.CylinderGeometry(0.065, 0.065, 0.3, 12), M.tentUl, 0, -0.31, 0, 0, 0, Math.PI / 2);
+    G.bivy = part(pack, new THREE.CylinderGeometry(0.05, 0.05, 0.26, 10), M.bivy, 0, -0.31, 0, 0, 0, Math.PI / 2);
+    // Shovel blade flat against the right side, handle up past the lid.
+    G.shovel = group(pack, 0.182, 0, 0);
+    part(G.shovel, new THREE.BoxGeometry(0.008, 0.25, 0.2), M.metal, 0, -0.05, 0);
+    part(G.shovel, new THREE.CylinderGeometry(0.013, 0.013, 0.36, 8), M.grip, 0, 0.24, 0.05);
+    part(G.shovel, new THREE.BoxGeometry(0.02, 0.025, 0.1), M.grip, 0, 0.42, 0.05);
+    // Probe sections bundled beside it.
+    G.probe = group(pack, 0.196, 0.02, -0.075);
+    for (const dz of [-0.012, 0, 0.012]) part(G.probe, new THREE.CylinderGeometry(0.006, 0.006, 0.42, 6), M.alu, 0, 0, dz);
+    // Snow pickets on the left side, ahead of the poles.
+    G.pickets = group(pack, -0.195, 0.05, -0.085);
+    for (const dz of [-0.014, 0.014]) {
+      part(G.pickets, new THREE.BoxGeometry(0.03, 0.6, 0.006), M.alu, 0, 0, dz);
+      part(G.pickets, new THREE.BoxGeometry(0.006, 0.6, 0.02), M.alu, 0, 0, dz);
+    }
 
     // Neck: puffy hood collar. Head: balaclava, helmet with a stripe, wraparound goggles.
     const neck = joint(spine, 'neck', 0, BONES.spine, 0);
@@ -143,13 +218,39 @@ export class ClimberModel extends THREE.Group {
     part(head, new THREE.SphereGeometry(0.11, 18, 14), M.balaclava, 0, 0.06, 0).scale.set(0.95, 1.12, 1);
     part(head, new THREE.SphereGeometry(0.128, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.52), M.helmet, 0, 0.1, 0.012).scale.set(1, 0.95, 1.08);
     part(head, new THREE.TorusGeometry(0.128, 0.009, 4, 24, Math.PI), M.panel, 0, 0.1, 0.012, 0, Math.PI / 2, Math.PI / 2); // centre ridge
-    part(head, new THREE.CylinderGeometry(0.117, 0.117, 0.06, 20, 1, true, Math.PI * 0.62, Math.PI * 0.76), M.lens, 0, 0.075, 0, 0, Math.PI, 0).scale.set(0.98, 1, 1.02);
-    part(head, new THREE.TorusGeometry(0.115, 0.01, 4, 24), M.panel, 0, 0.075, 0.004, Math.PI / 2); // goggle strap
-    part(head, new THREE.CylinderGeometry(0.04, 0.05, 0.045, 10), M.panel, 0, 0.0, -0.105, Math.PI / 2 + 0.25); // breathing mask
+    G.goggles = [
+      part(head, new THREE.CylinderGeometry(0.117, 0.117, 0.06, 20, 1, true, Math.PI * 0.62, Math.PI * 0.76), M.lens, 0, 0.075, 0, 0, Math.PI, 0),
+      part(head, new THREE.TorusGeometry(0.115, 0.01, 4, 24), M.panel, 0, 0.075, 0.004, Math.PI / 2), // goggle strap
+    ];
+    G.goggles[0].scale.set(0.98, 1, 1.02);
+    G.faceMask = part(head, new THREE.CylinderGeometry(0.04, 0.05, 0.045, 10), M.panel, 0, 0.0, -0.105, Math.PI / 2 + 0.25); // breathing mask
+    // Oxygen mask over nose and mouth: rubber cup, orange valve, reservoir bag under the chin.
+    G.o2Mask = group(head, 0, 0.01, -0.1);
+    part(G.o2Mask, new THREE.SphereGeometry(0.06, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.grip, 0, 0, 0, -Math.PI / 2).scale.set(1, 0.9, 1.1);
+    part(G.o2Mask, new THREE.CylinderGeometry(0.022, 0.022, 0.03, 10), M.o2, 0, -0.005, -0.06, Math.PI / 2);
+    part(G.o2Mask, new THREE.SphereGeometry(0.04, 10, 8), M.bag, 0, -0.08, -0.045).scale.set(0.9, 1.3, 0.8);
+    part(G.o2Mask, new THREE.TorusGeometry(0.105, 0.005, 4, 20), M.grip, 0, 0.0, 0.09, Math.PI / 2 - 0.2); // strap
     // Headlamp on the helmet front; its lens glows in the lamp's colour when lit.
     part(head, new RoundedBoxGeometry(0.07, 0.04, 0.03, 2, 0.008), M.panel, 0, 0.15, -0.128, -0.35);
     this.lampLens = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.2, emissive: 0x000000 });
     part(head, new THREE.CylinderGeometry(0.014, 0.014, 0.008, 12), this.lampLens, 0, 0.147, -0.146, Math.PI / 2 - 0.35);
+
+    // On the chest: radio and strobe on the pack straps, whistle on the sternum
+    // strap, and the oxygen hose from the regulator over the left shoulder to the mask.
+    const chest = group(spine);
+    G.radio = group(chest, -0.1, 0.33, -0.182);
+    part(G.radio, new RoundedBoxGeometry(0.05, 0.085, 0.025, 2, 0.006), M.grip);
+    part(G.radio, new THREE.CylinderGeometry(0.004, 0.004, 0.09, 4), M.grip, 0.015, 0.085, 0);
+    part(G.radio, new THREE.BoxGeometry(0.03, 0.015, 0.004), M.accent, 0, 0.02, -0.013);
+    G.strobe = group(chest, 0.1, 0.38, -0.18);
+    part(G.strobe, new RoundedBoxGeometry(0.035, 0.045, 0.02, 2, 0.006), M.grip);
+    part(G.strobe, new THREE.SphereGeometry(0.012, 10, 8), M.strobe, 0, 0, -0.01);
+    G.whistle = group(chest, 0.05, 0.305, -0.178);
+    part(G.whistle, new THREE.CylinderGeometry(0.008, 0.008, 0.045, 8), M.poleBand, 0, -0.025, 0, 0, 0, 0.2);
+    const hose = new THREE.CatmullRomCurve3([
+      [-0.085, 0.58, 0.39], [-0.11, 0.62, 0.24], [-0.15, 0.58, 0.04], [-0.12, 0.47, -0.16], [-0.04, 0.5, -0.18], [-0.005, 0.55, -0.175],
+    ].map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+    G.hose = part(chest, new THREE.TubeGeometry(hose, 24, 0.009, 5), M.grip);
 
     // Arms: puffy sleeves, dark elbow patches, gauntlet mitts.
     for (const [side, s] of [['L', -1], ['R', 1]]) {
@@ -164,6 +265,45 @@ export class ClimberModel extends THREE.Group {
       part(wrist, new THREE.SphereGeometry(0.058, 12, 10), M.mitt, 0, -0.08, -0.005).scale.set(0.8, 1.25, 1.05);
       part(wrist, new THREE.CapsuleGeometry(0.022, 0.04, 4, 6), M.mitt, s * -0.04, -0.06, -0.035, 0.5, 0, s * -0.4); // thumb
     }
+    // Pulse oximeter on the left cuff.
+    G.monitor = group(this.joints.wristL, -0.06, -0.01, -0.01);
+    part(G.monitor, new RoundedBoxGeometry(0.014, 0.045, 0.035, 1, 0.004), M.grip);
+    part(G.monitor, new THREE.BoxGeometry(0.003, 0.03, 0.024), M.screen, -0.008, 0, 0);
+    // In the left mitt: a device held up, or whatever you just used.
+    const inHand = group(this.joints.wristL, 0, -0.11, -0.03);
+    this.handItems = {};
+    const item = (id, build) => {
+      const g = group(inHand);
+      build(g);
+      g.visible = false;
+      this.handItems[id] = g;
+    };
+    item('gps', (g) => {
+      part(g, new RoundedBoxGeometry(0.06, 0.12, 0.03, 2, 0.01), M.accent, 0, 0.02, 0);
+      part(g, new THREE.BoxGeometry(0.044, 0.05, 0.004), M.screen, 0, 0.04, 0.016);
+      part(g, new THREE.CylinderGeometry(0.006, 0.006, 0.05, 6), M.grip, 0.02, 0.1, 0);
+    });
+    item('map', (g) => {
+      part(g, new THREE.PlaneGeometry(0.3, 0.21), M.paper, 0.1, 0.02, -0.02, -2.3, 0, 0);
+    });
+    item('snack', (g) => part(g, new THREE.BoxGeometry(0.04, 0.12, 0.016), M.red, 0, 0.03, 0));
+    item('water', (g) => {
+      part(g, new THREE.CylinderGeometry(0.04, 0.04, 0.17, 12), M.bottle, 0, 0.03, 0);
+      part(g, new THREE.CylinderGeometry(0.03, 0.03, 0.03, 10), M.grip, 0, 0.13, 0);
+    });
+    item('dex', (g) => part(g, new THREE.BoxGeometry(0.03, 0.045, 0.006), M.white, 0, 0.0, -0.02));
+    item('whistle', (g) => part(g, new THREE.CylinderGeometry(0.01, 0.01, 0.05, 8), M.poleBand, 0, 0.04, -0.02));
+    item('warmers', (g) => part(g, new THREE.BoxGeometry(0.06, 0.08, 0.01), M.white, 0, 0.01, -0.02));
+    item('firstaid', (g) => {
+      part(g, new RoundedBoxGeometry(0.13, 0.09, 0.05, 2, 0.01), M.red, 0, -0.02, -0.02);
+      part(g, new THREE.BoxGeometry(0.06, 0.016, 0.052), M.white, 0, -0.02, -0.02);
+      part(g, new THREE.BoxGeometry(0.016, 0.06, 0.052), M.white, 0, -0.02, -0.02);
+    });
+    item('flare', (g) => {
+      part(g, new THREE.CylinderGeometry(0.022, 0.022, 0.22, 10), M.red, 0, 0.07, 0);
+      const tip = new THREE.MeshStandardMaterial({ color: 0xffd0a0, emissive: 0xff5020, emissiveIntensity: 3 });
+      part(g, new THREE.SphereGeometry(0.02, 8, 6), tip, 0, 0.19, 0);
+    });
     // Ice axe in the right mitt, jumar in the left.
     const hand = new THREE.Group();
     hand.position.set(0, -0.09, 0);
@@ -213,8 +353,10 @@ export class ClimberModel extends THREE.Group {
     for (let i = 0; i < 5; i++) {
       for (const s of [-1, 1]) part(crampon, new THREE.ConeGeometry(0.008, 0.035, 4), M.steel, s * 0.045, -0.02, -0.11 + i * 0.055, Math.PI);
     }
-    part(crampon, new THREE.ConeGeometry(0.01, 0.05, 4), M.steel, -0.02, -0.005, -0.16, -Math.PI / 2 - 0.4);
-    part(crampon, new THREE.ConeGeometry(0.01, 0.05, 4), M.steel, 0.02, -0.005, -0.16, -Math.PI / 2 - 0.4);
+    for (const x of [-0.02, 0.02]) part(crampon, new THREE.ConeGeometry(0.01, 0.05, 4), M.steel, x, -0.005, -0.16, -Math.PI / 2 - 0.4).userData.front = true;
+    // Steel-front crampons: a red anti-balling plate and longer front points.
+    part(crampon, new THREE.BoxGeometry(0.09, 0.006, 0.12), M.red, 0, 0.008, -0.07).userData.pro = true;
+    G.crampons = [];
     for (const [side, s] of [['L', -1], ['R', 1]]) {
       const hip = joint(pelvis, `hip${side}`, s * 0.1, -0.02, 0);
       part(hip, puffy(0.1, 0.085, BONES.thigh + 0.04, 4, 0.012), M.suit, 0, 0.02, 0);
@@ -232,13 +374,23 @@ export class ClimberModel extends THREE.Group {
       const c = crampon.clone();
       c.position.set(0, -0.105, -0.05);
       ankle.add(c);
-      (this.cramponMeshes ??= []).push(c);
+      G.crampons.push(c);
+    }
+
+    // Ice screws racked on the harness gear loop at the left hip.
+    G.screws = group(pelvis, -0.2, -0.03, 0);
+    for (let i = 0; i < 4; i++) {
+      const z = -0.06 + i * 0.04;
+      part(G.screws, new THREE.TorusGeometry(0.018, 0.005, 4, 8), M.metal, 0, 0, z, 0, Math.PI / 2);
+      part(G.screws, new THREE.CylinderGeometry(0.008, 0.008, 0.13, 6), M.steel, 0, -0.085, z);
+      part(G.screws, new THREE.BoxGeometry(0.012, 0.02, 0.025), i % 2 ? M.accent : M.poleBand, 0, -0.02, z);
     }
 
     // Hidden in first person: the head and collar (the camera is in them) and the
     // chest and pack, which would otherwise fill the view looking down. Arms and
     // legs stay, so you see your own mitts and boots.
-    this.fpHidden = [this.joints.neck, ...this.joints.spine.children.filter((c) => c.isMesh), pack];
+    this.fpHidden = [this.joints.neck, ...this.joints.spine.children.filter((c) => c.isMesh), pack, chest];
+    this.setGear(DEFAULT_LOOK);
 
     this.bones = [
       ['pelvis', null, 0.1], ['spine', 'pelvis', BONES.spine], ['neck', 'spine', BONES.neck], ['head', 'neck', 0.24],
@@ -258,6 +410,52 @@ export class ClimberModel extends THREE.Group {
   get limbs() {
     const j = this.joints;
     return [j.hipL, j.hipR, j.shoulderL, j.shoulderR];
+  }
+
+  /**
+   * Shows the gear the climber carries and holds: a look from GearLook (plain
+   * data, so another player's look can be drawn the same way).
+   */
+  setGear(look) {
+    const L = (this.look = { ...DEFAULT_LOOK, ...look });
+    const G = this.gear;
+    const M = this.M;
+    const down = L.suit !== 'shell';
+    M.suit.color.setHex(down ? SUIT : SHELL);
+    M.suit.sheen = down ? 0.6 : 0.15;
+    M.axe.color.setHex(L.axeTech ? AXE_TECH : AXE);
+    for (const g of G.goggles) g.visible = L.goggles;
+    for (const c of G.crampons) {
+      c.visible = L.crampons > 0;
+      for (const m of c.children) {
+        if (m.userData.pro) m.visible = L.crampons > 1;
+        if (m.userData.front) m.scale.y = L.crampons > 1 ? 1.6 : 1;
+      }
+    }
+    // The bigger expedition pack: taller and deeper.
+    const big = L.pack === 'pack70';
+    this.pack.scale.set(big ? 1.06 : 1, big ? 1.15 : 1, big ? 1.2 : 1);
+    G.bottles.forEach((b, i) => (b.visible = L.oxygen > i));
+    G.bottleStraps.visible = L.oxygen > 0;
+    G.hose.visible = L.o2;
+    G.o2Mask.visible = L.o2;
+    G.faceMask.visible = !L.o2;
+    G.rope.visible = L.rope;
+    G.tent.visible = L.tent === 'tent';
+    G.tentUl.visible = L.tent === 'tent_ul';
+    G.bivy.visible = L.bivy;
+    G.bivy.position.y = L.tent ? -0.43 : -0.31;
+    G.shovel.visible = L.shovel;
+    G.probe.visible = L.probe;
+    G.pickets.visible = L.pickets;
+    G.screws.visible = L.screws;
+    G.radio.visible = L.radio;
+    G.whistle.visible = L.whistle && L.hand !== 'whistle';
+    G.monitor.visible = L.monitor;
+    G.strobe.visible = L.strobe > 0;
+    const flash = L.strobe > 1 && performance.now() % 1000 < 90;
+    M.strobe.emissive.setHex(flash ? 0xffffff : 0x000000);
+    M.strobe.emissiveIntensity = flash ? 6 : 0;
   }
 
   /** Lights the headlamp lens in a colour, or darkens it with null. */
@@ -445,6 +643,13 @@ export class ClimberModel extends THREE.Group {
       }
     }
 
+    // Something in the left mitt: held up to look at, to the mouth, or overhead
+    // for a flare. Not while the hands are on the slope or the rope.
+    const handId = this.look?.hand;
+    const showHand = !!handId && !hands && !(this._fp && ['gps', 'monitor', 'map'].includes(handId));
+    this._handOut = showHand;
+    if (showHand && HAND_POSE[handId]) armsFK = [this._fp && handId !== 'flare' ? [1.3, 0.5] : HAND_POSE[handId], armsFK[1]];
+
     // Lower the pelvis until both feet are within reach.
     const reach = (BONES.thigh + BONES.shin) * 0.985;
     for (const [fy, fz] of feet) {
@@ -545,6 +750,7 @@ export class ClimberModel extends THREE.Group {
       j.shoulderL.rotation.z = -0.12;
       j.shoulderR.rotation.z = 0.12;
     }
+    this._handOut = false;
     this._tools('axe');
   }
 
@@ -558,12 +764,14 @@ export class ClimberModel extends THREE.Group {
     this.stowedAxe.visible = tool !== 'axe';
     // Poles out in both hands, unless you're on the jumar.
     const poles = this.held.poles && tool !== 'jumar';
-    for (const p of this.poles) {
-      p.visible = poles;
+    this.poles.forEach((p, i) => {
+      // The left pole hangs off its strap out of sight while that mitt holds something.
+      p.visible = poles && !(i === 0 && this._handOut);
       p.rotation.set(0, 0, 0);
-    }
+    });
+    const hand = this._handOut && tool !== 'jumar';
+    for (const [id, g] of Object.entries(this.handItems)) g.visible = hand && id === this.look?.hand;
     this.stowedPoles.visible = this.held.stowedPoles || (this.held.poles && !poles);
-    for (const m of this.cramponMeshes ?? []) m.visible = this.held.crampons ?? true;
     this.jumar.visible = tool === 'jumar';
     this.tether.visible = tool === 'jumar';
     if (this.tether.visible) {

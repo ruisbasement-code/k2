@@ -87,6 +87,17 @@ room in a 45 L pack, and a heavier pack is slower and harder work.
   Every signal is also a small JSON event on `climber.signals` (`onEvent`), and
   `receive(event, age)` draws another player's flare on the same path, ready for
   multiplayer. `?signals` in the URL packs some to try.
+- **Gear you can see**: what you carry shows on the climber. Oxygen bottles strap
+  up the back of the pack, and with the regulator on, a hose runs over the shoulder
+  to a mask. The rope coils on top, the tent and bivy sack hang underneath, shovel,
+  probe and pickets ride the sides, screws rack on the harness, radio, strobe (it
+  flashes) and whistle sit on the straps, and the pulse oximeter on your wrist.
+  Crampons, goggles, the down suit (a blue shell without it), the technical axe and
+  the 70 L pack all show. A device you hold up (GPS, map, monitor) is in your left
+  mitt, and whatever you just used (a snack, water, a flare, first aid) appears there
+  for a moment. All of it is one small plain object (`GearLook` in
+  `src/player/gearLook.js`), so another player's look can be sent and drawn the same
+  way. `?allgear` in the URL carries everything to see it; `?hold=gps` holds a device.
 
 Pitching a tent, digging a cave, placing a screw or picket and lighting the stove
 are short hands-on jobs (timing, alternating keys, pumping), harder in wind and cold,
@@ -279,8 +290,17 @@ acclimatized to, your pack and any conditions you have. All the numbers are in
 **Pack.** You start with about 12 kg from Base Camp: clothes, sleeping bag, harness
 and stove (8.5 kg), plus snack bars, meals, gas, water and dexamethasone. Every
 kilogram over 12 slows you about 1% and makes you work harder. An oxygen bottle
-weighs about 4.4 kg full. Press **G** in a camp to restock. Base Camp has everything.
-Camps higher up have only a few of each, and only Camps 2 to 4 have oxygen.
+weighs about 4.4 kg full. Base Camp has everything. Camps higher up have only a few
+of each, and only Camps 2 to 4 have oxygen.
+
+**Supplies and planning.** Press **G** in a camp to open its stores: **+** takes one,
+**−** leaves one there, and *Take the usual* tops you up to a standard load. What you
+leave stays, so you can stock a high camp on a carry, go back down to sleep, and
+find it waiting on the push (part-used oxygen bottles are kept as they are and
+handed out after the full ones). The pack panel (**Tab**) shows how long what you
+carry lasts: hours of oxygen at your flow (or 2 L/min with it off), hours of
+climbing on your food, brews of gas (each one melts a night's water and cooks a
+meal), and how much slower the weight makes you.
 
 **Food and water.** Climbing burns about 500 kcal an hour, and shivering burns more.
 Run low and you get low blood sugar: you're slower and clumsier, and your stamina
@@ -310,7 +330,9 @@ time. Above 7,600 m, in the death zone, your body slowly wears out whatever you 
 **Oxygen.** **O** steps the regulator through 0.5 to 4 L/min. At 2 L/min, 8,000 m
 feels like about 6,300 m, and a 1,000 L bottle lasts a little over 8 hours. If a
 bottle runs dry at a high flow up high, the thin air hits hard: dizziness, nausea and
-a dimmed view for a couple of hours.
+a dimmed view for a couple of hours. When a bottle empties you swap to the next one,
+the monitor shows the time left at your flow, and you get a warning with about 30
+minutes to go.
 
 **Turnaround.** Pick a turnaround time with **Y** (14:00 by default). Above 7,900 m
 after that time, the game tells you to go down, summit or not.
