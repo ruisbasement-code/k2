@@ -495,16 +495,19 @@ export class Climber {
    * Collapse at very low health in the cold: you drop where you stand and cannot
    * move, and the cold kills you after a while unless someone revives you.
    */
-  _checkCollapse() {
+  _checkCollapse(frozen = false) {
     const t = tuning;
-    if (this.collapsed || this.dead || this.falling || this.mode === Mode.FLY) return;
-    if (this.health > t.collapse_below_health || this.phys.chill < t.collapse_chill) return;
-    const hours = t.collapse_hours;
+    if (this.collapsed || this.dead || this.falling || this.mode === Mode.FLY) return false;
+    if (!frozen && (this.health > t.collapse_below_health || this.phys.chill < t.collapse_chill)) return false;
+    // Cooled to the brink: you go down where you are rather than dying on the spot.
+    if (frozen) this.health = Math.min(this.health, t.collapse_below_health);
+    const hours = t.collapse_hours * (frozen ? 0.5 : 1);
     this.collapsed = { hours, hoursLeft: hours, startHealth: Math.max(this.health, 1) };
     this.velocity.set(0, 0, 0);
     this.moving = false;
     this.effort = 0;
     this.onMessage('You collapse in the snow, too cold and weak to go on. You need someone to find you.');
+    return true;
   }
 
   /** Lying collapsed: you cannot move, and the cold counts down to your death. */
@@ -522,7 +525,9 @@ export class Climber {
       altitude: this.position.y, effort: 0, air: this.air, pack: this.pack,
       outOfWind: this.sheltered, health: this.health,
     });
-    if (r.damage === Infinity) {
+    // Cold to the core: the freeze clock below is what kills you now.
+    if (r.frozen) this.phys.core = tuning.hypothermia_death_c + 0.05;
+    else if (r.damage === Infinity) {
       this._hurt(Infinity, r.cause);
       return;
     }
@@ -672,6 +677,7 @@ export class Climber {
       altitude: this.position.y, effort, air: this.air, pack: this.pack, sheltered, sleeping,
       outOfWind: !sheltered && this.sheltered, inCamp: !!this._campNearby(), health: this.health,
     });
+    if (r.frozen && !sleeping && !sheltered && this._checkCollapse(true)) return;
     if (r.damage > 0) this._hurt(r.damage, r.cause);
     if (!sleeping && !sheltered) this._checkCollapse();
     if (sleeping || sheltered) this.body.capMult = this.phys.modifiers(this.pack.kg).staminaCap;
