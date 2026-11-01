@@ -148,7 +148,7 @@ input.on('KeyC', () => climber.toggleClip());
 input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
-input.on('KeyR', () => (climber.collapsed ? climber.giveUp() : respawn()));
+input.on('KeyR', () => (climber.collapsed ? climber.giveUp() : climber.dead ? respawn() : climber.getUp()));
 input.on('KeyZ', () => shelterOrSleep());
 input.on('KeyK', () => cook());
 input.on('KeyB', () => climber.eat());
@@ -326,6 +326,7 @@ const menu = new ControlsMenu(document.getElementById('menu'), {
   onMute: () => { muted = audio.muted = wind.muted = !muted; },
 });
 menu.onClose = () => relock();
+menu.onGetUp = () => climber.getUp();
 let releasing = false;
 let lostLockAt = -1e9;
 function release() {
