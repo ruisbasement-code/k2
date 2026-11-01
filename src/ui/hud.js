@@ -237,7 +237,9 @@ export class Hud {
     }
 
     // Ropes and protection.
-    if (c.clipped) acts.push(['C', 'Unclip']);
+    if (c.changeover) alert ||= 'Off the rope at the anchor';
+    else if (c.clipped && c.atAnchor) acts.push(['C', 'Clip past anchor']);
+    else if (c.clipped) acts.push(['C', 'Unclip']);
     else if (c.ropeDistance() < CLIP_RANGE) acts.push(['C', 'Clip in']);
     else if (!ex.protectedNow) {
       const pr = ex.canProtect();

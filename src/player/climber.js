@@ -80,6 +80,8 @@ const MODE_NAMES = {
   fly: 'Scout fly',
 };
 export const CLIP_RANGE = 5;
+/** How close to an anchor your clip gets before it stops against it, metres along the rope. */
+const ANCHOR_GAP_M = 0.3;
 
 export class Climber {
   /**
@@ -163,6 +165,14 @@ export class Climber {
     this.heading = 0;
     this.ropeId = -1;
     this.ropeS = 0;
+    /** The stretch of rope between two anchors your clip is on (index from the bottom). */
+    this.clipSection = -1;
+    /** Stopped at an anchor: 1 the one above you, -1 the one below, 0 none. */
+    this.atAnchor = 0;
+    /** Clipping past an anchor, off the rope for the moment: {dir, t, total, slipAt, k}, or null. */
+    this.changeover = null;
+    /** On the rope on climbing ground: 'jumar' going up, 'rappel' going down, else null. */
+    this.ropeTravel = null;
     /** Effort this frame (0 resting, 1 steady climbing, more when pushing). */
     this.effort = 0;
     /** Slope under the climber, degrees. */
@@ -266,6 +276,11 @@ export class Climber {
   }
 
   toggleClip() {
+    if (this.changeover) return;
+    if (this.ropeId >= 0 && this.atAnchor) {
+      this._startChangeover(this.atAnchor);
+      return;
+    }
     if (this.ropeId >= 0) {
       this.unclip();
       this.onMessage('Unclipped from the fixed rope');
@@ -277,8 +292,7 @@ export class Climber {
       this.onMessage('No fixed rope within reach');
       return;
     }
-    this.ropeId = near.rope;
-    this.ropeS = near.s;
+    this._clipOn(near.rope, near.s);
     if (this.groundMode !== Mode.WALK) this.mode = Mode.ROPE;
     this.onMessage(`Clipped into the ${this.ropes.names[this.ropeId]}`);
   }
@@ -296,8 +310,28 @@ export class Climber {
     return this.ropeId >= 0;
   }
 
+  /** Clip onto rope id at distance s, between the anchors either side of it. */
+  _clipOn(id, s) {
+    this.ropeId = id;
+    this.ropeS = s;
+    this.clipSection = this.ropes.sectionAt(id, s).k;
+    this.atAnchor = 0;
+  }
+
+  /** Where along the rope your clip can slide: between the anchors either side. */
+  get clipRange() {
+    if (this.ropeId < 0) return null;
+    const A = this.ropes.anchorsOf(this.ropeId);
+    const k = Math.min(Math.max(this.clipSection, 0), A.length - 2);
+    return [A[k], A[k + 1]];
+  }
+
   unclip() {
     this.ropeId = -1;
+    this.clipSection = -1;
+    this.atAnchor = 0;
+    this.changeover = null;
+    this.ropeTravel = null;
     if (this.mode === Mode.ROPE) this.mode = this.groundMode;
   }
 
@@ -920,6 +954,10 @@ export class Climber {
     if (this.collapsed) return 'Collapsed in the cold';
     if (this.body.exhausted) return 'Exhausted';
     if (this.gasping) return 'Gasping for breath';
+    if (this.changeover) return 'Clipping past an anchor, off the rope';
+    if (this.clipped && this.moving && this.ropeTravel === 'jumar') return 'Jumaring up the rope';
+    if (this.clipped && this.moving && this.ropeTravel === 'rappel') return 'Rappelling down the rope';
+    if (this.clipped && this.atAnchor) return 'At an anchor, clipped in';
     if (this.clipped) return `${MODE_NAMES[this.groundMode]}, clipped in`;
     return MODE_NAMES[this.mode];
   }
@@ -1173,6 +1211,10 @@ export class Climber {
       this._startFall(gx, gz, `Too steep to stand on ${this.surface.label.toLowerCase()}${need}. You're sliding! ${this._arrestHint()}`);
       return;
     }
+    if (this.changeover) {
+      this._changeoverStep(dt, dtM, gx, gz);
+      return;
+    }
 
     // Where you want to go, and how fast that would be.
     let dir = this._worldDir(input);
@@ -1188,6 +1230,9 @@ export class Climber {
       dir.normalize();
       const rope = clipped ? this._ropeFrame() : null;
       if (rope) dir = this._guide(dir, rope);
+      // Up the rope you jumar; down it you rappel.
+      const along = rope ? dir.dot(rope.up) : 0;
+      this.ropeTravel = rope && this.groundMode !== Mode.WALK && Math.abs(along) > 0.5 ? (along > 0 ? 'jumar' : 'rappel') : null;
       const grade = gx * dir.x + gz * dir.z;
       if (this.slope > this.maxClimbDeg && grade > 0) {
         this.blocked = true;
@@ -1224,7 +1269,8 @@ export class Climber {
     }
     const climbing = this.groundMode !== Mode.WALK;
     this.effort = wants && target > 0 ? Pace.effort(climbing, grade, this.pushing) * (1 + t.sink_effort * this.sink) * this.mods.effort
-      * (axeBites && climbing ? t.axe_climb_effort : 1) * (this.polesHelp ? t.poles_effort : 1) : 0;
+      * (axeBites && climbing ? t.axe_climb_effort : 1) * (this.polesHelp ? t.poles_effort : 1)
+      * (this.ropeTravel === 'rappel' ? t.rappel_effort : 1) : 0;
     if (this.gasping) this.effort = 0.3;
     this.moving = this.pace > 0;
     this._breathPace(dtM, grade, climbing);
@@ -1257,6 +1303,14 @@ export class Climber {
     }
     this.position.y = this._groundAt(this.position.x, this.position.z);
     this.heading = Math.atan2(-dir.x, -dir.z);
+    if (clipped && this._holdAtAnchor()) {
+      this.pace = 0;
+      this.stepPhase = 1;
+      // Heading on along the rope, you clip past it as you get there.
+      const up = this.ropes.tangentAt(this.ropeId, this.ropeS);
+      const along = dir.x * up.x + dir.z * up.z;
+      if (tuning.anchor_auto_clip && along * this.atAnchor > 0.3 * Math.hypot(up.x, up.z)) this._startChangeover(this.atAnchor);
+    }
     if (clipped) this._keepOnLeash();
     if (this._intoOpenHole()) return;
     this._maybeTrip(dtM, gx, gz, grade);
@@ -1402,6 +1456,11 @@ export class Climber {
     f.flash = 1.2;
     const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
     const what = `Your foot skidded off the ${this.surface.label.toLowerCase()}`;
+    if (this.changeover) {
+      // Between clips at an anchor there's no rope to drop onto.
+      this._startFall(gx, gz, `${what} while you were unclipped at the anchor! ${this._arrestHint()}`);
+      return;
+    }
     if (this.clipped) {
       const name = this.ropes.names[this.ropeId];
       if (Math.random() < t.clip_fail_chance) {
@@ -1542,7 +1601,9 @@ export class Climber {
   _startRopeFall(why) {
     const id = this.ropeId;
     const near = this.ropes.nearestOn(id, this._ropeProbe());
-    const anchor = this.ropes.pointAt(id, near.s).clone();
+    // The jumar locks on your stretch of rope: it can't run past an anchor.
+    const [lo, hi] = this.clipRange ?? [near.s, near.s];
+    const anchor = this.ropes.pointAt(id, Math.min(Math.max(near.s, lo), hi)).clone();
     const length = Math.max(this.position.distanceTo(anchor), 0.5) + tuning.rope_slack_m;
     const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
     this._startFall(gx, gz, why);
@@ -1753,8 +1814,7 @@ export class Climber {
     this.position.y = this.hm.groundAt(this.position.x, this.position.z);
     this.mode = Mode.WALK;
     this._updateGroundMode(this.slope);
-    this.ropeId = id;
-    this.ropeS = this.ropes.nearestOn(id, this._ropeProbe()).s;
+    this._clipOn(id, this.ropes.nearestOn(id, this._ropeProbe()).s);
     if (this.groundMode !== Mode.WALK) this.mode = Mode.ROPE;
     const drop = Math.max(0, this.fall.startY - this.position.y).toFixed(1);
     this.onMessage(`The rope caught you after a ${drop} m drop. Health ${Math.round(this.health)}.`);
@@ -2378,8 +2438,99 @@ export class Climber {
     const align = Math.abs(dir.dot(rope.up));
     const close = 1 - Math.min(Math.max((rope.distance - 2) / (tuning.rope_leash_m - 2), 0), 1);
     const incline = Math.atan(grade);
-    const jumar = Pace.ropeSpeed((incline * 180) / Math.PI, grade >= 0, this.breathAltitude) * Math.cos(incline);
+    let jumar = Pace.ropeSpeed((incline * 180) / Math.PI, grade >= 0, this.breathAltitude) * Math.cos(incline);
+    // Rappelling: you sit back and let the rope run through the device.
+    if (grade < 0 && this.groundMode !== Mode.WALK) jumar *= tuning.rappel_speed_mult;
     return Math.max(speed, speed + (jumar - speed) * align * close);
+  }
+
+  /**
+   * Your clip slides along the rope but not past an anchor: moving on past one
+   * holds you at it. Returns true (and sets atAnchor) when it stopped you.
+   */
+  _holdAtAnchor() {
+    const A = this.ropes.anchorsOf(this.ropeId);
+    const k = this.clipSection;
+    const near = this.ropes.nearestOn(this.ropeId, this._ropeProbe());
+    // The rope's two ends aren't anchors you clip past: there you come off the rope.
+    const top = k + 1 < A.length - 1 ? A[k + 1] - ANCHOR_GAP_M : Infinity;
+    const bottom = k > 0 ? A[k] + ANCHOR_GAP_M : -Infinity;
+    const bound = near.s > top ? top : near.s < bottom ? bottom : null;
+    if (bound === null) {
+      this.atAnchor = 0;
+      return false;
+    }
+    // Back along the rope to the anchor.
+    const t = this.ropes.tangentAt(this.ropeId, near.s);
+    const back = bound - near.s;
+    this.position.x += t.x * back;
+    this.position.z += t.z * back;
+    this.position.y = this._groundAt(this.position.x, this.position.z);
+    this.atAnchor = bound === top ? 1 : -1;
+    return true;
+  }
+
+  /** Unclip and clip back in on the far side of the anchor: dir 1 up, -1 down. */
+  _startChangeover(dir) {
+    if (!dir || this.changeover || !this.clipped) return;
+    const t = tuning;
+    const A = this.ropes.anchorsOf(this.ropeId);
+    const k = this.clipSection + dir;
+    if (k < 0 || k > A.length - 2) return;
+    const rush = this.pushing;
+    const numb = this.phys.numb ?? 0;
+    const total = t.anchor_changeover_s * (1 + t.numb_fiddly * numb) * (rush ? t.anchor_rush_time : 1);
+    const risk = Math.min(this.changeoverRisk() * (rush ? t.anchor_rush_risk : 1), 0.5);
+    // The slip, if it comes, comes when you are off the rope, between the two clips.
+    this.changeover = { dir, t: 0, total, k, slipAt: Math.random() < risk ? total * (0.35 + 0.3 * Math.random()) : -1 };
+    this.pace = 0;
+  }
+
+  /**
+   * The chance of slipping during one anchor changeover here: none on walking
+   * ground, rising with the slope, worse with numb hands, exhaustion and gusts.
+   */
+  changeoverRisk() {
+    const t = tuning;
+    if (this.groundMode === Mode.WALK) return 0;
+    const steep = Math.min(Math.max((this.slope - t.climb_start_deg) / (t.anchor_risk_full_deg - t.climb_start_deg), 0), 1);
+    let p = t.anchor_slip_chance * steep * (this.mods.slip ?? 1);
+    p *= 1 + t.anchor_numb_risk * (this.phys.numb ?? 0);
+    if (this.body.exhausted) p *= 2;
+    const gust = this.conditions?.gust ?? 0;
+    if (gust > t.anchor_gust_from_m_s) p *= 1 + (gust - t.anchor_gust_from_m_s) / 8;
+    if (this.axeReady && AXE_GROUND.has(this.surface?.key)) p *= t.axe_slip_mult;
+    return p;
+  }
+
+  /** A moment off the rope at an anchor: you stand still, and a slip now is unroped. */
+  _changeoverStep(dt, dtM, gx, gz) {
+    const co = this.changeover;
+    co.t += dt;
+    this.pace = 0;
+    this.moving = false;
+    this.stepPhase = 1;
+    this.effort = 0.35;
+    this.ropeTravel = null;
+    this._breathPace(dtM, 0, this.groundMode !== Mode.WALK);
+    if (co.slipAt >= 0 && co.t >= co.slipAt) {
+      this._startFall(gx, gz, `You slipped while unclipped at the anchor! ${this._arrestHint()}`);
+      return;
+    }
+    if (co.t < co.total) return;
+    this.changeover = null;
+    this.clipSection = co.k;
+    this.atAnchor = 0;
+    // Step on past the anchor, clipped in on its far side.
+    const A = this.ropes.anchorsOf(this.ropeId);
+    const anchor = A[co.dir > 0 ? co.k : co.k + 1];
+    const near = this.ropes.nearestOn(this.ropeId, this._ropeProbe());
+    const t = this.ropes.tangentAt(this.ropeId, near.s);
+    const step = anchor + co.dir * ANCHOR_GAP_M * 1.5 - near.s;
+    this.position.x += t.x * step;
+    this.position.z += t.z * step;
+    this.position.y = this._groundAt(this.position.x, this.position.z);
+    this.ropeS = anchor + co.dir * ANCHOR_GAP_M * 1.5;
   }
 
   /** The clip slides along the rope, but you cannot get further than the leash from it. */

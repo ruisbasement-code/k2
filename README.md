@@ -133,7 +133,17 @@ realistic pace still gets you somewhere. All the speeds below are in mountain ti
   drop (and swing, if you were off to the side) until the rope comes tight; a hard
   jolt hurts. Fixed ropes are old: each time one takes a fall there is a small chance
   (about 2–5%) that the anchor rips out and you fall on, unroped. Reach either
-  end and you unclip. There are two ropes: the Abruzzi Spur from Advanced Base Camp to
+  end and you unclip.
+- **Anchors**: the rope is tied off every 15–35 m and your clip can't slide past an
+  anchor. Keep moving along the rope and you stop at it to unclip and clip back in on
+  the far side (C does it too): about 1.5 seconds, longer with numb hands. For that
+  moment you are off the rope, so a slip is an unroped fall. The risk is small and
+  only on climbing ground: it rises with the slope, numb hands, exhaustion and
+  gusts, and drops with the axe biting. Hold Shift to rush it: quicker, riskier.
+- **Jumaring and rappelling**: on climbing ground, going up the rope is jumaring and
+  going down it is rappelling, about twice as fast as climbing down and at half the
+  effort. Each anchor on the way down means rethreading your device below it.
+  There are two ropes: the Abruzzi Spur from Advanced Base Camp to
   Camp 4, and the Bottleneck and Traverse from above Camp 4 to about 8,450 m.
 
 **Footing checks.** Climbing ground of 38° or steeper, every now and then a foot

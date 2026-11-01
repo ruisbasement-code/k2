@@ -426,6 +426,8 @@ climber.weather = new Weather(params.has('seed') ? +params.get('seed') : Math.fl
 if (params.has('weather')) climber.weather.force(params.get('weather'), 48);
 if (params.has('avalanche')) climber.avalanches.releaseAbove(climber.position.x, climber.position.z);
 if (params.has('crack')) { const crown = climber.avalanches.findAbove(climber.position.x, climber.position.z); if (crown) climber._crackAbove(crown); }
+// For poking at the game from the dev console (and the browser tests).
+if (import.meta.env.DEV) window.k2 = { climber, ropes, view };
 
 // The mountain's own shadows (ridges, buttresses, steps) and darker gullies, on
 // everything lit. ?flatlight leaves them off, to compare.
@@ -731,7 +733,9 @@ function updateTether(dt) {
     length = c.fall.rope.length;
   } else {
     id = c.ropeId;
-    ropes.visualPointAt(id, ropes.nearestOn(id, c.position).s, _clip);
+    // The clip slides between the anchors either side, never past one.
+    const [lo, hi] = c.clipRange;
+    ropes.visualPointAt(id, Math.min(Math.max(ropes.nearestOn(id, c.position).s, lo), hi), _clip);
     length = tuning.rope_leash_m + 1;
   }
   ropes.tangentAt(id, ropes.nearestOn(id, _clip).s, _ropeDir);
