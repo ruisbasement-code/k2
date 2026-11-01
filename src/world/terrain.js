@@ -452,7 +452,7 @@ float cracks(vec3 p, vec3 n, float scale) {
   vec2 a = cells(p.zy * scale), b = cells(p.xz * scale), c = cells(p.xy * scale);
   float e = (a.y - a.x) * w.x + (b.y - b.x) * w.y + (c.y - c.x) * w.z;
   // Lines thinner than a pixel are faded out rather than aliased.
-  return (1.0 - smoothstep(0.0, 0.08, e)) * (1.0 - smoothstep(0.03, 0.08, gFoot * scale));
+  return (1.0 - smoothstep(0.0, 0.04, e)) * (1.0 - smoothstep(0.03, 0.08, gFoot * scale));
 }
 
 #ifdef TERRAIN_HOLES
@@ -557,7 +557,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   rock *= 1.0 - 0.1 * smoothstep(0.52, 0.75, streaks) * mid - 0.08 * smoothstep(0.55, 0.8, streaksNear) * near;
   float blockTone = hash12(floor(vec2(acrossM, p.y) * 0.18));
   rock *= 1.0 + (blockTone - 0.5) * 0.08 * near;
-  rock *= 1.0 - 0.4 * blockCrack * near - 0.25 * jointCrack;
+  rock *= 1.0 - 0.12 * blockCrack * near - 0.1 * jointCrack;
 
   // Scree and moraine on gentle low ground.
   vec3 scree = mix(vec3(0.36, 0.33, 0.31), vec3(0.52, 0.48, 0.44), fine * near + medium * (1.0 - near));
@@ -668,7 +668,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   float broadBump = 1.0 - smoothstep(2.0, 8.0, gFoot);
   s.bump = fine * near * mix(0.07, 0.02, snowy) * smallBump + medium * mid * 0.35 * broadBump;
   // Cracks cut in, ripples and runnels shape the snow, a ledge stands proud of the slope.
-  s.bump += ((-0.05 * blockCrack * near - 0.02 * jointCrack) * (1.0 - snowy)
+  s.bump += ((-0.02 * blockCrack * near - 0.01 * jointCrack) * (1.0 - snowy)
     + (0.015 * ripples * grain + 0.05 * runnels * streaksNear) * snowy
     + (0.12 * ledge - 0.05 * lip)) * smallBump;
   s.bump *= graze;
