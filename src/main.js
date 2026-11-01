@@ -136,6 +136,13 @@ scene.add(shelters);
 const hud = new Hud(hm, climber, route.places, expedition);
 const warnings = new Warnings(climber);
 climber.onMessage = (t) => hud.showMessage(t);
+// Footing checks need to know what you're clipped to, and pull it out when it rips.
+climber.protectionKind = () => (expedition.protectedNow ? expedition.anchor.kind : null);
+climber.onProtectionLost = () => {
+  expedition.anchor = null;
+  if (myPiece != null) protection.remove(myPiece);
+  myPiece = null;
+};
 const audio = new BreathAudio(climber.body);
 const wind = new WindAudio();
 const danger = new DangerAudio();
@@ -162,6 +169,7 @@ function teleport(i) {
 // 1 to 9: the hotbar slots along the bottom.
 for (let i = 0; i < 9; i++) input.on(`Digit${i + 1}`, () => useSlot(i));
 input.on('KeyC', () => climber.toggleClip());
+input.on('KeyQ', () => climber.catchFooting());
 input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());

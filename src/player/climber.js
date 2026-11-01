@@ -228,6 +228,15 @@ export class Climber {
     const [sx, sz] = hm.gridToWorld(sr, sc);
     this.serac = new THREE.Vector3(sx, hm.heightAt(sx, sz), sz);
     this.onMessage = () => {};
+    /**
+     * Footing checks on steep ground: next is real seconds of steep climbing until
+     * the next one; prompt is {left, window} while Q is up; result/flash show how
+     * the last one went.
+     */
+    this.footing = { next: tuning.footing.first_gap_s, prompt: null, result: '', flash: 0 };
+    /** The screw or picket you're clipped to ('screw', 'picket' or null), and what to do when it rips. */
+    this.protectionKind = () => null;
+    this.onProtectionLost = () => {};
     this._altLog = [];
     this._logTimer = 0;
   }
@@ -1099,9 +1108,13 @@ export class Climber {
     } else {
       if (this._cramponStep(dt)) input = { ...input, x: 0, y: 0, push: false };
       this._moveOnGround(dtM, input, dt);
+      if (this.mode !== Mode.FALL && this.mode !== Mode.HOLE) this._footingStep(dt);
       this._heal(dtM);
       this._noteCamp();
     }
+    // Off your feet, there's no footing to catch.
+    if (this.footing.prompt && [Mode.FALL, Mode.HOLE, Mode.FLY, Mode.DEAD].includes(this.mode)) this.footing.prompt = null;
+    this.footing.flash = Math.max(0, this.footing.flash - dt);
     this._rocks(dt, dtM);
     this._weatherStep(dt, dtM, wasFalling, !!input.arrest);
     this._icefall(dt, dtM);
@@ -1323,6 +1336,94 @@ export class Climber {
       return this._slip(gx, gz, why(`${what} on the ${this.surface.label.toLowerCase()}!`));
     }
     return false;
+  }
+
+  /** How steep the ground for footing checks is, 0 at min_deg to 1 at max_deg; -1 if it's not. */
+  _footingSteepness() {
+    const t = tuning.footing;
+    const footing = this._footingSlope(this.slope, this.onLedge);
+    if (footing < t.min_deg) return -1;
+    return Math.min((footing - t.min_deg) / (t.max_deg - t.min_deg), 1);
+  }
+
+  /**
+   * Steep ground, real seconds: every now and then a foot skids and Q comes up.
+   * The clock only runs while you're moving on ground steep enough.
+   */
+  _footingStep(dt) {
+    const t = tuning.footing;
+    const f = this.footing;
+    if (f.prompt) {
+      f.prompt.left -= dt;
+      if (f.prompt.left <= 0) this._footingFailed();
+      return;
+    }
+    if (!t.enabled || !this.moving) return;
+    const s = this._footingSteepness();
+    if (s < 0) return;
+    f.next -= dt;
+    if (f.next > 0) return;
+    const window = this._footingWindow(s);
+    f.prompt = { left: window, window };
+    f.next = (t.gap_easy_s + (t.gap_hard_s - t.gap_easy_s) * s) * (0.67 + Math.random() * 0.66);
+  }
+
+  /** Seconds you get to catch a skidding foot. */
+  _footingWindow(s) {
+    const t = tuning.footing;
+    let w = t.window_easy_s + (t.window_hard_s - t.window_easy_s) * s;
+    if (this.axeReady && AXE_GROUND.has(this.surface?.key)) w *= t.axe_window;
+    if (this.polesOnSteep) w *= t.poles_window;
+    // Numb hands, no crampons, injuries: everything that makes you slip more.
+    w *= Math.max(this.mods?.grip ?? 1, 0.6);
+    w /= Math.min(Math.max(Math.sqrt(this.mods?.slip ?? 1), 1), 1.6);
+    return Math.max(w, t.min_window_s);
+  }
+
+  /** Q: catch your footing. True if there was one to catch. */
+  catchFooting() {
+    const f = this.footing;
+    if (!f.prompt) return false;
+    f.prompt = null;
+    f.result = 'held';
+    f.flash = 0.8;
+    return true;
+  }
+
+  /**
+   * Too slow: the foot goes. Unroped you slide; on a fixed rope the clip
+   * often tears free; on your own screw or picket it may rip out or hold you.
+   */
+  _footingFailed() {
+    const t = tuning.footing;
+    const f = this.footing;
+    f.prompt = null;
+    f.result = 'slipped';
+    f.flash = 1.2;
+    const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
+    const what = `Your foot skidded off the ${this.surface.label.toLowerCase()}`;
+    if (this.clipped) {
+      const name = this.ropes.names[this.ropeId];
+      if (Math.random() < t.clip_fail_chance) {
+        this._startFall(gx, gz, `${what} and your clip on the ${name} tore free! You're falling unroped. ${this._arrestHint()}`);
+      } else this._startRopeFall(`${what}! The clip held: you drop onto the rope.`);
+      return;
+    }
+    const piece = this.protectionKind();
+    if (piece) {
+      const label = piece === 'screw' ? 'ice screw' : 'snow picket';
+      if (Math.random() < (piece === 'screw' ? t.screw_fail_chance : t.picket_fail_chance)) {
+        this.onProtectionLost();
+        this._startFall(gx, gz, `${what} and your ${label} ripped out! ${this._arrestHint()}`);
+      } else {
+        this.pace = 0;
+        this.shake = Math.max(this.shake, 0.7);
+        this._hurt(t.held_damage, 'You fell onto your protection and were badly hurt.');
+        this.onMessage(`${what}. You dropped onto your ${label} and it held.`);
+      }
+      return;
+    }
+    this._startFall(gx, gz, `${what}! ${this._arrestHint()}`);
   }
 
   /** On a glazed ledge with no crampons on: the ledge gives you nothing to stand on. */

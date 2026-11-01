@@ -72,6 +72,21 @@ kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); bord
 
 /* ---- Prompts and messages ---- */
 #prompt { position: fixed; left: 50%; bottom: 112px; transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; pointer-events: none; }
+/* Footing check: Q in a ring that drains; red as it runs out. */
+#footing { position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 8px; pointer-events: none; --left: 1; }
+#footing[hidden] { display: none; }
+#footing .ring { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle, rgba(0, 0, 0, .55) 58%, transparent 60%),
+    conic-gradient(var(--ring, #ffd98a) calc(var(--left) * 360deg), rgba(255, 255, 255, .14) 0); box-shadow: 0 2px 12px rgba(0, 0, 0, .5); }
+#footing kbd { font-size: 30px; font-weight: 700; padding: 2px 12px; border-width: 2px; background: rgba(0, 0, 0, .5); }
+#footing .say { font-size: 20px; font-weight: 700; color: #ffd98a; text-shadow: 0 1px 4px #000; letter-spacing: .03em; }
+#footing.up .ring { animation: footing-pulse .45s ease-in-out infinite alternate; }
+#footing.up.late { --ring: #ff8a55; }
+#footing.held { --ring: #6fcf8a; --left: 1 !important; }
+#footing.held .say { color: #6fcf8a; }
+#footing.slipped { --ring: #ff6a55; }
+#footing.slipped .say { color: #ff6a55; }
+@keyframes footing-pulse { to { transform: scale(1.08); } }
 #alert { font-size: 18px; font-weight: 600; color: #ffd98a; text-shadow: 0 1px 4px #000; letter-spacing: .02em; }
 #alert:empty { display: none; }
 #actions { display: flex; gap: 14px; }
@@ -165,7 +180,7 @@ button#set-off, #menu-resume, #start button { background: var(--accent); color: 
 .ghost { background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 7px; font: inherit; padding: 8px 14px; cursor: pointer; }
 
 /* ---- Minigames ---- */
-#mini { position: fixed; left: 50%; top: 58%; transform: translateX(-50%); width: 300px; padding: 10px 12px 8px; text-align: center; background: rgba(12, 16, 24, .6); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); }
+#mini { position: fixed; left: 50%; top: 34%; transform: translateX(-50%); width: 300px; padding: 10px 12px 8px; text-align: center; background: rgba(12, 16, 24, .6); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); }
 .mini-title { font-size: 13px; font-weight: 600; letter-spacing: .03em; }
 #mini canvas { width: 300px; height: 74px; display: block; margin: 2px auto 0; }
 .mini-keys { display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }

@@ -122,6 +122,7 @@ export class Hud {
       $('collapsed-signal').innerHTML = sig.map(([k, it]) => `<kbd>${k}</kbd> ${it.id === 'flares' ? `Fire a flare (${it.count} left)` : it.id === 'strobe' ? (c.signals?.strobeOn ? 'Strobe off' : 'Strobe on') : 'Blow the whistle'}`).join(' &nbsp; ');
     }
     this._prompt();
+    this._footing();
     this._chips();
     this._hotbar();
     if (this.held === 'gps') this._gps();
@@ -149,6 +150,24 @@ export class Hud {
     for (const i of c.permanentInjuries) if (i.health >= 0.5) list.push({ label: `${i.label} −${Math.round(i.health)}`, severity: 1 });
     const html = list.map((x) => `<span class="${x.severity >= 0.66 ? 'bad' : ''}">${x.label}</span>`).join('');
     if (html !== this._chipHtml) $('vital-chips').innerHTML = this._chipHtml = html;
+  }
+
+  /** A foot skidding on steep ground: Q in a ring that drains as time runs out. */
+  _footing() {
+    const f = this.climber.footing;
+    const el = $('footing');
+    const state = f.prompt ? 'up' : f.flash > 0 ? f.result : '';
+    el.hidden = !state;
+    if (!state) return;
+    if (state !== this._footState) {
+      this._footState = state;
+      el.className = state;
+      el.querySelector('.say').textContent = state === 'up' ? 'Footing! Press Q' : state === 'held' ? 'Footing held' : 'Slipped!';
+    }
+    const left = f.prompt ? Math.max(f.prompt.left / f.prompt.window, 0) : 0;
+    el.style.setProperty('--left', left.toFixed(3));
+    el.classList.toggle('late', !!f.prompt && left < 0.35);
+    el.style.opacity = f.prompt ? 1 : Math.min(f.flash * 2, 1);
   }
 
   // ---- Prompts: a short warning and the keys that do something here. ----
