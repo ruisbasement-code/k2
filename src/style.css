@@ -50,7 +50,7 @@ kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); bord
 /* ---- Prompts and messages ---- */
 #prompt { position: fixed; left: 50%; bottom: 112px; transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; pointer-events: none; }
 /* Footing check: Q in a ring that drains; red as it runs out. */
-#footing { position: fixed; left: 50%; top: 58%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 8px; pointer-events: none; --left: 1; }
+#footing { position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 8px; pointer-events: none; --left: 1; }
 #footing[hidden] { display: none; }
 #footing .ring { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center;
   background: radial-gradient(circle, rgba(0, 0, 0, .55) 58%, transparent 60%),
@@ -157,7 +157,7 @@ button#set-off, #menu-resume, #start button { background: var(--accent); color: 
 .ghost { background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 7px; font: inherit; padding: 8px 14px; cursor: pointer; }
 
 /* ---- Minigames ---- */
-#mini { position: fixed; left: 50%; top: 58%; transform: translateX(-50%); width: 300px; padding: 10px 12px 8px; text-align: center; background: rgba(12, 16, 24, .6); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); }
+#mini { position: fixed; left: 50%; top: 34%; transform: translateX(-50%); width: 300px; padding: 10px 12px 8px; text-align: center; background: rgba(12, 16, 24, .6); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); }
 .mini-title { font-size: 13px; font-weight: 600; letter-spacing: .03em; }
 #mini canvas { width: 300px; height: 74px; display: block; margin: 2px auto 0; }
 .mini-keys { display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
