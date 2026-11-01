@@ -342,7 +342,13 @@ const LEDGE_DEFINES = () => `
 #define LEDGE_SHARE ${f(tuning.ledge_share)}
 #define LEDGE_RADIUS ${f(tuning.ledge_radius_m)}
 #define LEDGE_MIN_DEG ${f(tuning.ledge_min_deg)}
-#define LEDGE_MAX_DEG ${f(tuning.ledge_max_deg)}`;
+#define LEDGE_MAX_DEG ${f(tuning.ledge_max_deg)}
+#define VERGLAS_SHARE ${f(tuning.verglas_share)}
+#define ROTTEN_SHARE ${f(tuning.rotten_lip_share)}
+#define ROTTEN_OUT ${f(tuning.rotten_lip_out)}
+#define LOOSE_CELL ${f(tuning.loose_cell_m)}
+#define LOOSE_ROCK ${f(tuning.surfaces.rock.loose)}
+#define LOOSE_SCREE ${f(tuning.surfaces.scree.loose)}`;
 
 // Rock, scree, glacier, snow and ice blended by slope, altitude and curvature, with
 // procedural detail and bump so the ground reads at climbing scale.
@@ -429,6 +435,14 @@ vec3 ledgeNear(vec2 p) {
   return vec3(length(p - c) / LEDGE_RADIUS, c);
 }
 
+// What the ledge at p is like (ledgeKind in hazards.js): 0 sound, 1 glazed with verglas, 2 a rotten ice lip.
+float ledgeKindAt(vec2 p) {
+  int i = int(floor(p.x / LEDGE_CELL));
+  int j = int(floor(p.y / LEDGE_CELL));
+  float r = cellHash(i - 4421, j + 7741);
+  return r < VERGLAS_SHARE ? 1.0 : r < VERGLAS_SHARE + ROTTEN_SHARE ? 2.0 : 0.0;
+}
+
 // Cellular noise: x = distance to the nearest feature point, y = to the second.
 vec2 cells(vec2 p) {
   vec2 i = floor(p);
@@ -452,7 +466,7 @@ float cracks(vec3 p, vec3 n, float scale) {
   vec2 a = cells(p.zy * scale), b = cells(p.xz * scale), c = cells(p.xy * scale);
   float e = (a.y - a.x) * w.x + (b.y - b.x) * w.y + (c.y - c.x) * w.z;
   // Lines thinner than a pixel are faded out rather than aliased.
-  return (1.0 - smoothstep(0.0, 0.08, e)) * (1.0 - smoothstep(0.03, 0.08, gFoot * scale));
+  return (1.0 - smoothstep(0.0, 0.04, e)) * (1.0 - smoothstep(0.03, 0.08, gFoot * scale));
 }
 
 #ifdef TERRAIN_HOLES
@@ -547,15 +561,17 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   jointCrack *= faceRock;
 
   // Rock: dark gneiss and warm granite in banded strata; the Black Pyramid is darker.
-  float strata = sin(h * 0.03 + medium * 9.0 + big * 5.0) * 0.5 + 0.5;
-  vec3 rock = mix(vec3(0.17, 0.165, 0.16), vec3(0.31, 0.28, 0.25), smoothstep(0.2, 0.9, strata) * 0.8 + medium * 0.2);
+  // Strata are broad, gently tilted bands, warped only by the big-scale noise, so
+  // they read as layers in the rock rather than a mottled camouflage.
+  float strata = sin(h * 0.022 + big * 6.0 + p.x * 0.0011) * 0.5 + 0.5;
+  vec3 rock = mix(vec3(0.19, 0.18, 0.175), vec3(0.28, 0.255, 0.23), smoothstep(0.15, 0.95, strata) * 0.85 + (medium - 0.5) * 0.15);
   rock = mix(rock, vec3(0.14, 0.13, 0.13), smoothstep(6800.0, 7400.0, h) * (1.0 - smoothstep(7400.0, 7700.0, h)) * 0.6);
-  rock *= 0.85 + 0.3 * medium * mid + 0.25 * (fine - 0.5) * near;
+  rock *= 0.93 + 0.14 * (medium - 0.5) * mid + 0.12 * (fine - 0.5) * near;
   // Dark water and varnish streaks down the faces, pale lighter blocks between joints.
-  rock *= 1.0 - 0.28 * smoothstep(0.52, 0.75, streaks) * mid - 0.12 * smoothstep(0.55, 0.8, streaksNear) * near;
+  rock *= 1.0 - 0.1 * smoothstep(0.52, 0.75, streaks) * mid - 0.08 * smoothstep(0.55, 0.8, streaksNear) * near;
   float blockTone = hash12(floor(vec2(acrossM, p.y) * 0.18));
-  rock *= 1.0 + (blockTone - 0.5) * 0.18 * near;
-  rock *= 1.0 - 0.55 * blockCrack * near - 0.4 * jointCrack;
+  rock *= 1.0 + (blockTone - 0.5) * 0.08 * near;
+  rock *= 1.0 - 0.12 * blockCrack * near - 0.1 * jointCrack;
 
   // Scree and moraine on gentle low ground.
   vec3 scree = mix(vec3(0.36, 0.33, 0.31), vec3(0.52, 0.48, 0.44), fine * near + medium * (1.0 - near));
@@ -581,31 +597,43 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   bare *= 1.0 - smoothstep(0.35, 0.65, glacierSnow);
 
   // Snow collects in hollows and on slopes below ~50 degrees; wind strips ridges up high.
-  float snowSlope = smoothstep(58.0 + (big - 0.5) * 12.0, 46.0 + (big - 0.5) * 12.0, slope);
+  // The slope a face holds snow on wanders a little over hundreds of metres, not
+  // from one 20 m blotch to the next.
+  float snowSlope = smoothstep(57.0 + (big - 0.5) * 6.0, 43.0 + (big - 0.5) * 6.0, slope);
   float snowAlt = smoothstep(SNOWLINE - 300.0 + big * 500.0, SNOWLINE + 250.0 + big * 500.0, h);
   float wind = smoothstep(7000.0, 8000.0, h) * smoothstep(0.0, -0.25, hollow) * 0.5;
-  float snowAmt = clamp(snowSlope * snowAlt + hollow * 0.8 * snowAlt - wind, 0.0, 1.0);
+  // Gullies fill with snow and ribs stand out bare: that, not noise, is what gives a
+  // snowy face its pattern.
+  float snowAmt = clamp(snowSlope * snowAlt + hollow * 1.4 * snowAlt - wind, 0.0, 1.0);
   // Up close, snow lies in patches and runnels on steep rock: in the cracks, on the
   // flatter tops of blocks and in gullies down the fall line.
   float steepMix = smoothstep(38.0, 48.0, slope) * smoothstep(68.0, 58.0, slope) * snowAlt;
-  float patches = (fine - 0.5) * 1.0 + (streaksNear - 0.5) * 0.6 + blockCrack * 0.35;
+  float patches = (fine - 0.5) * 0.4 + (streaksNear - 0.5) * 0.5 + blockCrack * 0.25;
   snowAmt += steepMix * near * patches;
-  snowAmt = smoothstep(0.3, 0.6, snowAmt + (medium - 0.5) * 0.3);
+  // The edge between snow and rock runs down the fall line (snow lies in runnels
+  // between rock ribs) and is soft, not a hard blotch outline.
+  snowAmt = smoothstep(0.22, 0.72, snowAmt + (big - 0.5) * 0.25 + (medium - 0.5) * 0.06);
   // Wind ripples (sastrugi) across the prevailing westerly, and soft runnels on steep snow.
   float ripples = grain > 0.0 ? mix(0.5, fbm(vec2(p.x * 0.09, p.z * 0.9), 3, gFoot * 0.9), grain) : 0.5;
   float runnels = smoothstep(30.0, 50.0, slope) * near;
-  vec3 snow = vec3(0.80, 0.83, 0.88) * (0.92 + 0.08 * fine);
+  vec3 snow = vec3(0.80, 0.83, 0.88) * (0.96 + 0.04 * fine);
   snow *= 1.0 - 0.04 * runnels * smoothstep(0.45, 0.7, streaksNear) - 0.03 * (ripples - 0.5) * grain;
   // Shadowed hollows and old snow read slightly blue-grey.
-  snow = mix(snow, vec3(0.70, 0.76, 0.84), clamp(-hollow * 1.5, 0.0, 0.3) + 0.12 * (1.0 - fine) * near);
+  snow = mix(snow, vec3(0.70, 0.76, 0.84), clamp(-hollow * 1.5, 0.0, 0.3) + 0.05 * (1.0 - fine) * near);
 
   // Hard blue ice on steep faces high up, where snow does not stay.
   float iceAmt = smoothstep(33.0, 40.0, slope) * smoothstep(60.0, 50.0, slope)
-    * smoothstep(5700.0, 6300.0, h) * smoothstep(0.5, 0.65, medium + (big - 0.5) * 0.4);
+    * smoothstep(5700.0, 6300.0, h) * smoothstep(0.45, 0.7, big);
 
   // Hard ice: blue-grey, darker where it is clearest, with white fractures and bubble streaks.
   vec3 ice = mix(vec3(0.46, 0.58, 0.68), vec3(0.66, 0.75, 0.82), smoothstep(0.35, 0.7, streaks));
   ice = mix(ice, vec3(0.85, 0.89, 0.93), 0.6 * blockCrack * near + 0.3 * smoothstep(0.6, 0.8, streaksNear) * near);
+
+  // Rime: wind-driven frost plastered on the windward (westerly) side of rock up
+  // high, a smooth pale glaze rather than speckle.
+  float windward = smoothstep(0.05, 0.6, -n.x);
+  float rime = windward * smoothstep(6600.0, 7600.0, h) * smoothstep(0.35, 0.7, big) * 0.4;
+  rock = mix(rock, vec3(0.70, 0.74, 0.79), rime);
 
   vec3 col = rock;
   col = mix(col, scree, screeAmt);
@@ -615,7 +643,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
 
   // Ledges: a narrow step along the contour, snow-dusted where the face is rock, with
   // a soft shadow below its lip. Only drawn close up, and kept subtle.
-  float ledge = 0.0, lip = 0.0;
+  float ledge = 0.0, lip = 0.0, verglas = 0.0;
 #ifndef FLAT_GROUND
   float ledgeFade = 1.0 - smoothstep(60.0, 140.0, dist);
   if (ledgeFade > 0.0 && slope > LEDGE_MIN_DEG - 4.0 && slope < LEDGE_MAX_DEG + 4.0) {
@@ -629,6 +657,39 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
       lip = smoothstep(0.9, 1.05, e) * smoothstep(1.4, 1.1, e) * smoothstep(0.0, 0.4, below) * ledgeFade;
       col *= 1.0 - 0.18 * lip;
       col = mix(col, snow, ledge * (1.0 - snowAmt) * 0.7);
+      float kind = ledgeKindAt(p.xz);
+      if (kind == 1.0) {
+        // Verglas: a glassy blue-grey glaze over the whole ledge, with a few bright streaks.
+        vec3 glaze = mix(vec3(0.42, 0.55, 0.66), vec3(0.72, 0.82, 0.9), smoothstep(0.55, 0.8, fine));
+        col = mix(col, glaze, ledge * 0.8);
+        verglas = ledge;
+      } else if (kind == 2.0) {
+        // A rotten lip: the outer, downhill part of the ledge is pale, bubbly ice,
+        // cut off from the sound inside by a dark crack.
+        // (The drawn ledge is 1.9 times shorter down the slope than across: outward runs 0 to 1 over it.)
+        float outward = below * 1.9;
+        float outer = smoothstep(1.0 - ROTTEN_OUT - 0.08, 1.0 - ROTTEN_OUT + 0.05, outward) * ledge;
+        float crack = (1.0 - smoothstep(0.0, 0.12, abs(outward - (1.0 - ROTTEN_OUT)) + (fine - 0.5) * 0.06)) * ledge;
+        col = mix(col, vec3(0.84, 0.89, 0.94), outer * 0.75);
+        col *= 1.0 - 0.7 * crack;
+      }
+    }
+  }
+#endif
+#ifndef FLAT_GROUND
+  // Loose rock (isLoose in hazards.js): cells of freshly broken, paler blocks on
+  // steep bare rock and scree, so you can see where holds might go.
+  float looseFade = (1.0 - smoothstep(40.0, 90.0, dist)) * smoothstep(18.0, 24.0, slope) * (1.0 - snowAmt) * (1.0 - glacier);
+  if (looseFade > 0.01) {
+    float share = mix(LOOSE_ROCK, LOOSE_SCREE, screeAmt);
+    vec2 lc = floor(p.xz / LOOSE_CELL);
+    if (cellHash(int(lc.x), int(lc.y)) < share) {
+      vec2 inCell = fract(p.xz / LOOSE_CELL) - 0.5;
+      float body = smoothstep(0.5, 0.35, max(abs(inCell.x), abs(inCell.y)));
+      vec2 bl = cells(p.xz * 1.6);
+      float block = smoothstep(0.02, 0.12, bl.y - bl.x);
+      vec3 fresh = mix(vec3(0.55, 0.48, 0.40), vec3(0.68, 0.61, 0.52), hash12(floor(p.xz * 1.6)));
+      col = mix(col, fresh * (0.75 + 0.25 * block), body * looseFade * 0.65);
     }
   }
 #endif
@@ -638,7 +699,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
 #endif
 
   float snowy = max(max(snowAmt * (1.0 - glacier * 0.75), glacier * max(bare, glacierSnow)), ledge * 0.7);
-  float iceLike = max(iceAmt, glacier * bare * 0.6);
+  float iceLike = max(max(iceAmt, glacier * bare * 0.6), verglas);
   // Bump from screen-space derivatives breaks up into speckles at grazing angles:
   // fade it out where the surface is seen nearly edge-on.
   float graze = smoothstep(0.04, 0.25, abs(dot(n, normalize(cam - p))));
@@ -652,9 +713,9 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   // Small detail also fades out once a pixel covers more than a few centimetres.
   float smallBump = 1.0 - smoothstep(0.06, 0.35, gFoot);
   float broadBump = 1.0 - smoothstep(2.0, 8.0, gFoot);
-  s.bump = fine * near * mix(0.07, 0.02, snowy) * smallBump + medium * mid * 0.8 * broadBump;
+  s.bump = fine * near * mix(0.07, 0.02, snowy) * smallBump + medium * mid * 0.35 * broadBump;
   // Cracks cut in, ripples and runnels shape the snow, a ledge stands proud of the slope.
-  s.bump += ((-0.05 * blockCrack * near - 0.02 * jointCrack) * (1.0 - snowy)
+  s.bump += ((-0.02 * blockCrack * near - 0.01 * jointCrack) * (1.0 - snowy)
     + (0.015 * ripples * grain + 0.05 * runnels * streaksNear) * snowy
     + (0.12 * ledge - 0.05 * lip)) * smallBump;
   s.bump *= graze;

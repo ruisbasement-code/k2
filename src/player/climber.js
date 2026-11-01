@@ -52,7 +52,8 @@ import { sleepPlan, sleepRecovery } from '../sim/sleep.js';
 import { Physiology } from '../sim/physiology.js';
 import { Pack } from '../sim/pack.js';
 import { airAt } from '../sim/environment.js';
-import { SnowTrail, Rockfall, isLoose, ledgeAt } from '../sim/hazards.js';
+import { SnowTrail, Rockfall, isLoose, ledgeAt, ledgeOut } from '../sim/hazards.js';
+import { hasGear, difficulty } from '../sim/gear.js';
 import { weatherTuning as W } from '../sim/weather.js';
 import { Avalanches, isSlabSlope, slabLoad } from '../sim/avalanche.js';
 import { TerrainFeatures } from '../sim/terrainFeatures.js';
@@ -60,9 +61,12 @@ import { TerrainFeatures } from '../sim/terrainFeatures.js';
 const { tuning } = Pace;
 const DEG = 180 / Math.PI;
 const _UP = new THREE.Vector3(0, 1, 0);
+const _n = new THREE.Vector3();
 const SNOW = new Set(['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier']);
 /** Ground an ice axe bites into. */
 const AXE_GROUND = new Set(['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier', 'ice']);
+/** Hard ice: bare boots get no grip on it. */
+const ICE = new Set(['ice', 'glacier']);
 
 export const Mode = { WALK: 'walk', CLIMB: 'climb', STEEP: 'steep', ROPE: 'rope', FALL: 'fall', HOLE: 'hole', DEAD: 'dead', FLY: 'fly' };
 const MODE_NAMES = {
@@ -109,6 +113,13 @@ export class Climber {
      * the health they take off the top. Rest and sleep only heal up to maxHealth.
      */
     this.permanentInjuries = [];
+    /**
+     * How many real injuries (hits, falls, avalanches) you have taken. Each one
+     * leaves a share of its damage for good, and the share grows with the count:
+     * a body that has been hurt again and again heals worse. Death resets it
+     * (respawn starts a fresh climber).
+     */
+    this.injuryCount = 0;
     /** Sleeping tents, {camp, x, z}; set from the camp layouts (createCamps). */
     this.tents = [];
     /** Food, water, warmth, oxygen and altitude illness. */
@@ -188,6 +199,14 @@ export class Climber {
      */
     this.poles = { inHand: false };
     this._polesWarned = false;
+    /**
+     * Crampons (if packed): on your boots or in the pack. on: strapped on;
+     * fitting: real seconds left kneeling to strap them on or off; to: on or off when done.
+     */
+    this.crampons = { on: true, fitting: 0, to: true };
+    this._cramponHint = '';
+    /** Rotten ledge lips that have broken away, by ledge cell. */
+    this.brokenLips = new Set();
     this.trail = new SnowTrail();
     this.rockfall = new Rockfall(hm);
     /** The mountain's weather (sim/weather.js), or null for none. */
@@ -195,6 +214,16 @@ export class Climber {
     /** The weather where the climber is, from Weather.conditionsAt; null without weather. */
     this.conditions = null;
     this.avalanches = new Avalanches(hm);
+    /** Slabs that have cracked above you and will let go in a few seconds: {x, z, width, in}. */
+    this.pendingSlides = [];
+    /**
+     * Warning cues for the screen and sound, drained by the game each frame:
+     * {kind: 'crack' | 'whumpf' | 'roar', at: Vector3, strength 0..1}.
+     */
+    this.cues = [];
+    /** How ready the slope underfoot is to slide, 0..1 (danger × load on a slab slope). */
+    this.slabRisk = 0;
+    this._whumpfCool = 0;
     const [sr, sc] = W.serac_grid;
     const [sx, sz] = hm.gridToWorld(sr, sc);
     this.serac = new THREE.Vector3(sx, hm.heightAt(sx, sz), sz);
@@ -216,6 +245,8 @@ export class Climber {
     this.yaw = Math.atan2(-(faceX - x), -(faceZ - z));
     this.heading = this.yaw;
     this._altLog = [];
+    this.pendingSlides = [];
+    this.slabRisk = 0;
     this._noteCamp();
   }
 
@@ -330,6 +361,72 @@ export class Climber {
     if (hadAxe) this.axe = { ...this.axe, inHand: false, drawing: 0, dangling: 0 };
     this.poles.inHand = true;
     this.onMessage(`${hadAxe ? 'Axe stowed. ' : ''}Trekking poles out: quicker and easier on gentle ground. Swap to the axe (I) before it gets steep.`);
+  }
+
+  /** Crampons packed and strapped onto your boots. */
+  get cramponsOn() {
+    return this.crampons.on && hasGear(this.pack, 'crampons');
+  }
+
+  /** Somewhere you can stand still long enough to strap crampons on or off. */
+  get canFitCrampons() {
+    if ([Mode.FLY, Mode.FALL, Mode.DEAD, Mode.HOLE].includes(this.mode) || this.collapsed) return false;
+    return this.onLedge || this.clipped || this.slope <= tuning.climb_start_deg || !!this._campNearby() || !!this.nearestTent();
+  }
+
+  /**
+   * Strap the crampons on, or take them off. It takes a few minutes, longer with
+   * cold hands, and you have to be able to stand: on gentle ground, a ledge, the
+   * rope or in camp. Not halfway up a bare slope.
+   */
+  toggleCrampons() {
+    if (!hasGear(this.pack, 'crampons')) {
+      this.onMessage('You have no crampons. Pack a pair at Base Camp.');
+      return;
+    }
+    const k = this.crampons;
+    if (k.fitting > 0) return;
+    if (!this.canFitCrampons) {
+      this.onMessage(`Too steep to ${k.on ? 'take crampons off' : 'fit crampons'} here: find a ledge, the rope or gentler ground.`);
+      return;
+    }
+    const hard = 1 + 1.5 * difficulty(this);
+    k.to = !k.on;
+    k.fitting = tuning.crampon_fit_s * hard;
+    this.mountainSeconds += (k.to ? tuning.crampon_on_minutes : tuning.crampon_off_minutes) * 60 * hard;
+    this.pace = 0;
+    this.onMessage(k.to ? 'Strapping your crampons on…' : 'Taking your crampons off…');
+  }
+
+  /** Kneeling to fit crampons: no walking until they're done. */
+  _cramponStep(dt) {
+    const k = this.crampons;
+    if (k.fitting <= 0) return false;
+    if ([Mode.FALL, Mode.HOLE, Mode.DEAD].includes(this.mode)) { k.fitting = 0; return false; }
+    k.fitting -= dt;
+    if (k.fitting > 0) return true;
+    k.fitting = 0;
+    k.on = k.to;
+    this._cramponHint = '';
+    this.onMessage(k.on ? 'Crampons on: they bite into snow and ice, but skate on bare rock.'
+      : 'Crampons off: ice will be treacherous without them.');
+    return false;
+  }
+
+  /** A hint when your feet and the ground don't match: no crampons on ice, crampons on rock. */
+  _noteCrampons() {
+    if (!hasGear(this.pack, 'crampons') || this.crampons.fitting > 0) return;
+    const key = this.surface?.key;
+    const steepish = this.slope > tuning.climb_start_deg - 8;
+    let hint = '';
+    if (!this.crampons.on && ['ice', 'glacier', 'crust', 'firm_snow'].includes(key) && steepish) hint = 'ice';
+    else if (this.crampons.on && (key === 'rock' || key === 'scree') && steepish) hint = 'rock';
+    if (hint && hint !== this._cramponHint) {
+      this.onMessage(hint === 'ice'
+        ? `${ICE.has(key) ? 'Ice' : 'Hard snow'} underfoot: strap your crampons on (hotbar) on a ledge, the rope or gentler ground.`
+        : 'Your crampons skate on bare rock: take them off on a ledge (hotbar) if the rock goes on.');
+    }
+    if (hint) this._cramponHint = hint;
   }
 
   /** Warn once each time you take poles onto steep ground. */
@@ -491,6 +588,46 @@ export class Climber {
     return Math.max(0, 100 - this.permanentInjuries.reduce((sum, i) => sum + i.health, 0));
   }
 
+  /**
+   * Health as the screen should show it: you get used to old injuries, so at
+   * full (lowered) max health the view is only a little darker, not dying.
+   */
+  get feltHealth() {
+    return this.health + 0.5 * (100 - this.maxHealth);
+  }
+
+  /** The share of the next injury's damage that will never heal (0..1). */
+  get permanentShare() {
+    const t = tuning;
+    return Math.min(t.injury_permanent_max_share, t.injury_permanent_share + t.injury_permanent_share_per_injury * this.injuryCount);
+  }
+
+  /**
+   * A physical injury (a hit, a hard landing, an avalanche): it hurts, and part
+   * of it never heals. Slow wear (cold, illness) uses _hurt and heals fully.
+   * Knocks below injury_min_damage scar you a little but don't count as an
+   * injury of their own; scrapes below injury_scar_min_damage heal completely.
+   */
+  _injure(amount, cause = null) {
+    if (this.dead || !(amount > 0)) return;
+    const t = tuning;
+    // Scrapes and bumps under injury_scar_min_damage heal completely.
+    const lasting = Number.isFinite(amount) && amount >= t.injury_scar_min_damage ? amount * this.permanentShare : 0;
+    this._hurt(amount, cause);
+    if (this.dead || lasting <= 0) return;
+    if (amount >= t.injury_min_damage) this.injuryCount++;
+    const room = Math.max(0, this.maxHealth - t.injury_min_max_health);
+    const add = Math.min(lasting, room);
+    if (add <= 0) return;
+    let old = this.permanentInjuries.find((i) => i.key === 'trauma');
+    if (!old) this.permanentInjuries.push(old = { key: 'trauma', label: 'Old injuries', health: 0 });
+    const before = Math.round(old.health);
+    old.health += add;
+    this.health = Math.min(this.health, this.maxHealth);
+    // For the HUD: how much max health this injury took, shown by the health bar.
+    if (Math.round(old.health) > before) this.lastScar = { amount: Math.round(old.health) - before, at: performance.now() };
+  }
+
   /** An injury that rest and sleep will not heal. */
   addPermanentInjury(label, health) {
     this.permanentInjuries.push({ label, health });
@@ -558,7 +695,7 @@ export class Climber {
       : `You napped ${slept} in the tent at ${tent.camp}.`;
     text += r.rested ? ' Well rested.' : ' A little rested.';
     if (healed > 0) text += ` Healed ${healed}.`;
-    if (this.permanentInjuries.length && this.health >= this.maxHealth) text += ' Some injuries will not heal.';
+    if (this.permanentInjuries.length && this.health >= this.maxHealth) text += ` Some injuries will not heal: max health ${Math.round(this.maxHealth)}.`;
     this.onMessage(text);
     return { ...plan, healed, rested: r.rested, camp: tent.camp };
   }
@@ -709,6 +846,30 @@ export class Climber {
     return took.length > 0;
   }
 
+  /** The camp you are in and its stores, or null. */
+  storesHere() {
+    const camp = this._campNearby();
+    const stores = camp && this.campStores[camp.name];
+    return stores ? { name: camp.name, stores } : null;
+  }
+
+  /** Take one of an item from this camp's stores. Returns null, or why not. */
+  takeFromCamp(item) {
+    const here = this.storesHere();
+    if (!here) return 'No camp here';
+    return this.pack.take(here.stores, item);
+  }
+
+  /** Leave one of an item in this camp's stores for later. Returns null, or why not. */
+  leaveAtCamp(item) {
+    const here = this.storesHere();
+    if (!here) return 'No camp here';
+    const why = this.pack.leave(here.stores, item);
+    // Leaving the bottle on your mask: close the regulator first.
+    if (!why && item === 'oxygen' && !this.pack.bottles.length) this.phys.flow = 0;
+    return why;
+  }
+
   cycleTurnaround() {
     const hours = tuning.turnaround_hours;
     this.turnaroundHour = hours[(hours.indexOf(this.turnaroundHour) + 1) % hours.length];
@@ -757,6 +918,103 @@ export class Climber {
   /** The slope your feet actually meet: flatter on a ledge. */
   _footingSlope(slope, onLedge) {
     return onLedge ? Math.max(0, slope - tuning.ledge_relief_deg) : slope;
+  }
+
+  /**
+   * The slope you stand or lie on at (x, z): the face's slope, unless the ground
+   * right here is a flatter bench in it. A slide feels the ground within a few
+   * metres, so standing has to judge it the same way, or you can come to rest on
+   * a bench that is "too steep" by the wider slope and never get up.
+   */
+  _standSlope(x, z) {
+    const local = Math.acos(Math.min(this.hm.normalAt(x, z, _n).y, 1)) * DEG;
+    return Math.min(this.hm.slopeDeg(x, z), local);
+  }
+
+  /** The steepest footing you can stand on here: steeper on snow and ice with the axe in hand. */
+  _standLimit(surface = this.surface, onLedge = this.onLedge) {
+    const axeBites = this.axeReady && AXE_GROUND.has(surface.key);
+    const limit = axeBites ? Math.max(surface.stand_deg, tuning.axe_stand_deg) : surface.stand_deg;
+    // Bare boots on hard ice: nothing bites, and the axe alone barely holds you.
+    // A ledge is a step to stand on even in bare boots (verglas makes it slippery, see _ledgeFooting).
+    if (ICE.has(surface.key) && !this.cramponsOn && !onLedge) return Math.min(limit, axeBites ? tuning.no_crampons_axe_stand_deg : tuning.no_crampons_ice_stand_deg);
+    return limit;
+  }
+
+  /** Whether the ground at (x, z) would hold you standing, unroped. */
+  _canStandAt(x, z) {
+    const slope = this.hm.slopeDeg(x, z);
+    const y = this._groundAt(x, z);
+    const surface = Pace.surfaceAt(y, slope, this.hm.glacierAt(x, z), this.hour);
+    const ledge = !!ledgeAt(x, z, slope);
+    const footing = this._footingSlope(this._standSlope(x, z), ledge);
+    return footing <= this._standLimit(surface, ledge);
+  }
+
+  /** Stuck: lying still in a fall that the ground holds but won't let you stand from. */
+  get stuck() {
+    return this.falling && !this.fall.hole && !this.tumbling && (this.fall.still ?? 0) > tuning.stuck_after_s;
+  }
+
+  /**
+   * Get up (R): when you're lying still on ground you can't stand on, crawl to
+   * the nearest spot that will hold you standing. Near the fall line and a
+   * little downhill is preferred; it costs a few minutes and some stamina.
+   */
+  getUp() {
+    if (this.mode === Mode.FLY || this.dead || this.collapsed || this.mode === Mode.HOLE) return false;
+    if (this.falling) {
+      if (this.fall.hole) return false;
+      if (this.velocity.length() > tuning.get_up_below_m_s) {
+        this.onMessage("You can't get up while you're still sliding.");
+        return false;
+      }
+    } else if (this.clipped || this._canStandAt(this.position.x, this.position.z)) {
+      this.onMessage("You're already on your feet.");
+      return false;
+    }
+    const spot = this._safeSpotNear(this.position.x, this.position.z);
+    if (!spot) {
+      this.onMessage('Nowhere nearby is flat enough to stand. Hold on and call for help.');
+      return false;
+    }
+    const from = this.position.clone();
+    const yaw = this.yaw;
+    this.fall = null;
+    this.placeAt(spot.x, spot.z, spot.x, spot.z);
+    this.yaw = this.heading = yaw;
+    this.mode = Mode.WALK;
+    this.slope = this.hm.slopeDeg(spot.x, spot.z);
+    this._updateGroundMode(this.slope);
+    const dist = Math.round(from.distanceTo(this.position));
+    this.mountainSeconds += tuning.get_up_minutes * 60;
+    this.body.stamina = Math.max(0, this.body.stamina - tuning.get_up_stamina);
+    this.onMessage(dist < 1 ? 'You pick yourself up and get your feet under you.' : `You pick yourself up and scramble ${dist} m to safer footing.`);
+    return true;
+  }
+
+  /** The nearest standable spot within reach, out of any crevasse and ice wall. */
+  _safeSpotNear(x, z) {
+    const t = tuning;
+    const f = this.features;
+    const [gx, gz] = this.hm.gradient(x, z);
+    const g = Math.hypot(gx, gz) || 1;
+    let best = null;
+    for (let r = 0; r <= t.get_up_search_m; r += 1) {
+      const n = r === 0 ? 1 : Math.ceil((2 * Math.PI * r) / 1);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * 2 * Math.PI;
+        const px = x + r * Math.cos(a), pz = z + r * Math.sin(a);
+        if (f?.holeAt(px, pz) || f?.seracAt(px, pz)) continue;
+        if (!this._canStandAt(px, pz)) continue;
+        // Uphill is harder to reach than across or down.
+        const up = ((px - x) * gx + (pz - z) * gz) / g;
+        const cost = r + Math.max(0, up);
+        if (!best || cost < best.cost) best = { x: px, z: pz, cost };
+      }
+      if (best && best.cost <= r) break;
+    }
+    return best;
   }
 
   /** Sliding with no chance to dig in yet: too fast to self-arrest. */
@@ -839,6 +1097,7 @@ export class Climber {
       this._climbOut(dtM, input);
       this._heal(dtM);
     } else {
+      if (this._cramponStep(dt)) input = { ...input, x: 0, y: 0, push: false };
       this._moveOnGround(dtM, input, dt);
       this._heal(dtM);
       this._noteCamp();
@@ -881,13 +1140,15 @@ export class Climber {
     this.surface = Pace.surfaceAt(this.position.y, this.slope, this.hm.glacierAt(this.position.x, this.position.z), this.hour);
     this.packing = SNOW.has(this.surface.key) ? this.trail.packing(this.position.x, this.position.z) : 0;
     // A small ledge underfoot gives you somewhere flatter to stand.
-    this.onLedge = !!ledgeAt(this.position.x, this.position.z, this.slope);
+    this.ledge = ledgeAt(this.position.x, this.position.z, this.slope);
+    this.onLedge = !!this.ledge;
     this._noteFeatures();
     this._notePoles();
-    const footing = this._footingSlope(this.slope, this.onLedge);
+    this._noteCrampons();
+    const footing = this._footingSlope(this._standSlope(this.position.x, this.position.z), this.onLedge);
     // Crampons kicked in and the axe planted hold you on steep snow and ice.
     const axeBites = this.axeReady && AXE_GROUND.has(this.surface.key);
-    const standLimit = axeBites ? Math.max(this.surface.stand_deg, tuning.axe_stand_deg) : this.surface.stand_deg;
+    const standLimit = this._standLimit();
     this.sink = this.surface.sink_m * (1 - this.packing);
     const clipped = this.clipped;
     // On steep ground, clipped in means jumaring.
@@ -895,7 +1156,8 @@ export class Climber {
     if (!clipped && footing > standLimit) {
       // Too steep for this surface to hold you without a rope (or the axe in hand).
       const canAxe = AXE_GROUND.has(this.surface.key) && footing <= tuning.axe_stand_deg && this.axe.have && !this.axeReady;
-      this._startFall(gx, gz, `Too steep to stand on ${this.surface.label.toLowerCase()}${canAxe ? ' without the ice axe in your hand' : ''}. You're sliding! ${this._arrestHint()}`);
+      const need = ICE.has(this.surface.key) && !this.cramponsOn && !this.onLedge ? ' without crampons on' : canAxe ? ' without the ice axe in your hand' : '';
+      this._startFall(gx, gz, `Too steep to stand on ${this.surface.label.toLowerCase()}${need}. You're sliding! ${this._arrestHint()}`);
       return;
     }
 
@@ -955,7 +1217,8 @@ export class Climber {
     this._breathPace(dtM, grade, climbing);
     if (!this.moving) {
       this.stepPhase = 1;
-      if (!this.onLedge) this._maybeSlip(dtM, gx, gz, false);
+      // A ledge is somewhere to stand, unless it's glazed and you've no crampons on.
+      if (!this.onLedge || this._glazedNoGrip()) this._maybeSlip(dtM, gx, gz, false);
       return;
     }
 
@@ -1015,6 +1278,7 @@ export class Climber {
     const t = tuning;
     const p = this.position;
     if (this.features && !this.clipped && this._stepHazards(gx, gz)) return true;
+    if (this._ledgeFooting(gx, gz)) return true;
     if (SNOW.has(this.surface.key)) {
       this._leftFoot = !this._leftFoot;
       const side = this._leftFoot ? -0.14 : 0.14;
@@ -1035,9 +1299,11 @@ export class Climber {
         this.rockfall.release(at, down.clone().multiplyScalar(1.5), 0.08 + Math.random() * 0.15);
       }
       this.shake = Math.max(this.shake, 0.6);
-      const slips = Math.random() < t.crumble_slip_chance * (clipped ? t.rope_slip_mult : 1);
-      if (slips) return this._slip(gx, gz, why('A hold crumbled under you!'));
-      this.onMessage('A loose hold crumbled under your foot.');
+      // Placing your feet carefully, you feel the block shift before your weight is on it.
+      const careful = !this.pushing;
+      const slips = Math.random() < t.crumble_slip_chance * (clipped ? t.rope_slip_mult : 1) * (careful ? t.careful_feel_mult : 1);
+      if (slips) return this._slip(gx, gz, why(careful ? 'A hold crumbled under you!' : 'You stepped up fast on a loose block and it went!'));
+      this.onMessage(careful ? 'A loose block shifted underfoot, and you kept your weight off it as it went.' : 'A loose hold crumbled under your foot.');
       return false;
     }
     const slope = clipped ? Math.min(this.slope, t.no_rope_max_deg) : this.slope;
@@ -1057,6 +1323,60 @@ export class Climber {
       return this._slip(gx, gz, why(`${what} on the ${this.surface.label.toLowerCase()}!`));
     }
     return false;
+  }
+
+  /** On a glazed ledge with no crampons on: the ledge gives you nothing to stand on. */
+  _glazedNoGrip() {
+    return this.ledge?.kind === 'verglas' && !this.cramponsOn;
+  }
+
+  /**
+   * Footing on a ledge: verglas glazing it, or a rotten ice lip on its outer edge.
+   * Both show (see terrain.js), so they're there to be read and avoided.
+   * Returns true if the step started a fall.
+   */
+  _ledgeFooting(gx, gz) {
+    const t = tuning;
+    const l = this.ledge;
+    if (!l || l.kind === 'sound') return false;
+    const clipped = this.clipped;
+    const why = (what) => clipped ? `${what} The rope will catch you.` : `${what} ${this._arrestHint()}`;
+    const careful = !this.pushing;
+    const id = `${l.i},${l.j}`;
+    if (l.kind === 'verglas') {
+      let chance = t.verglas_slip_chance * (this.cramponsOn ? t.crampons_verglas_mult : 1) * (clipped ? t.rope_slip_mult : 1);
+      if (this.axeReady) chance *= t.axe_slip_mult;
+      if (careful) chance *= 0.6;
+      if (Math.random() < chance) {
+        return this._slip(gx, gz, why(this.cramponsOn ? 'Your points skated on the glazed ledge!' : 'The ledge is glazed with ice and your boots shot out from under you!'));
+      }
+      if (!this.cramponsOn && this._ledgeWarned !== id) {
+        this._ledgeWarned = id;
+        this.onMessage('Verglas: this ledge is glazed with ice, and your crampons are off!');
+      }
+      return false;
+    }
+    // A rotten lip: only on the outer edge, and only once.
+    if (this.brokenLips.has(id) || ledgeOut(l, this.position.x, this.position.z, gx, gz) < 1 - t.rotten_lip_out) return false;
+    if (Math.random() >= t.rotten_break_chance) {
+      if (careful && this._ledgeWarned !== id) {
+        this._ledgeWarned = id;
+        this.onMessage('The ledge lip creaks under your foot: rotten ice, keep to the inside.');
+      }
+      return false;
+    }
+    this.brokenLips.add(id);
+    this.shake = Math.max(this.shake, 0.8);
+    if (t.rockfall_enabled) {
+      const down = new THREE.Vector3(-gx, 0, -gz).normalize();
+      this.rockfall.release(this.position.clone().addScaledVector(down, 0.8), down.multiplyScalar(1.5), 0.2 + Math.random() * 0.2, true);
+    }
+    // Testing it with your foot first, you can often pull back as it goes.
+    if (careful && Math.random() > t.careful_feel_mult) {
+      this.onMessage('The rotten lip broke away as you tested it, and you pulled your foot back in time.');
+      return false;
+    }
+    return this._slip(gx, gz, why('The ice lip of the ledge broke away under your foot!'));
   }
 
   /** A slip: a slide unroped, a short drop onto the rope when clipped in. */
@@ -1202,7 +1522,7 @@ export class Climber {
         if (into < 0) {
           const hit = -into;
           if (hit > t.safe_impact_m_s) {
-            this._hurt((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * surface.impact);
+            this._injure((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * surface.impact);
             this.fall.worstHit = Math.max(this.fall.worstHit, hit);
           }
           if (hit > t.tumble_on_hit_m_s && !f.rope) this._tumble();
@@ -1233,7 +1553,7 @@ export class Climber {
           if (f.phase === 'slide') v.multiplyScalar(Math.max(0, 1 - surface.slide_drag * speed * h));
           const decel = mu * t.gravity * baseNy * h;
           v.multiplyScalar(Math.max(0, 1 - decel / speed));
-          if (surface.key === 'rock' && speed > t.slide_damage_above_m_s) this._hurt(t.rock_slide_damage * speed * h);
+          if (surface.key === 'rock' && speed > t.slide_damage_above_m_s) this._injure(t.rock_slide_damage * speed * h);
         }
       }
       if (this.fall.rope && this._ropeConstraint(p, v, h)) touching = true;
@@ -1251,8 +1571,14 @@ export class Climber {
       return;
     }
     this.onLedge = !!ledgeAt(p.x, p.z, this.slope);
-    const standable = this._footingSlope(this.slope, this.onLedge) < this.surface.stand_deg;
-    if (touching && v.length() < t.stand_up_below_m_s && standable) {
+    // Judged just as standing is, so stopping here never starts you sliding again.
+    const standable = this._footingSlope(this._standSlope(p.x, p.z), this.onLedge) <= this._standLimit();
+    const still = touching && v.length() < t.stand_up_below_m_s;
+    this.fall.still = still ? (this.fall.still ?? 0) + dt : 0;
+    if (this.fall.still > t.stuck_after_s && this.fall.still - dt <= t.stuck_after_s && !standable) {
+      this.onMessage("You're stuck: the ground holds you but it's too steep to stand. Press R to get up.");
+    }
+    if (still && standable) {
       v.set(0, 0, 0);
       const how = this.fall.phase === 'slide' && this.fall.arresting ? 'You self-arrested'
         : this.onLedge ? 'You caught on a ledge' : 'You came to a stop';
@@ -1301,7 +1627,7 @@ export class Climber {
       v.addScaledVector(d, -out);
       if (out > t.rope_safe_jolt_m_s) {
         this.fall.worstHit = Math.max(this.fall.worstHit, out);
-        this._hurt((out - t.rope_safe_jolt_m_s) ** 2 * t.rope_jolt_damage);
+        this._injure((out - t.rope_safe_jolt_m_s) ** 2 * t.rope_jolt_damage);
       }
       if (out > 1) this.shake = 1;
     }
@@ -1365,7 +1691,7 @@ export class Climber {
     this.shake = 1;
     const what = rock.ice ? 'A chunk of ice' : 'A falling rock';
     this.onMessage(`${what} hit you! Health ${Math.round(Math.max(0, this.health - damage))}.`);
-    this._hurt(damage, `${what} hit you.`);
+    this._injure(damage, `${what} hit you.`);
     if (this.dead || this.falling || damage < t.rock_knockoff_damage || this.slope < t.climb_start_deg) return;
     const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
     this._slip(gx, gz, `${what} knocked you off your feet!`);
@@ -1393,8 +1719,8 @@ export class Climber {
       const wind = { x: c.windX, z: c.windZ, slab: w.windSlab };
       const natural = W.natural_per_hour * (W.natural_base + c.avalancheDanger ** 1.5);
       if (Math.random() < (natural * dtM) / 3600) {
-        const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour, Math.random, { wind });
-        if (slide) this._announceSlide(slide);
+        const crown = this.avalanches.findAbove(this.position.x, this.position.z, this.hour, Math.random, { wind });
+        if (crown) this._crackAbove(crown);
       }
       if (Math.random() < (W.distant_per_hour * c.avalancheDanger * dtM) / 3600) {
         const slide = this.avalanches.releaseAbove(this.position.x, this.position.z, this.hour, Math.random, { wind, spread: W.distant_spread_m });
@@ -1402,6 +1728,8 @@ export class Climber {
       }
       this._seracFall(dtM, c);
     }
+    this._releaseCracked(dt);
+    this._whumpfCool -= dt;
     if (this.avalanches.active) {
       const body = this.position.clone();
       body.y += 0.9;
@@ -1437,12 +1765,12 @@ export class Climber {
       return;
     }
     if (Math.random() < W.deep_burial_chance * (1 - 0.5 * fought)) {
-      this._hurt(W.deep_burial_damage * (0.8 + 0.4 * Math.random()), 'You were buried deep in avalanche debris.');
+      this._injure(W.deep_burial_damage * (0.8 + 0.4 * Math.random()), 'You were buried deep in avalanche debris.');
       this.mountainSeconds += 3600;
       if (!this.dead) this.onMessage(`Buried deep! An hour clawing at the set snow before you broke out. Health ${Math.round(this.health)}.`);
       return;
     }
-    this._hurt(W.burial_damage * (0.5 + Math.random()), 'You were buried by the avalanche.');
+    this._injure(W.burial_damage * (0.5 + Math.random()), 'You were buried by the avalanche.');
     this.mountainSeconds += 1200;
     if (!this.dead) this.onMessage(`Buried! It took twenty minutes to dig yourself out of the debris. Health ${Math.round(this.health)}.`);
   }
@@ -1474,11 +1802,60 @@ export class Climber {
     return Math.min(Math.max(1 - W.headwind_slow_per_m_s * into + 0.004 * Math.max(0, along) * c.wind, 0.3), 1.1);
   }
 
+  /** Queue a warning cue for the screen and sound (the game drains them; tests don't). */
+  _cue(cue) {
+    this.cues.push(cue);
+    if (this.cues.length > 16) this.cues.shift();
+  }
+
+  /**
+   * A slab above you has cracked: you hear it and see where, and it lets go a
+   * few seconds later. Far off, it just goes.
+   */
+  _crackAbove(crown) {
+    const y = this.hm.heightAt(crown.x, crown.z);
+    const d = Math.hypot(crown.x - this.position.x, y - this.position.y, crown.z - this.position.z);
+    if (d > W.warning_near_m || this.dead) {
+      const slide = this.avalanches.release(crown.x, crown.z, crown.width);
+      if (slide) this._announceSlide(slide);
+      return;
+    }
+    this.pendingSlides.push({ ...crown, in: W.warning_s });
+    const at = new THREE.Vector3(crown.x, y, crown.z);
+    this._cue({ kind: 'crack', at, strength: Math.min(1, 400 / Math.max(d, 50)) });
+    this.shake = Math.max(this.shake, Math.min(0.5, 120 / Math.max(d, 1)));
+    const above = y > this.position.y + 20;
+    this.onMessage(above
+      ? `Crack! The snow ${Math.round(d)} m above you is fracturing. Get out of the fall line, now!`
+      : `Crack! A slope ${Math.round(d)} m away is fracturing.`);
+  }
+
+  /** Cracked slabs let go when their few seconds are up. */
+  _releaseCracked(dt) {
+    if (!this.pendingSlides.length) return;
+    for (const p of this.pendingSlides) p.in -= dt;
+    const due = this.pendingSlides.filter((p) => p.in <= 0);
+    if (!due.length) return;
+    this.pendingSlides = this.pendingSlides.filter((p) => p.in > 0);
+    for (const p of due) {
+      const slide = this.avalanches.release(p.x, p.z, p.width);
+      if (slide) this._announceSlide(slide);
+    }
+  }
+
   /** A step onto a loaded slope can break the slab you're standing on. */
   _maybeTriggerSlab() {
     const c = this.conditions;
-    if (!c || !isSlabSlope(this.hm, this.position.x, this.position.z, this.hour)) return;
+    if (!c || !isSlabSlope(this.hm, this.position.x, this.position.z, this.hour)) { this.slabRisk = 0; return; }
     const load = slabLoad(this.hm, this.position.x, this.position.z, c.windX, c.windZ, this.weather?.windSlab ?? 0);
+    this.slabRisk = Math.min(1, c.avalancheDanger * load * 1.6);
+    // The snowpack settles with a whumpf under a loaded slope: a warning before it breaks.
+    if (this._whumpfCool <= 0 && Math.random() < W.whumpf_per_step * c.avalancheDanger * load) {
+      this._whumpfCool = W.whumpf_gap_s;
+      this.shake = Math.max(this.shake, 0.25);
+      this._cue({ kind: 'whumpf', at: this.position.clone(), strength: 0.5 + 0.5 * this.slabRisk });
+      this.onMessage('Whumpf! The snowpack dropped under your feet: this slope is loaded. Get off it.');
+    }
     if (Math.random() >= W.trigger_per_step * c.avalancheDanger ** 1.5 * load) return;
     const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
     const g = Math.hypot(gx, gz) || 1;
@@ -1486,6 +1863,7 @@ export class Climber {
     const slide = this.avalanches.release(this.position.x + (gx / g) * 12, this.position.z + (gz / g) * 12, w0 + (w1 - w0) * Math.random());
     if (slide) {
       this.shake = 1;
+      this._cue({ kind: 'crack', at: slide.origin.clone(), strength: 1 });
       this.onMessage('Whumpf! The slope fractured under your feet. Avalanche!');
     }
   }
@@ -1495,6 +1873,7 @@ export class Climber {
     if (d > W.distant_spread_m) return;
     this.shake = Math.max(this.shake, Math.min(1, 300 / d));
     const above = slide.origin.y > this.position.y + 20;
+    this._cue({ kind: 'roar', at: slide.origin.clone(), strength: Math.min(1, 300 / Math.max(d, 1)), above: above && d <= 1200 });
     if (d > 1200) this.onMessage(`A distant roar: an avalanche is pouring down a face ${(d / 1000).toFixed(1)} km away.`);
     else this.onMessage(above ? `Avalanche! A slope ${Math.round(d)} m above you has broken loose. Get out of its path!` : `An avalanche thunders down ${Math.round(d)} m away.`);
   }
@@ -1532,7 +1911,7 @@ export class Climber {
   _caughtInAvalanche(blob) {
     this.shake = 1;
     if (this.clipped) {
-      this._hurt(W.rope_hold_damage, 'You were battered by an avalanche on the rope.');
+      this._injure(W.rope_hold_damage, 'You were battered by an avalanche on the rope.');
       if (!this.dead) this.onMessage(`The avalanche poured over you, but the rope held. Health ${Math.round(this.health)}.`);
       return;
     }
@@ -1544,7 +1923,7 @@ export class Climber {
     this.fall.phase = 'tumble';
     this.fall.arresting = false;
     this.fall.avalanche = true;
-    this._hurt(W.catch_damage, 'You were swept away by an avalanche.');
+    this._injure(W.catch_damage, 'You were swept away by an avalanche.');
   }
 
   // ------------------------------------------------------------ terrain features
@@ -1695,7 +2074,7 @@ export class Climber {
         this.fall.worstHit = Math.max(this.fall.worstHit, hit);
         this.fall.topSpeed = Math.max(this.fall.topSpeed, hit);
         const what = hole.kind === 'bergschrund' ? 'the bergschrund' : `a ${hole.kind === 'crevasse' ? 'crevasse' : hole.kind}`;
-        if (hit > t.safe_impact_m_s) this._hurt((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell ${Math.round(hole.depth)} m into ${what}.`);
+        if (hit > t.safe_impact_m_s) this._injure((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell ${Math.round(hole.depth)} m into ${what}.`);
         if (this.dead) return;
         v.set(0, 0, 0);
         this.mode = Mode.HOLE;
@@ -1733,7 +2112,7 @@ export class Climber {
       p.y = bottom;
       this.shake = 1;
       const speed = Math.sqrt(2 * t.gravity * drop) * 0.7;
-      if (speed > t.safe_impact_m_s) this._hurt((speed - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell back down the crevasse wall.`);
+      if (speed > t.safe_impact_m_s) this._injure((speed - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell back down the crevasse wall.`);
       if (!this.dead) this.onMessage(`You peeled off the ice and fell ${drop.toFixed(1)} m back to the bottom.`);
       return;
     }
@@ -1745,7 +2124,7 @@ export class Climber {
     const g = this.pack.gear;
     let climb = 1, slip = 1, name = 'hands';
     if (this.axeReady) { climb *= 1.8; slip *= 0.5; name = 'axe'; }
-    if (g.has('crampons') || g.has('crampons_pro')) { climb *= 1.4; slip *= 0.7; }
+    if (this.cramponsOn) { climb *= 1.4; slip *= 0.7; }
     if (g.has('rope') && g.has('screws')) { climb *= 1.3; slip *= 0.3; name = 'rope'; }
     return { name, climb, slip };
   }

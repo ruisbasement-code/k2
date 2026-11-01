@@ -68,6 +68,9 @@ describe('gear on the mountain', () => {
     c.surface = { key: 'ice', label: 'Ice' };
     c.pack.gear.delete('crampons');
     ex.update();
+    expect(c.effects.get('gear:crampons').slip).toBe(tuning.no_crampons_ice_slip);
+    c.surface = { key: 'firm_snow', label: 'Firm snow' };
+    ex.update();
     expect(c.effects.get('gear:crampons').slip).toBe(tuning.no_crampons_slip);
     c.pack.gear.add('crampons_pro');
     ex.update();

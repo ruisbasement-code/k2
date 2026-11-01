@@ -69,8 +69,11 @@ room in a 45 L pack, and a heavier pack is slower and harder work.
 - **Devices**: the Wympr GPS (altitude, pace, weather, the forecast in camp or with
   the radio), the vitals monitor (food, water, warmth, oxygen, how your body is
   coping) and a paper topo map with the route and camps. Hold one up at a time.
-- **Climbing**: ice axe, crampons (without them, snow and ice are much more
-  slippery), a 30 m rope with ice screws or snow pickets to protect a steep pitch,
+- **Climbing**: ice axe, crampons (you leave Base Camp with them in the pack; strap
+  them on from the hotbar where you can stand, on gentle ground, a ledge or the rope,
+  which takes a few minutes and longer with cold hands. Without them on, ice is far
+  more slippery and you cannot stand on steep ice even with the axe; worn on bare rock
+  they skate), a 30 m rope with ice screws or snow pickets to protect a steep pitch,
   trekking poles (faster, easier walking on gentle ground; swap to the axe when it
   steepens), an avalanche probe.
 - **Shelter**: a storm tent you can pitch anywhere not too steep, a bivy sack, a snow
@@ -84,6 +87,17 @@ room in a 45 L pack, and a heavier pack is slower and harder work.
   Every signal is also a small JSON event on `climber.signals` (`onEvent`), and
   `receive(event, age)` draws another player's flare on the same path, ready for
   multiplayer. `?signals` in the URL packs some to try.
+- **Gear you can see**: what you carry shows on the climber. Oxygen bottles strap
+  up the back of the pack, and with the regulator on, a hose runs over the shoulder
+  to a mask. The rope coils on top, the tent and bivy sack hang underneath, shovel,
+  probe and pickets ride the sides, screws rack on the harness, radio, strobe (it
+  flashes) and whistle sit on the straps, and the pulse oximeter on your wrist.
+  Crampons, goggles, the down suit (a blue shell without it), the technical axe and
+  the 70 L pack all show. A device you hold up (GPS, map, monitor) is in your left
+  mitt, and whatever you just used (a snack, water, a flare, first aid) appears there
+  for a moment. All of it is one small plain object (`GearLook` in
+  `src/player/gearLook.js`), so another player's look can be sent and drawn the same
+  way. `?allgear` in the URL carries everything to see it; `?hold=gps` holds a device.
 
 Pitching a tent, digging a cave, placing a screw or picket and lighting the stove
 are short hands-on jobs (timing, alternating keys, pumping), harder in wind and cold,
@@ -135,13 +149,23 @@ and hard ice only to 27°. Ice slides the furthest and is the hardest to stop on
 - **Sinking and trails.** You sink knee-deep into powder, which slows you and costs
   effort. Every step leaves a footprint that packs the snow, so going back along your
   own trail is faster and you sink less.
-- **Loose rock.** Some rock and much of the scree is loose. A step on it can crumble
-  the hold, send stones down the slope and make you slip.
+- **Loose rock.** Some rock and much of the scree is loose, drawn close up as patches
+  of paler, freshly broken blocks. A step on it can crumble the hold, send stones down
+  the slope and make you slip. Placing your feet carefully (not pushing the pace with
+  Shift) you usually feel the block shift and keep your weight off it.
 
 **Ledges.** The 31 m elevation grid smooths away the small steps and terraces of a
 real face, so steep ground is dotted with small ledges, drawn into the terrain as
 narrow snowy steps with a shadow under the lip. You can stand on one where the slope around it is too steep, and a slide
-across one loses a lot of speed.
+across one loses a lot of speed. Ledges are also where footing changes, so the hazards
+sit there rather than all over a face that is steep everywhere, and each one shows:
+
+- **Verglas**: some ledges are glazed with a skin of water ice, drawn glassy blue.
+  Without crampons on, every step on one can throw you off, and standing still on it
+  isn't safe. With crampons it's just another ledge.
+- **Rotten lips**: some ledges have a rotten ice lip along their outer, downhill edge,
+  drawn pale with a dark crack. Keep to the inside: step out onto the lip and it can
+  break away under you. Testing it carefully, you can often pull your foot back.
 
 **Mountain shape.** The 31 m elevation data only gives the broad form of the
 mountain, so from the summit down to Base Camp the ground is rebuilt on a grid four
@@ -266,8 +290,17 @@ acclimatized to, your pack and any conditions you have. All the numbers are in
 **Pack.** You start with about 12 kg from Base Camp: clothes, sleeping bag, harness
 and stove (8.5 kg), plus snack bars, meals, gas, water and dexamethasone. Every
 kilogram over 12 slows you about 1% and makes you work harder. An oxygen bottle
-weighs about 4.4 kg full. Press **G** in a camp to restock. Base Camp has everything.
-Camps higher up have only a few of each, and only Camps 2 to 4 have oxygen.
+weighs about 4.4 kg full. Base Camp has everything. Camps higher up have only a few
+of each, and only Camps 2 to 4 have oxygen.
+
+**Supplies and planning.** Press **G** in a camp to open its stores: **+** takes one,
+**−** leaves one there, and *Take the usual* tops you up to a standard load. What you
+leave stays, so you can stock a high camp on a carry, go back down to sleep, and
+find it waiting on the push (part-used oxygen bottles are kept as they are and
+handed out after the full ones). The pack panel (**Tab**) shows how long what you
+carry lasts: hours of oxygen at your flow (or 2 L/min with it off), hours of
+climbing on your food, brews of gas (each one melts a night's water and cooks a
+meal), and how much slower the weight makes you.
 
 **Food and water.** Climbing burns about 500 kcal an hour, and shivering burns more.
 Run low and you get low blood sugar: you're slower and clumsier, and your stamina
@@ -297,7 +330,9 @@ time. Above 7,600 m, in the death zone, your body slowly wears out whatever you 
 **Oxygen.** **O** steps the regulator through 0.5 to 4 L/min. At 2 L/min, 8,000 m
 feels like about 6,300 m, and a 1,000 L bottle lasts a little over 8 hours. If a
 bottle runs dry at a high flow up high, the thin air hits hard: dizziness, nausea and
-a dimmed view for a couple of hours.
+a dimmed view for a couple of hours. When a bottle empties you swap to the next one,
+the monitor shows the time left at your flow, and you get a warning with about 30
+minutes to go.
 
 **Turnaround.** Pick a turnaround time with **Y** (14:00 by default). Above 7,900 m
 after that time, the game tells you to go down, summit or not.

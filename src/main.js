@@ -19,6 +19,7 @@ import { createCamps } from './world/camps.js';
 import { Climber, Mode, CLIP_RANGE } from './player/climber.js';
 import { tuning } from './sim/paceModel.js';
 import { ClimberModel } from './player/climberModel.js';
+import { GearLook } from './player/gearLook.js';
 import { BreathAudio } from './player/breathAudio.js';
 import { Input } from './player/input.js';
 import { Ragdoll } from './player/ragdoll.js';
@@ -27,14 +28,18 @@ import { Hud } from './ui/hud.js';
 import { Sky } from './world/sky.js';
 import { RockfallMesh, FootprintMesh } from './world/hazardMeshes.js';
 import { Tether } from './world/tether.js';
+import { ProtectionView } from './world/protectionView.js';
 import { Weather, weatherTuning } from './sim/weather.js';
 import { Precipitation, AvalancheMesh } from './world/weatherView.js';
 import { WindAudio } from './player/windAudio.js';
+import { DangerAudio } from './player/dangerAudio.js';
+import { Warnings } from './ui/warnings.js';
 import { TerrainFeatures } from './sim/terrainFeatures.js';
 import { FeatureMeshes } from './world/featureMeshes.js';
 import featureDefs from './data/features.json';
 import { Expedition, GEAR, difficulty, hasGear } from './sim/gear.js';
 import { Inventory, hotbarItems } from './ui/inventory.js';
+import { ledgesNear } from './sim/hazards.js';
 import { Minigame } from './ui/minigame.js';
 import { ControlsMenu } from './ui/controls.js';
 import { Signals, flareSeenM, compassPoint } from './sim/signals.js';
@@ -80,11 +85,14 @@ const glacierBlocks = new GlacierBlocks(hm);
 scene.add(glacierBlocks);
 const featureMeshes = new FeatureMeshes(hm, features, terrain, ropes);
 scene.add(featureMeshes);
-scene.add(ropes.createMesh());
+const ropeMesh = ropes.createMesh(hm, features);
+scene.add(ropeMesh);
 const camps = createCamps(hm, route.places, ropes);
 scene.add(camps);
 
 const climber = new Climber(hm, ropes, route.places, features);
+// You walk out of Base Camp with your crampons in the pack: strap them on where the ice starts.
+climber.crampons.on = false;
 climber.tents = camps.userData.tents;
 const rockMesh = new RockfallMesh(climber.rockfall);
 scene.add(rockMesh);
@@ -93,12 +101,18 @@ scene.add(prints);
 climber.trail.onPrint = (p) => prints.add(p);
 const tether = new Tether(hm);
 scene.add(tether);
+// Ice screws and pickets you put in, and your rope to the one you're on.
+const protection = new ProtectionView(hm);
+scene.add(protection);
+let myPiece = null;
 const precipitation = new Precipitation();
 scene.add(precipitation);
 const avalancheMesh = new AvalancheMesh(climber.avalanches);
 scene.add(avalancheMesh);
 const model = new ClimberModel();
 scene.add(model);
+// What the climber visibly carries and holds; plain data another player's game could draw.
+const gearLook = new GearLook();
 const ragdoll = new Ragdoll(model);
 const headlamp = new Headlamp(scene);
 // Flares, whistle and strobe. Every signal is also an event on climber.signals
@@ -120,9 +134,11 @@ expedition.onUnlock = () => {
 const shelters = new ShelterMeshes(hm);
 scene.add(shelters);
 const hud = new Hud(hm, climber, route.places, expedition);
+const warnings = new Warnings(climber);
 climber.onMessage = (t) => hud.showMessage(t);
 const audio = new BreathAudio(climber.body);
 const wind = new WindAudio();
+const danger = new DangerAudio();
 const input = new Input(canvas);
 const view = {
   pitch: -0.2, distance: 7, firstPerson: false, gait: 0, time: 0,
@@ -149,7 +165,7 @@ input.on('KeyC', () => climber.toggleClip());
 input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
-input.on('KeyR', () => (climber.collapsed ? climber.giveUp() : respawn()));
+input.on('KeyR', () => (climber.collapsed ? climber.giveUp() : climber.dead ? respawn() : climber.getUp()));
 input.on('KeyZ', () => shelterOrSleep());
 input.on('KeyK', () => cook());
 input.on('KeyB', () => climber.eat());
@@ -224,6 +240,7 @@ function useSlot(i) {
   if (['gps', 'monitor', 'map'].includes(it.id)) holdDevice(it.id);
   else if (it.id === 'axe' || it.id === 'axe_tech') climber.toggleAxe();
   else if (it.id === 'poles') climber.togglePoles();
+  else if (it.id === 'crampons' || it.id === 'crampons_pro') climber.toggleCrampons();
   else inventory.actions.use(it.id);
 }
 
@@ -242,7 +259,7 @@ function holdDevice(id) {
   inventory.render();
 }
 
-/** G: strike your tent, gear up at Base Camp, or restock at another camp. */
+/** G: strike your tent, gear up at Base Camp, or open another camp's stores to take or leave supplies. */
 function gearUp() {
   const own = expedition.ownTentNearby();
   if (own) {
@@ -251,6 +268,7 @@ function gearUp() {
     return;
   }
   if (climber._campNearby()?.name === 'Base Camp') openInventory(true);
+  else if (climber.storesHere() && !climber.collapsed) openInventory('camp');
   else climber.resupply();
 }
 
@@ -306,6 +324,12 @@ async function cook() {
 }
 
 /** E: place an ice screw or snow picket and clip the rope to it. */
+/** Put a screw or picket in where you stand and clip your rope to it. */
+function placeProtection(kind) {
+  expedition.protect(kind);
+  myPiece = protection.place(expedition.anchor).id;
+}
+
 async function protect() {
   if (minigame.busy || climber.mode === Mode.FLY) return;
   const p = expedition.canProtect();
@@ -314,7 +338,7 @@ async function protect() {
     return;
   }
   if (await job(p.kind)) {
-    expedition.protect(p.kind);
+    placeProtection(p.kind);
     hud.showMessage(p.kind === 'screw' ? 'Screw in, rope clipped' : 'Picket in, rope clipped');
   } else hud.showMessage(p.kind === 'screw' ? "The screw won't bite" : "The picket won't hold");
 }
@@ -324,9 +348,10 @@ async function protect() {
 let muted = false;
 const menu = new ControlsMenu(document.getElementById('menu'), {
   isMuted: () => muted,
-  onMute: () => { muted = audio.muted = wind.muted = !muted; },
+  onMute: () => { muted = audio.muted = wind.muted = danger.muted = !muted; },
 });
 menu.onClose = () => relock();
+menu.onGetUp = () => climber.getUp();
 let releasing = false;
 let lostLockAt = -1e9;
 function release() {
@@ -363,18 +388,36 @@ if (params.has('signals')) {
   for (const id of ['whistle', 'strobe']) expedition.toggle(id);
   climber.pack.extra.flares = 3;
 }
+// ?allgear: carry everything, two oxygen bottles on and flowing, to see it all on the climber.
+if (params.has('allgear')) {
+  climber.pack.size = 'pack70';
+  for (const id of ['gps', 'monitor', 'map', 'axe', 'crampons_pro', 'rope', 'screws', 'pickets', 'probe', 'tent', 'bivy', 'shovel', 'down_suit', 'goggles', 'radio', 'whistle', 'strobe']) expedition.toggle(id);
+  climber.pack.bottles = [tuning.pack.oxygen.litres, tuning.pack.oxygen.litres];
+  climber.phys.flow = tuning.o2_flows.find((f) => f > 0) ?? 2;
+}
+// ?hold=gps|map|monitor: hold a device up.
+if (params.has('hold')) hud.hold(params.get('hold'));
 if (params.has('place')) teleport(+params.get('place'));
+// Dev: stand on the nearest ledge of a kind (verglas, rotten, sound) to see its footing.
+if (params.has('ledge')) {
+  const p = climber.position;
+  const l = ledgesNear(hm, p.x, p.z, 900).filter((q) => q.kind === params.get('ledge') && q.slope < 40)
+    .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+  if (l) climber.placeAt(l.x, l.z, l.x, l.z - 1);
+}
 if (params.has('rope')) climber.toggleClip();
 if (params.has('yaw')) climber.yaw = (+params.get('yaw') * Math.PI) / 180;
 if (params.has('pitch')) view.pitch = (+params.get('pitch') * Math.PI) / 180;
 if (params.has('dist')) view.distance = +params.get('dist');
 if (params.has('fp')) view.firstPerson = true;
 if (params.has('fly')) { climber.toggleFly(); climber.position.y += +params.get('fly'); }
+if (params.has('injure')) for (const hit of params.get('injure').split(',')) climber._injure(+hit);
 if (params.has('lamp')) headlamp.set(+params.get('lamp'));
 if (params.has('hour')) climber.mountainSeconds = +params.get('hour') * 3600;
 climber.weather = new Weather(params.has('seed') ? +params.get('seed') : Math.floor(Math.random() * 1e9), climber.mountainSeconds);
 if (params.has('weather')) climber.weather.force(params.get('weather'), 48);
 if (params.has('avalanche')) climber.avalanches.releaseAbove(climber.position.x, climber.position.z);
+if (params.has('crack')) { const crown = climber.avalanches.findAbove(climber.position.x, climber.position.z); if (crown) climber._crackAbove(crown); }
 
 // The mountain's own shadows (ridges, buttresses, steps) and darker gullies, on
 // everything lit. ?flatlight leaves them off, to compare.
@@ -390,6 +433,7 @@ document.getElementById('go').onclick = () => {
   start.remove();
   audio.start();
   wind.start();
+  danger.start();
   // First stop: the Base Camp store, to gear up.
   openInventory(true);
 };
@@ -554,6 +598,7 @@ function animateModel(dt) {
   model.visible = !(view.firstPerson && c.mode === Mode.FLY);
   model.firstPerson = view.firstPerson;
   heldGear();
+  model.setGear(gearLook.update(c, hud.held, dt, inventory.open));
   const [gx, gz] = hm.gradient(c.position.x, c.position.z, 3);
   const riseAlong = (yaw) => -(gx * Math.sin(yaw) + gz * Math.cos(yaw));
   // Collapsed in the cold you crumple where you stand (and lie there if nobody comes).
@@ -649,6 +694,18 @@ const _harness = new THREE.Vector3();
 const _clip = new THREE.Vector3();
 const _ropeDir = new THREE.Vector3();
 
+/** Your rope from the harness to the screw or picket you put in, while you're near it. */
+function updateProtection(dt) {
+  const on = myPiece != null && expedition.protectedNow && !climber.dead;
+  if (on) {
+    model.updateMatrixWorld(true);
+    model.joints.pelvis.localToWorld(_protHarness.set(0, 0.02, -0.17));
+  }
+  // Other climbers (multiplayer) go in this list the same way.
+  protection.update(dt, [{ id: 'me', harness: on ? _protHarness : null, piece: myPiece }]);
+}
+const _protHarness = new THREE.Vector3();
+
 /** The tether from the harness to the fixed rope: slides along it, locks on it in a fall. */
 function updateTether(dt) {
   const c = climber;
@@ -666,7 +723,7 @@ function updateTether(dt) {
     length = c.fall.rope.length;
   } else {
     id = c.ropeId;
-    ropes.pointAt(id, ropes.nearestOn(id, c.position).s, _clip);
+    ropes.visualPointAt(id, ropes.nearestOn(id, c.position).s, _clip);
     length = tuning.rope_leash_m + 1;
   }
   ropes.tangentAt(id, ropes.nearestOn(id, _clip).s, _ropeDir);
@@ -716,6 +773,8 @@ function frame(now) {
   featureMeshes.update(climber.position, climber);
   animateModel(dt);
   updateTether(dt);
+  updateProtection(dt);
+  ropeMesh.update(camera.position);
   detailPatch.userData.update(climber.position);
   glacierBlocks.update(camera.position);
   updateCamera(dt);
@@ -725,6 +784,8 @@ function frame(now) {
   avalancheMesh.update();
   camps.userData.update(now / 1000);
   hud.update(dt);
+  for (const cue of climber.cues.splice(0)) { danger.play(cue, camera); warnings.cue(cue); }
+  warnings.update(dt, camera);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
@@ -736,7 +797,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__k2 = { climber, signals: climber.signals, signalView, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
+window.__k2 = { climber, protection, placeProtection, ropeMesh, signals: climber.signals, signalView, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
 
 /** Read and clear a one-off flag that survives a reload. */
 function takeFlag(key) {

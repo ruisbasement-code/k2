@@ -23,6 +23,22 @@ canvas#c { display: block; width: 100vw; height: 100vh; }
   backdrop-filter: blur(var(--blur)) saturate(0.6); -webkit-backdrop-filter: blur(var(--blur)) saturate(0.6);
   mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 15%));
   -webkit-mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 15%)); }
+/* Cold: frost ferns creep in from the edges as you chill, with a blue-white tint. */
+#frost { position: fixed; inset: 0; pointer-events: none; --inner: 78%; --tint: 0; opacity: 0; transition: opacity .4s;
+  background-size: cover; background-position: center; background-color: rgba(200, 225, 255, var(--tint));
+  mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 22%));
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent var(--inner), #000 calc(var(--inner) + 22%)); }
+/* A marker on a slope that has cracked above you, or an arrow at the edge toward it. */
+#threat { position: fixed; left: 0; top: 0; pointer-events: none; opacity: 0; display: none; }
+#threat.on { display: block; }
+#threat .label, #threat .arrow { position: absolute; left: 0; top: 0; }
+#threat .label { transform: translate(-50%, -64px); padding: 2px 9px; border-radius: 10px; white-space: nowrap; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: #fff; background: rgba(200, 40, 30, .8); border: 1px solid rgba(255, 140, 120, .9); box-shadow: 0 0 14px rgba(255, 60, 40, .6); animation: threat-pulse .5s ease-in-out infinite alternate; }
+#threat.edge .label { transform: translate(-50%, -150%); }
+#threat .arrow { width: 0; height: 0; margin: -14px 0 0 -12px; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 24px solid rgba(255, 70, 50, .95);
+  transform-origin: 12px 14px; filter: drop-shadow(0 0 6px rgba(255, 60, 40, .8)); }
+#threat:not(.edge) .arrow { margin-top: -38px; }
+@keyframes threat-pulse { from { opacity: .75; } to { opacity: 1; } }
 kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font: 11px ui-monospace, monospace; color: var(--text); }
 #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; background: #0d1117; }
 
@@ -38,6 +54,13 @@ kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); bord
 .vital[hidden] { display: none; }
 #health-cap, #stamina-cap { position: absolute; top: 0; width: 2px; height: 100%; margin-left: -1px; background: rgba(0, 0, 0, .55); }
 #health-cap[hidden] { display: none; }
+/* Permanent injuries: the part of the bar you can never heal back, hatched. */
+#health-scar { position: absolute; top: 0; right: 0; height: 100%; background: repeating-linear-gradient(-45deg, rgba(120, 20, 25, .9) 0 3px, rgba(40, 8, 10, .9) 3px 6px); }
+#health-scar[hidden], #health-max[hidden] { display: none; }
+#health-max { flex: none; font: 600 10px ui-monospace, monospace; color: #ff9a9a; text-shadow: 0 1px 2px #000; min-width: 22px; }
+#health-loss { position: absolute; left: 100%; margin-left: 4px; font: 700 11px ui-monospace, monospace; color: #ff6b6b; text-shadow: 0 1px 2px #000; white-space: nowrap; opacity: 0; transition: opacity .4s; }
+#health-loss.show { opacity: 1; transition: none; }
+.vital { position: relative; }
 #vital-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 #vital-chips span, .conds span { padding: 0 7px; border-radius: 9px; font-size: 11px; background: rgba(255, 170, 60, .25); border: 1px solid rgba(255, 170, 60, .5); }
 #vital-chips span.bad, .conds span.bad { background: rgba(255, 80, 70, .3); border-color: rgba(255, 80, 70, .7); }
@@ -220,3 +243,12 @@ button#set-off, #menu-resume, #start button { background: var(--accent); color: 
 #hotbar .hs.on { border-color: var(--accent); background: rgba(255, 138, 61, .22); }
 #hotbar .hs.flash { border-color: #fff; }
 #hotbar:empty { display: none; }
+
+/* How long supplies last, in the pack panel. */
+.lasts .last { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.lasts .last span { color: var(--muted); }
+.lasts .last b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.lasts .last.low b { color: #ffb36b; }
+.inv-col.store .hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; line-height: 1.4; }
+.inv-foot .ghost { margin-left: auto; margin-right: 8px; }
+.stepper button:disabled { opacity: .3; cursor: default; }

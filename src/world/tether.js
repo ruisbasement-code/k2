@@ -38,28 +38,35 @@ function carabiner(color) {
 }
 
 export class Tether extends THREE.Group {
-  constructor(hm) {
+  /**
+   * @param opts.segments how many links the rope is simulated as
+   * @param opts.color the rope's colour
+   * @param opts.clipBiner false when the far end has its own carabiner (a placed screw)
+   */
+  constructor(hm, { segments = SEGMENTS, color = 0x1f6fd1, clipBiner = true } = {}) {
     super();
     this.hm = hm;
-    this.points = Array.from({ length: SEGMENTS + 1 }, () => new THREE.Vector3());
-    this.prev = Array.from({ length: SEGMENTS + 1 }, () => new THREE.Vector3());
+    this.segments = segments;
+    this.points = Array.from({ length: segments + 1 }, () => new THREE.Vector3());
+    this.prev = Array.from({ length: segments + 1 }, () => new THREE.Vector3());
     this.active = false;
     this.length = 1;
     const geo = new THREE.CylinderGeometry(RADIUS, RADIUS, 1, 6, 1, true);
-    this.cord = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0x1f6fd1, roughness: 0.7 }), SEGMENTS);
+    this.cord = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.75 }), segments);
     this.cord.castShadow = true;
     this.cord.frustumCulled = false;
     this.add(this.cord);
     this.harnessBiner = carabiner(0xe0a020);
     this.ropeBiner = carabiner(0x9a3fd0);
     this.add(this.harnessBiner, this.ropeBiner);
+    this.ropeBiner.visible = clipBiner;
     this.visible = false;
   }
 
   /** Lay the rope out from harness to clip, sagging a little. */
   _reset(harness, clip) {
-    for (let i = 0; i <= SEGMENTS; i++) {
-      const k = i / SEGMENTS;
+    for (let i = 0; i <= this.segments; i++) {
+      const k = i / this.segments;
       this.points[i].lerpVectors(harness, clip, k);
       this.points[i].y -= Math.sin(k * Math.PI) * 0.3;
       this.prev[i].copy(this.points[i]);
@@ -81,10 +88,10 @@ export class Tether extends THREE.Group {
     this.active = this.visible = true;
     this.length = length;
     const pts = this.points;
-    const seg = length / SEGMENTS;
+    const seg = length / this.segments;
     const h = Math.min(dt, 1 / 30);
     // Verlet: carry on moving, damped, with gravity.
-    for (let i = 1; i < SEGMENTS; i++) {
+    for (let i = 1; i < this.segments; i++) {
       const p = pts[i];
       _d.subVectors(p, this.prev[i]).multiplyScalar(0.96);
       this.prev[i].copy(p);
@@ -92,29 +99,29 @@ export class Tether extends THREE.Group {
       p.y += GRAVITY * h * h;
     }
     pts[0].copy(harness);
-    pts[SEGMENTS].copy(clip);
+    pts[this.segments].copy(clip);
     if (harness.distanceTo(clip) >= length * 0.995) {
       // Pulled tight: the rope runs straight from harness to clip.
-      for (let i = 1; i < SEGMENTS; i++) {
-        pts[i].lerpVectors(harness, clip, i / SEGMENTS);
+      for (let i = 1; i < this.segments; i++) {
+        pts[i].lerpVectors(harness, clip, i / this.segments);
         this.prev[i].copy(pts[i]);
       }
     }
     for (let it = 0; it < ITERATIONS; it++) {
-      for (let i = 0; i < SEGMENTS; i++) {
+      for (let i = 0; i < this.segments; i++) {
         const a = pts[i], b = pts[i + 1];
         _d.subVectors(b, a);
         const dist = _d.length() || 1e-6;
         // A rope only resists stretching; it can bunch up freely.
         if (dist <= seg) continue;
         const diff = (dist - seg) / dist;
-        const wa = i === 0 ? 0 : 0.5, wb = i + 1 === SEGMENTS ? 0 : 0.5;
+        const wa = i === 0 ? 0 : 0.5, wb = i + 1 === this.segments ? 0 : 0.5;
         const sum = wa + wb || 1;
         a.addScaledVector(_d, (diff * wa) / sum);
         b.addScaledVector(_d, (-diff * wb) / sum);
       }
       // Lie on the snow rather than through it.
-      for (let i = 1; i < SEGMENTS; i++) {
+      for (let i = 1; i < this.segments; i++) {
         const p = pts[i];
         const ground = this.hm.groundAt(p.x, p.z) + RADIUS + 0.02;
         if (p.y < ground) {
@@ -125,7 +132,7 @@ export class Tether extends THREE.Group {
         }
       }
     }
-    for (let i = 0; i < SEGMENTS; i++) {
+    for (let i = 0; i < this.segments; i++) {
       _a.copy(pts[i]);
       _b.copy(pts[i + 1]);
       _d.subVectors(_b, _a);
@@ -148,6 +155,6 @@ export class Tether extends THREE.Group {
   /** How tight the tether is, 0 slack to 1 taut. */
   get tension() {
     if (!this.active) return 0;
-    return Math.min(this.points[0].distanceTo(this.points[SEGMENTS]) / this.length, 1);
+    return Math.min(this.points[0].distanceTo(this.points[this.segments]) / this.length, 1);
   }
 }
