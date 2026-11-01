@@ -188,14 +188,6 @@ export class Climber {
      */
     this.poles = { inHand: false };
     this._polesWarned = false;
-    /** Grip on the axe while hanging on a steep wall, 0..100. */
-    this.grip = 100;
-    /** On snow or ice too steep to walk, hanging on the axe between swings. */
-    this.onAxeWall = false;
-    /** Swing in progress: fraction left (0 none) and its direction. */
-    this._swing = 0;
-    this._swingDir = new THREE.Vector3();
-    this._swingQueued = false;
     this.trail = new SnowTrail();
     this.rockfall = new Rockfall(hm);
     /** The mountain's weather (sim/weather.js), or null for none. */
@@ -273,10 +265,10 @@ export class Climber {
   get maxClimbDeg() {
     const snowIce = AXE_GROUND.has(this.surface?.key);
     // The rope catches a fall, but on snow and ice it doesn't pull you up: you
-    // still kick steps and plant the axe, and swing up the steepest of it.
-    // On rock (and walls too steep to swing up) you jumar up the rope.
-    if (this.clipped && (!snowIce || this.slope > tuning.axe_wall_max_deg)) return 90;
-    // Kicking steps and planting the axe gets you up steeper snow and ice.
+    // still need the axe in your hand to kick steps and plant it as you go.
+    // On rock (and walls too steep even with the axe) you jumar up the rope.
+    if (this.clipped && (!snowIce || this.slope > tuning.axe_climb_max_deg)) return 90;
+    // Holding the axe, planting it as you go, gets you up steep snow and ice.
     if (this.axeReady && snowIce) return tuning.axe_climb_max_deg;
     return tuning.no_rope_max_deg;
   }
@@ -304,7 +296,7 @@ export class Climber {
       a.drawing = tuning.axe_draw_s;
       const swapped = this.poles.inHand;
       this.poles.inHand = false;
-      if (!this.falling) this.onMessage(`${swapped ? 'Poles strapped to your pack. ' : ''}Ice axe in hand: steeper snow and ice, and a real self-arrest.`);
+      if (!this.falling) this.onMessage(`${swapped ? 'Poles strapped to your pack. ' : ''}Ice axe in hand: you can climb steep snow and ice, and self-arrest if you fall.`);
     }
   }
 
@@ -347,86 +339,10 @@ export class Climber {
         this._polesWarned = true;
         this.onMessage(this.axe.have
           ? 'Your poles skate on ground this steep. Get the ice axe out (I) or you will slip.'
-          : 'Your poles skate on ground this steep. Tread very carefully.');
+          : 'Your poles skate on ground this steep, and without an axe you cannot self-arrest. Tread very carefully.');
       }
     } else if (this.slope < tuning.poles_steep_deg - 3 || !this.polesReady) {
       this._polesWarned = false;
-    }
-  }
-
-  /** How far through the current axe swing, 0..1; 0 when hanging between swings. */
-  get swingProgress() {
-    return this._swing > 0 ? 1 - this._swing : 0;
-  }
-
-  /** Click: swing the axe in and pull up (on a wall too steep to walk). */
-  swingAxe() {
-    this._swingQueued = true;
-  }
-
-  /**
-   * Hanging on the axe on a steep wall. Each swing moves you up (or down, holding S)
-   * the slope; between swings your grip drains. Real seconds for the swing and grip.
-   */
-  _axeWall(dtM, dt, gx, gz, input) {
-    const t = tuning;
-    this.mode = Mode.STEEP;
-    this.pace = 0;
-    // A click late in a swing is kept for the next one, so a steady rhythm of
-    // clicks climbs smoothly; one made early in a swing is ignored.
-    if (this._swingQueued && this._swing > tuning.axe_swing_buffer) this._swingQueued = false;
-    const queued = this._swingQueued && this._swing <= 0;
-    if (queued) this._swingQueued = false;
-    if (queued && !this.body.exhausted) {
-      const up = new THREE.Vector3(gx, 0, gz).normalize();
-      const across = new THREE.Vector3(-up.z, 0, up.x);
-      const sx = (input.x ?? 0) * 0.7;
-      const down = (input.y ?? 0) < -0.3;
-      this._swingDir.copy(up).multiplyScalar(down ? -1 : 1).addScaledVector(across, -sx).normalize();
-      this._swing = 1;
-      const thin = 1 / Math.max(Pace.oxygenVsReference(this.position.y), 0.3);
-      this.body.stamina = Math.max(0, this.body.stamina - t.axe_swing_stamina * thin);
-      this.grip = Math.min(100, this.grip + 4);
-      const skate = t.axe_skate_chance * (this.surface.key === 'ice' ? 3 : 1) * (this.pushing ? 2 : 1);
-      if (Math.random() < skate) {
-        this._swing = 0;
-        this.grip = Math.max(0, this.grip - t.axe_skate_grip);
-        this.shake = Math.max(this.shake, 0.6);
-        this.onMessage('The pick skated off! Swing again.');
-      }
-    }
-    if (this._swing > 0) {
-      const before = 1 - this._swing;
-      this._swing = Math.max(0, this._swing - dt / t.axe_swing_s);
-      // The pull eases in and out: slow as the pick bites, quick through the
-      // middle, settling as you plant your feet. Same distance per swing.
-      const ease = (p) => p * p * (3 - 2 * p);
-      const step = ease(1 - this._swing) - ease(before);
-      // Along the slope: the horizontal part of a step up a slope this steep.
-      const slope = Math.atan(Math.hypot(gx, gz));
-      this.position.addScaledVector(this._swingDir, t.axe_swing_m * step * Math.cos(slope));
-      this.hm.clampInside(this.position);
-      this.position.y = this._groundAt(this.position.x, this.position.z);
-      if (this.clipped) this._keepOnLeash();
-      this.heading = Math.atan2(-gx, -gz); // facing into the slope
-      this.moving = true;
-      this.effort = t.push_effort;
-    } else if (this.clipped) {
-      // Clipped in, you can sit back on the rope between swings and get your breath back.
-      this.grip = Math.min(100, this.grip + t.axe_grip_regen_per_s * dt);
-      this.moving = false;
-      this.effort = 0;
-    } else {
-      // Hanging: arms and calves burn; more on steeper ground and when spent.
-      const steep = 1 + (this.slope - 45) / 20;
-      const tired = this.body.stamina < 20 ? 2 : 1;
-      this.grip = Math.max(0, this.grip - t.axe_grip_drain_per_s * Math.max(steep, 0.6) * tired * dt);
-      this.effort = 0.9;
-    }
-    if (this.grip <= 0 || (this.body.exhausted && this._swing <= 0)) {
-      this.grip = 0;
-      if (this.clipped) this._startRopeFall('Your grip gave out and you came off the wall! The rope will catch you.');
-      else this._startFall(gx, gz, "Your grip gave out and you came off the wall! Hold Space to arrest with the axe.", { back: false, head: false });
     }
   }
 
@@ -495,16 +411,19 @@ export class Climber {
    * Collapse at very low health in the cold: you drop where you stand and cannot
    * move, and the cold kills you after a while unless someone revives you.
    */
-  _checkCollapse() {
+  _checkCollapse(frozen = false) {
     const t = tuning;
-    if (this.collapsed || this.dead || this.falling || this.mode === Mode.FLY) return;
-    if (this.health > t.collapse_below_health || this.phys.chill < t.collapse_chill) return;
-    const hours = t.collapse_hours;
+    if (this.collapsed || this.dead || this.falling || this.mode === Mode.FLY) return false;
+    if (!frozen && (this.health > t.collapse_below_health || this.phys.chill < t.collapse_chill)) return false;
+    // Cooled to the brink: you go down where you are rather than dying on the spot.
+    if (frozen) this.health = Math.min(this.health, t.collapse_below_health);
+    const hours = t.collapse_hours * (frozen ? 0.5 : 1);
     this.collapsed = { hours, hoursLeft: hours, startHealth: Math.max(this.health, 1) };
     this.velocity.set(0, 0, 0);
     this.moving = false;
     this.effort = 0;
     this.onMessage('You collapse in the snow, too cold and weak to go on. You need someone to find you.');
+    return true;
   }
 
   /** Lying collapsed: you cannot move, and the cold counts down to your death. */
@@ -522,7 +441,9 @@ export class Climber {
       altitude: this.position.y, effort: 0, air: this.air, pack: this.pack,
       outOfWind: this.sheltered, health: this.health,
     });
-    if (r.damage === Infinity) {
+    // Cold to the core: the freeze clock below is what kills you now.
+    if (r.frozen) this.phys.core = tuning.hypothermia_death_c + 0.05;
+    else if (r.damage === Infinity) {
       this._hurt(Infinity, r.cause);
       return;
     }
@@ -672,6 +593,7 @@ export class Climber {
       altitude: this.position.y, effort, air: this.air, pack: this.pack, sheltered, sleeping,
       outOfWind: !sheltered && this.sheltered, inCamp: !!this._campNearby(), health: this.health,
     });
+    if (r.frozen && !sleeping && !sheltered && this._checkCollapse(true)) return;
     if (r.damage > 0) this._hurt(r.damage, r.cause);
     if (!sleeping && !sheltered) this._checkCollapse();
     if (sleeping || sheltered) this.body.capMult = this.phys.modifiers(this.pack.kg).staminaCap;
@@ -839,7 +761,14 @@ export class Climber {
 
   /** Sliding with no chance to dig in yet: too fast to self-arrest. */
   get runaway() {
-    return this.falling && !this.tumbling && !this.fall.rope && this.velocity.length() >= this._arrestTool().maxSpeed;
+    return this.falling && !this.tumbling && !this.fall.rope && this.axeReady && this.velocity.length() >= this._arrestTool().maxSpeed;
+  }
+
+  /** What to tell someone who has just started sliding. */
+  _arrestHint() {
+    if (this.axeReady) return 'Hold Space to self-arrest.';
+    if (this.axe.have) return 'Get the ice axe in your hand (I) to self-arrest!';
+    return 'With no ice axe there is nothing to dig in with!';
   }
 
   /** How you are sliding, e.g. "head-first on your back". */
@@ -963,22 +892,10 @@ export class Climber {
     const clipped = this.clipped;
     // On steep ground, clipped in means jumaring.
     if (clipped && this.groundMode !== Mode.WALK) this.mode = Mode.ROPE;
-    // Clipped in or not: the rope only protects you while you swing up. A little
-    // hysteresis so the edge of a wall doesn't flick you on and off it.
-    const hy = this.onAxeWall ? tuning.mode_hysteresis_deg : 0;
-    this.onAxeWall = axeBites && !this.onLedge
-      && this.slope >= tuning.axe_climb_max_deg - hy && this.slope <= tuning.axe_wall_max_deg + hy;
-    if (this.onAxeWall) {
-      this._axeWall(dtM, dt, gx, gz, input);
-      return;
-    }
-    // Off the wall the grip comes back.
-    this.grip = Math.min(100, this.grip + tuning.axe_grip_regen_per_s * dt);
-    this._swing = 0;
-    this._swingQueued = false;
     if (!clipped && footing > standLimit) {
-      // Too steep for this surface to hold you without a rope.
-      this._startFall(gx, gz, `Too steep to stand on ${this.surface.label.toLowerCase()}. You're sliding! Hold Space to self-arrest.`);
+      // Too steep for this surface to hold you without a rope (or the axe in hand).
+      const canAxe = AXE_GROUND.has(this.surface.key) && footing <= tuning.axe_stand_deg && this.axe.have && !this.axeReady;
+      this._startFall(gx, gz, `Too steep to stand on ${this.surface.label.toLowerCase()}${canAxe ? ' without the ice axe in your hand' : ''}. You're sliding! ${this._arrestHint()}`);
       return;
     }
 
@@ -1107,7 +1024,7 @@ export class Climber {
     if (this._footingSlope(this.slope, this.onLedge) <= t.climb_start_deg) return false;
 
     const clipped = this.clipped;
-    const why = (what) => clipped ? `${what} The rope will catch you.` : `${what} Hold Space to self-arrest.`;
+    const why = (what) => clipped ? `${what} The rope will catch you.` : `${what} ${this._arrestHint()}`;
     if (this.slope > 20 && isLoose(p.x, p.z, this.surface.key) && Math.random() < t.crumble_chance) {
       // The hold breaks away and goes down the slope.
       const down = new THREE.Vector3(-gx, 0, -gz).normalize();
@@ -1152,7 +1069,7 @@ export class Climber {
     if (this.clipped || grade >= -0.05 || this.groundMode !== Mode.WALK) return;
     const perMin = Pace.tripChancePerMin(this.slope, this.pushing) * this.mods.slip;
     if (perMin > 0 && Math.random() < (perMin * dtM) / 60) {
-      this._startFall(gx, gz, 'You tripped running downhill and pitched forward! Hold Space to self-arrest.', { head: true, back: false, speed: this.pace });
+      this._startFall(gx, gz, `You tripped running downhill and pitched forward! ${this._arrestHint()}`, { head: true, back: false, speed: this.pace });
     }
   }
 
@@ -1164,7 +1081,7 @@ export class Climber {
     if (this.polesOnSteep) perMin *= tuning.poles_steep_slip_mult;
     if (perMin <= 0) return;
     if (Math.random() < (perMin * dtM) / 60) {
-      this._startFall(gx, gz, `You slipped on the ${this.surface.label.toLowerCase()}! Hold Space to self-arrest.`);
+      this._startFall(gx, gz, `You slipped on the ${this.surface.label.toLowerCase()}! ${this._arrestHint()}`);
     }
   }
 
@@ -1211,12 +1128,12 @@ export class Climber {
   }
 
   /**
-   * What you self-arrest with. For now bare hands and boots; an ice axe (later)
-   * will return a higher maxSpeed and grip here.
+   * What you self-arrest with: only the ice axe, held in your hand. Without it
+   * there is nothing to dig in with and the slide carries you on.
    */
   _arrestTool() {
     const t = tuning;
-    if (!this.axeReady) return { name: 'hands', maxSpeed: t.self_arrest_below_m_s, grip: 1 };
+    if (!this.axeReady) return { name: 'none', maxSpeed: 0, grip: 0 };
     // The pick bites over a moment; on hard ice it mostly skates.
     const bite = Math.min((this.fall?.axeTime ?? 0) / t.axe_bite_s, 1);
     const grip = this.surface?.key === 'ice' ? t.axe_ice_grip : t.axe_grip;
@@ -1318,7 +1235,7 @@ export class Climber {
         }
       }
       if (this.fall.rope && this._ropeConstraint(p, v, h)) touching = true;
-      if (arrest && this.fall.phase === 'slide') this._rollOver(h);
+      if (arrest && this.fall.phase === 'slide' && this.axeReady) this._rollOver(h);
       const speed = v.length();
       if (speed > t.max_fall_speed_m_s) v.multiplyScalar(t.max_fall_speed_m_s / speed);
       this.fall.distance += p.distanceTo(before);
@@ -1398,7 +1315,7 @@ export class Climber {
     this.fall.phase = 'slide';
     this.fall.time = 0;
     this.shake = 1;
-    this.onMessage(`The anchor on the ${name} ripped out! You're falling unroped. Hold Space to self-arrest!`);
+    this.onMessage(`The anchor on the ${name} ripped out! You're falling unroped. ${this._arrestHint()}`);
   }
 
     _caughtByRope() {
@@ -1542,7 +1459,7 @@ export class Climber {
     const hard = c.gust - W.knockdown_m_s;
     if (hard > 0 && !this.clipped && steep && Math.random() < W.knockdown_per_s * (hard / 6) * dt) {
       const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
-      this._slip(gx, gz, 'A gust threw you off balance! Hold Space to self-arrest.');
+      this._slip(gx, gz, `A gust threw you off balance! ${this._arrestHint()}`);
     }
   }
 
@@ -1689,7 +1606,7 @@ export class Climber {
         // Down and out over the lee side with the falling snow.
         const lee = lip.cornice.lee;
         this.position.y = this.hm.groundAt(x, z);
-        this._startFall(-lee.x - gx * 0.5, -lee.z - gz * 0.5, `The ${lip.cornice.kind === 'overhang' ? 'snow overhang' : 'cornice'} broke off under you! Hold Space to self-arrest.`, { speed: 4, back: true });
+        this._startFall(-lee.x - gx * 0.5, -lee.z - gz * 0.5, `The ${lip.cornice.kind === 'overhang' ? 'snow overhang' : 'cornice'} broke off under you! ${this._arrestHint()}`, { speed: 4, back: true });
         this.velocity.y -= 2;
         return true;
       }
@@ -1908,7 +1825,8 @@ export class Climber {
     f.phase = 'slide';
     f.orient = { back: Math.random() < 0.5, head: Math.random() < 0.5 };
     f.turning = 0;
-    if (this.velocity.length() < this._arrestTool().maxSpeed * 1.5) {
+    if (!this.axeReady) this.onMessage(`Sliding ${this.slideHow()}. ${this._arrestHint()}`);
+    else if (this.velocity.length() < this._arrestTool().maxSpeed * 1.5) {
       this.onMessage(`Sliding ${this.slideHow()}. Hold Space to dig in as you slow!`);
     }
   }

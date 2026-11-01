@@ -35,8 +35,6 @@ kbd { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); bord
 #health-fill { height: 100%; background: #e2575b; border-radius: 3px; transition: width .3s; }
 #stamina-fill { height: 100%; background: #e9eef5; border-radius: 3px; }
 #stamina-fill.low { background: var(--low); }
-#grip-fill { height: 100%; background: #8fd0ff; border-radius: 3px; }
-#grip-fill.low { background: var(--low); }
 .vital[hidden] { display: none; }
 #health-cap, #stamina-cap { position: absolute; top: 0; width: 2px; height: 100%; margin-left: -1px; background: rgba(0, 0, 0, .55); }
 #health-cap[hidden] { display: none; }

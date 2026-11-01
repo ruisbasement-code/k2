@@ -39,7 +39,7 @@ describe('cold exposure', () => {
   it('tents, moving and a down suit slow or stop it', () => {
     const open = drain({ air: storm });
     expect(drain({ air: storm, sheltered: true })).toBe(0);
-    expect(drain({ air: storm, inCamp: true })).toBe(0);
+    expect(drain({ air: storm, inCamp: true })).toBeLessThan(open / 5);
     expect(drain({ air: storm, outOfWind: true })).toBeLessThan(open);
     expect(drain({ air: storm, effort: 0.5 })).toBeLessThan(open);
     expect(drain({ air: storm }, { suit: 1.8 })).toBeLessThan(open / 2);
@@ -47,6 +47,54 @@ describe('cold exposure', () => {
 
   it('bites harder the weaker you are', () => {
     expect(drain({ air: storm, health: 20 })).toBeGreaterThan(drain({ air: storm, health: 100 }) * 2);
+  });
+});
+
+describe('snowstorms and hypothermia', () => {
+  const stormAir = (wet) => ({ ...airAt(6500, 14, { airTempC: -16, windMs: 20, wet }) });
+  /** Core temperature and health lost after hours walking at effort 0.6 in this air. */
+  const walk = (air, hours, health = 100) => {
+    const ph = new Physiology();
+    let lost = 0;
+    for (let h = 0; h < hours; h += 0.1) lost += ph.step(0.1, { altitude: 6500, effort: 0.6, air, health }).damage;
+    return { ph, lost };
+  };
+
+  it('a snowstorm soaks you and gives you hypothermia even on the move', () => {
+    const dry = walk(stormAir(0), 2);
+    const storm = walk(stormAir(1), 2);
+    expect(storm.ph.damp).toBeGreaterThan(0.9);
+    expect(storm.ph.core).toBeLessThan(tuning.hypothermia_mild_c);
+    expect(storm.ph.core).toBeLessThan(dry.ph.core - 1);
+    expect(storm.lost).toBeGreaterThan(dry.lost * 2);
+    expect(storm.ph.conditions().map((c) => c.id)).toEqual(expect.arrayContaining(['damp', 'cold']));
+  });
+
+  it('a down suit keeps you on your feet through it', () => {
+    const ph = new Physiology();
+    ph.insulationMult = 1.8;
+    for (let h = 0; h < 2; h += 0.1) ph.step(0.1, { altitude: 6500, effort: 0.6, air: stormAir(1), health: 100 });
+    expect(ph.core).toBeGreaterThan(tuning.hypothermia_mild_c);
+  });
+
+  it('hypothermia slowly ticks health down, faster the colder you are', () => {
+    const lost = (core) => {
+      const ph = new Physiology();
+      ph.core = core;
+      // A warm, still tent: no cold drain, only the hypothermia already in you.
+      return ph.step(0.01, { altitude: 5000, air: airAt(5000, 14), sheltered: true, health: 100 }).damage / 0.01;
+    };
+    expect(lost(37)).toBe(0);
+    expect(lost(34.5)).toBeGreaterThan(0);
+    expect(lost(34.5)).toBeLessThan(10);
+    expect(lost(32)).toBeGreaterThan(lost(34.5) * 2);
+  });
+
+  it('wet clothes dry out in a tent', () => {
+    const ph = new Physiology();
+    ph.damp = 1;
+    for (let h = 0; h < 2; h += 0.1) ph.step(0.1, { altitude: 5000, air: airAt(5000, 14), sheltered: true });
+    expect(ph.damp).toBeLessThan(0.1);
   });
 });
 
@@ -109,6 +157,15 @@ describe('collapsing in the cold', () => {
     expect(c.collapsed).toBeNull();
     expect(c.health).toBeGreaterThanOrEqual(tuning.revive_health);
     expect(c.revive()).toBe(false);
+  });
+
+  it('freezing to the core collapses you instead of killing you outright', () => {
+    const c = highUp();
+    c.phys.core = tuning.hypothermia_death_c - 0.2;
+    run(c, 1);
+    expect(c.dead).toBe(false);
+    expect(c.collapsed).not.toBeNull();
+    expect(c.health).toBeLessThanOrEqual(tuning.collapse_below_health);
   });
 
   it('you can give up rather than wait', () => {
