@@ -104,7 +104,7 @@ function relief(hm, x, z, y, camps, wild = 1) {
     // Softly limited, so a summit or a big cliff does not grow a spike.
     // On the rope's line too, a little: you climb over the spur's crests and
     // round its buttresses, not up a smooth ramp.
-    off += (0.45 + 0.55 * wild) * rock * smooth(8, 22, slope) * 32 * Math.tanh(sharp / 32);
+    off += (0.3 + 0.7 * wild) * rock * smooth(8, 22, slope) * 24 * Math.tanh(sharp / 24);
   }
 
   // Benches: step the face into shelves and rock bands. Height bands are warped so
@@ -126,7 +126,7 @@ function relief(hm, x, z, y, camps, wild = 1) {
       // a short, steep rock step up to the next.
       const sharpStep = (smooth(0.62, 0.97, t) - t + 0.31) * 0.92;
       // Near the rope the steps are still real rock steps to climb, just shorter.
-      const k = 0.45 + 0.55 * wild;
+      const k = 0.35 + 0.65 * wild;
       off += (gentle * (1 - k) + sharpStep * k) * H * face * where;
     }
   }
@@ -142,7 +142,7 @@ function relief(hm, x, z, y, camps, wild = 1) {
       rib += ridged(px * 0.028, pz * 0.028, 111) + 0.5 * ridged(px * 0.045, pz * 0.045, 113);
     }
     rib = rib / 7 / 1.5 - 0.45;
-    off += steep * rib * (12 + 5 * wild + (10 + 3 * wild) * smooth(40, 60, slope));
+    off += steep * rib * (10 + 4 * wild + (8 + 2 * wild) * smooth(40, 60, slope));
   }
 
   // Rock buttresses and outcrops. Away from the rope most are blocky towers: steep

@@ -554,7 +554,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   rock = mix(rock, vec3(0.14, 0.13, 0.13), smoothstep(6800.0, 7400.0, h) * (1.0 - smoothstep(7400.0, 7700.0, h)) * 0.6);
   rock *= 0.93 + 0.14 * (medium - 0.5) * mid + 0.12 * (fine - 0.5) * near;
   // Dark water and varnish streaks down the faces, pale lighter blocks between joints.
-  rock *= 1.0 - 0.28 * smoothstep(0.52, 0.75, streaks) * mid - 0.12 * smoothstep(0.55, 0.8, streaksNear) * near;
+  rock *= 1.0 - 0.1 * smoothstep(0.52, 0.75, streaks) * mid - 0.08 * smoothstep(0.55, 0.8, streaksNear) * near;
   float blockTone = hash12(floor(vec2(acrossM, p.y) * 0.18));
   rock *= 1.0 + (blockTone - 0.5) * 0.08 * near;
   rock *= 1.0 - 0.4 * blockCrack * near - 0.25 * jointCrack;
@@ -598,7 +598,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   snowAmt += steepMix * near * patches;
   // The edge between snow and rock runs down the fall line (snow lies in runnels
   // between rock ribs) and is soft, not a hard blotch outline.
-  snowAmt = smoothstep(0.22, 0.72, snowAmt + (streaks - 0.5) * 0.3 * mid + (medium - 0.5) * 0.08);
+  snowAmt = smoothstep(0.22, 0.72, snowAmt + (big - 0.5) * 0.25 + (medium - 0.5) * 0.06);
   // Wind ripples (sastrugi) across the prevailing westerly, and soft runnels on steep snow.
   float ripples = grain > 0.0 ? mix(0.5, fbm(vec2(p.x * 0.09, p.z * 0.9), 3, gFoot * 0.9), grain) : 0.5;
   float runnels = smoothstep(30.0, 50.0, slope) * near;
@@ -609,7 +609,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
 
   // Hard blue ice on steep faces high up, where snow does not stay.
   float iceAmt = smoothstep(33.0, 40.0, slope) * smoothstep(60.0, 50.0, slope)
-    * smoothstep(5700.0, 6300.0, h) * smoothstep(0.45, 0.7, big + (streaks - 0.5) * 0.3);
+    * smoothstep(5700.0, 6300.0, h) * smoothstep(0.45, 0.7, big);
 
   // Hard ice: blue-grey, darker where it is clearest, with white fractures and bubble streaks.
   vec3 ice = mix(vec3(0.46, 0.58, 0.68), vec3(0.66, 0.75, 0.82), smoothstep(0.35, 0.7, streaks));
@@ -618,7 +618,7 @@ TerrainSample terrainSample(vec3 p, vec3 n, vec4 surf, vec3 cam) {
   // Rime: wind-driven frost plastered on the windward (westerly) side of rock up
   // high, a smooth pale glaze rather than speckle.
   float windward = smoothstep(0.05, 0.6, -n.x);
-  float rime = windward * smoothstep(6600.0, 7600.0, h) * smoothstep(0.3, 0.7, big + (streaks - 0.5) * 0.4) * 0.45;
+  float rime = windward * smoothstep(6600.0, 7600.0, h) * smoothstep(0.35, 0.7, big) * 0.4;
   rock = mix(rock, vec3(0.70, 0.74, 0.79), rime);
 
   vec3 col = rock;
