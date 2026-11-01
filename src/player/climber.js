@@ -296,6 +296,11 @@ export class Climber {
     }
   }
 
+  /** How far through the current axe swing, 0..1; 0 when hanging between swings. */
+  get swingProgress() {
+    return this._swing > 0 ? 1 - this._swing : 0;
+  }
+
   /** Click: swing the axe in and pull up (on a wall too steep to walk). */
   swingAxe() {
     this._swingQueued = true;
@@ -309,9 +314,12 @@ export class Climber {
     const t = tuning;
     this.mode = Mode.STEEP;
     this.pace = 0;
-    const queued = this._swingQueued;
-    this._swingQueued = false;
-    if (queued && this._swing <= 0 && !this.body.exhausted) {
+    // A click late in a swing is kept for the next one, so a steady rhythm of
+    // clicks climbs smoothly; one made early in a swing is ignored.
+    if (this._swingQueued && this._swing > tuning.axe_swing_buffer) this._swingQueued = false;
+    const queued = this._swingQueued && this._swing <= 0;
+    if (queued) this._swingQueued = false;
+    if (queued && !this.body.exhausted) {
       const up = new THREE.Vector3(gx, 0, gz).normalize();
       const across = new THREE.Vector3(-up.z, 0, up.x);
       const sx = (input.x ?? 0) * 0.7;
@@ -330,8 +338,12 @@ export class Climber {
       }
     }
     if (this._swing > 0) {
-      const step = Math.min(this._swing, dt / t.axe_swing_s);
-      this._swing -= step;
+      const before = 1 - this._swing;
+      this._swing = Math.max(0, this._swing - dt / t.axe_swing_s);
+      // The pull eases in and out: slow as the pick bites, quick through the
+      // middle, settling as you plant your feet. Same distance per swing.
+      const ease = (p) => p * p * (3 - 2 * p);
+      const step = ease(1 - this._swing) - ease(before);
       // Along the slope: the horizontal part of a step up a slope this steep.
       const slope = Math.atan(Math.hypot(gx, gz));
       this.position.addScaledVector(this._swingDir, t.axe_swing_m * step * Math.cos(slope));
@@ -885,8 +897,10 @@ export class Climber {
     const clipped = this.clipped;
     // On steep ground, clipped in means jumaring.
     if (clipped && this.groundMode !== Mode.WALK) this.mode = Mode.ROPE;
+    // A little hysteresis so the edge of a wall doesn't flick you on and off it.
+    const hy = this.onAxeWall ? tuning.mode_hysteresis_deg : 0;
     this.onAxeWall = !clipped && axeBites && !this.onLedge
-      && this.slope >= tuning.axe_climb_max_deg && this.slope <= tuning.axe_wall_max_deg;
+      && this.slope >= tuning.axe_climb_max_deg - hy && this.slope <= tuning.axe_wall_max_deg + hy;
     if (this.onAxeWall) {
       this._axeWall(dtM, dt, gx, gz, input);
       return;
@@ -964,7 +978,8 @@ export class Climber {
       this.stepPhase = 0;
       if (this._placeStep(dir, grade, gx, gz)) return;
     }
-    const pulse = climbing ? 1 - Math.cos(2 * Math.PI * this.stepPhase) : 1;
+    // Each move surges then settles, but never comes to a dead stop mid-step.
+    const pulse = climbing ? 1 - t.climb_pulse * Math.cos(2 * Math.PI * this.stepPhase) : 1;
     const travel = this.pace * dtM;
     this.stepPhase = Math.min(this.stepPhase + travel / stepLen, 1);
     const from = this.position.clone();

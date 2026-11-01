@@ -115,7 +115,13 @@ climber.onMessage = (t) => hud.showMessage(t);
 const audio = new BreathAudio(climber.body);
 const wind = new WindAudio();
 const input = new Input(canvas);
-const view = { pitch: -0.2, distance: 7, firstPerson: false, gait: 0, time: 0 };
+const view = {
+  pitch: -0.2, distance: 7, firstPerson: false, gait: 0, time: 0,
+  // Smoothing for the body and camera: the model's facing, its offset from the
+  // climber's feet, how long since it got up from a fall, the chase camera's
+  // follow point and how far it's lifted off the ground behind you.
+  modelYaw: 0, bodyOffset: new THREE.Vector3(), settle: 0, collapseT: 0, follow: null, lift: 0,
+};
 
 function teleport(i) {
   const p = route.places[i];
@@ -373,7 +379,7 @@ document.getElementById('respawn').onclick = () => respawn();
 const _dir = new THREE.Vector3();
 const _eye = new THREE.Vector3();
 
-function updateCamera() {
+function updateCamera(dt) {
   const look = input.takeLook();
   climber.yaw -= look.dx * 0.0025;
   view.pitch = Math.min(Math.max(view.pitch - look.dy * 0.0025, -1.45), 1.2);
@@ -389,10 +395,18 @@ function updateCamera() {
     camera.position.copy(_eye);
     camera.lookAt(_eye.x + _dir.x, _eye.y + _dir.y, _eye.z + _dir.z);
   } else {
+    // A chase camera: it trails a touch behind sudden moves (a swing, a surge, a
+    // slip) instead of being bolted to you, and catches up at once after a jump.
+    if (!view.follow || view.follow.distanceToSquared(_eye) > 36) view.follow = _eye.clone();
+    else view.follow.lerp(_eye, 1 - Math.exp(-dt * (climber.falling ? 25 : 10)));
     const d = climber.mode === Mode.FLY ? Math.max(view.distance, 25) : view.distance;
-    camera.position.copy(_eye).addScaledVector(_dir, -d);
-    camera.position.y = Math.max(camera.position.y, hm.groundAt(camera.position.x, camera.position.z) + 0.6);
-    camera.lookAt(_eye);
+    camera.position.copy(view.follow).addScaledVector(_dir, -d);
+    // Lift over the ground behind you smoothly rather than popping up a step.
+    const ground = hm.groundAt(camera.position.x, camera.position.z);
+    const need = Math.max(0, ground + 0.6 - camera.position.y);
+    view.lift += (need - view.lift) * (1 - Math.exp(-dt * (need > view.lift ? 18 : 3)));
+    camera.position.y = Math.max(camera.position.y + view.lift, ground + 0.3);
+    camera.lookAt(view.follow);
   }
   sway(camera);
   sky.update(climber.hour, p, camera.position, climber.conditions);
@@ -430,8 +444,11 @@ function sway(cam) {
   const queasy = c.phys.nausea * 0.5 + c.phys.rebound * 0.5 + c.mods.wobble * 0.5;
   const roll = exposure * (0.012 * Math.sin(t * 0.7) + 0.006 * breath) + queasy * 0.03 * Math.sin(t * 0.45)
     + c.shake * 0.05 * Math.sin(t * 37) * Math.sin(t * 23);
+  // The jolt of the pick biting, felt through the arms.
+  const sp = c.onAxeWall ? c.swingProgress : 0;
+  const bite = sp > 0.72 ? Math.exp(-(sp - 0.72) * 18) * Math.sin((sp - 0.72) * 40) * 0.02 : 0;
   cam.rotateZ(roll);
-  cam.rotateX(c.shake * 0.03 * Math.sin(t * 41) + exposure * 0.004 * breath);
+  cam.rotateX(c.shake * 0.03 * Math.sin(t * 41) + exposure * 0.004 * breath - bite);
 }
 
 const _basis = new THREE.Matrix4();
@@ -440,8 +457,11 @@ const _U = new THREE.Vector3();
 const _Z = new THREE.Vector3();
 const _N = new THREE.Vector3();
 
-/** Lay the body flat on the slope: head up or down the fall line, on its front or back. */
-function slideOrientation(c) {
+/**
+ * Lay the body flat on the slope: head up or down the fall line, on its front or
+ * back. Writes the orientation to q and the body's offset from the feet to off.
+ */
+function slideOrientation(c, q, off) {
   const [gx, gz] = hm.gradient(c.position.x, c.position.z);
   hm.normalAt(c.position.x, c.position.z, _N);
   // Up the slope, along the surface.
@@ -457,9 +477,9 @@ function slideOrientation(c) {
   _X.crossVectors(_U, _Z).normalize();
   _Z.crossVectors(_X, _U);
   _basis.makeBasis(_X, _U, _Z);
-  model.quaternion.setFromRotationMatrix(_basis);
+  q.setFromRotationMatrix(_basis);
   // The model's pivot is at its feet: put the middle of the body on the ground point.
-  model.position.copy(c.position).addScaledVector(_U, -0.9).addScaledVector(_N, 0.2);
+  off.set(0, 0, 0).addScaledVector(_U, -0.9).addScaledVector(_N, 0.2);
 }
 
 /** The axe in the hand only while it's drawn; on the pack when stowed; nowhere once lost. */
@@ -470,53 +490,117 @@ function showAxe() {
   if (model.stowedAxe) model.stowedAxe.visible = a.have && !held;
 }
 
+const _qTarget = new THREE.Quaternion();
+const _qYaw = new THREE.Quaternion();
+const _qTilt = new THREE.Quaternion();
+const _offTarget = new THREE.Vector3();
+const _pivot = new THREE.Vector3();
+const _AXIS_X = new THREE.Vector3(1, 0, 0);
+const _AXIS_Y = new THREE.Vector3(0, 1, 0);
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+/** Ease the body's orientation and its offset from the feet toward a target. */
+function settleModel(dt, rate) {
+  const k = 1 - Math.exp(-dt * rate);
+  model.quaternion.slerp(_qTarget, k);
+  view.bodyOffset.lerp(_offTarget, k);
+  model.position.copy(climber.position).add(view.bodyOffset);
+}
+
 function animateModel(dt) {
   const c = climber;
   // In first person you see your own body (the head is hidden), unless scouting.
   model.visible = !(view.firstPerson && c.mode === Mode.FLY);
   model.firstPerson = view.firstPerson;
-  if (c.tumbling || c.dead || c.collapsed) {
-    ragdoll.update(dt, c.position, c.velocity, c.dead || !!c.collapsed);
+  const [gx, gz] = hm.gradient(c.position.x, c.position.z, 3);
+  const riseAlong = (yaw) => -(gx * Math.sin(yaw) + gz * Math.cos(yaw));
+  // Collapsed in the cold you crumple where you stand (and lie there if nobody comes).
+  const crumpled = !!c.collapsed || (c.dead && view.collapseT > 0);
+  view.collapseT = crumpled ? view.collapseT + dt : 0;
+  if (c.tumbling || (c.dead && !crumpled)) {
+    ragdoll.update(dt, c.position, c.velocity, c.dead);
+    view.bodyOffset.copy(model.position).sub(c.position);
+    view.settle = 1;
     return;
   }
   ragdoll.stop();
-  model.position.copy(c.position);
-  // Stepping over rocks: ease the body up and down rather than popping.
-  model.position.y = view.groundY;
-  if (c.falling) {
-    // Sliding flat on the slope, the way the fall left you, digging in.
-    slideOrientation(c);
-    model.pose('slide', 0, false, 0);
+  // Just up from a tumble, a slide or a collapse: roll back upright over a moment.
+  view.settle = Math.max(0, view.settle - dt / 0.6);
+  if (crumpled) {
+    // Knees buckle, then you topple forward from them onto the snow.
+    const t = view.collapseT;
+    const f = Math.min(Math.max((t - 0.8) / 0.8, 0), 1);
+    const rise = riseAlong(view.modelYaw);
+    _qYaw.setFromAxisAngle(_AXIS_Y, view.modelYaw);
+    _qTilt.setFromAxisAngle(_AXIS_X, (Math.atan(rise) - Math.PI / 2) * f * f);
+    _qTarget.copy(_qYaw).multiply(_qTilt);
+    // Pivot about a point just above the feet, so you fall forward from there.
+    _pivot.set(0, 0.15, 0);
+    _offTarget.copy(_pivot).applyQuaternion(_qTilt).negate().add(_pivot).applyQuaternion(_qYaw);
+    _offTarget.y += view.groundY - c.position.y;
+    settleModel(dt, 14);
+    // Still folded at the knees until you're halfway down, then stretched out.
+    model.pose(f < 0.5 ? 'kneel' : 'lie', 0, false, 0, { dt });
+    view.settle = 1;
     showAxe();
     return;
   }
-  // Sunk into the snow, and swaying a little on exposed ground or after a jolt.
-  model.position.y -= c.sink * 0.8;
-  const exposure = Math.min(Math.max((c.slope - 25) / 30, 0), 1);
-  model.rotation.set(0, model.rotation.y, exposure * 0.03 * Math.sin(view.time * 0.9) + c.shake * 0.12 * Math.sin(view.time * 29));
+  if (c.falling) {
+    // Sliding flat on the slope, the way the fall left you, digging in.
+    slideOrientation(c, _qTarget, _offTarget);
+    settleModel(dt, 12);
+    model.pose('slide', 0, false, 0, { dt, arrest: !!c.fall.arresting, time: view.time });
+    view.settle = 1;
+    showAxe();
+    return;
+  }
   let pose = { climb: 'climb', steep: 'climb', rope: 'rope', fly: 'fly', hole: 'climb' }[c.mode] ?? 'walk';
+  if (c.onAxeWall && c.mode === Mode.STEEP) pose = 'axe';
   const winded = c.body.stamina < c.body.staminaCap(c.breathAltitude) - 5 || c.body.exhausted;
-  if (!c.moving && c.mode !== Mode.FLY && winded) pose = 'rest';
+  if (!c.moving && c.mode !== Mode.FLY && pose !== 'axe' && winded) pose = 'rest';
   // On steep ground (or a rope) you always face into the slope: backing down it
   // or side-stepping across it. On gentler ground you face out and plunge-step down.
-  const [gx, gz] = hm.gradient(c.position.x, c.position.z, 3);
-  const riseAlong = (yaw) => -(gx * Math.sin(yaw) + gz * Math.cos(yaw));
-  const steep = pose === 'climb' || pose === 'rope';
+  const steep = pose === 'climb' || pose === 'rope' || pose === 'axe';
   const faceIn = steep && riseAlong(c.heading) < 0.7 * Math.hypot(gx, gz);
   const backing = steep && riseAlong(c.heading) < -0.25;
   // In first person the body turns with your view, so you see your own arms and legs.
-  const faceYaw = faceIn ? Math.atan2(-gx, -gz) : view.firstPerson ? c.yaw : c.heading;
-  let diff = faceYaw - model.rotation.y;
+  const faceYaw = faceIn || pose === 'axe' ? Math.atan2(-gx, -gz) : view.firstPerson ? c.yaw : c.heading;
+  let diff = faceYaw - view.modelYaw;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-  model.rotation.y += diff * (1 - Math.exp(-dt * 10));
-  // Cadence is shown at a believable rate no matter how fast mountain time runs.
+  // Turn a little slower on steep ground, where each foot is placed with care.
+  view.modelYaw += diff * (1 - Math.exp(-dt * (steep ? 7 : 10)));
+  // Sunk into the snow, and swaying a little on exposed ground or after a jolt.
+  const exposure = Math.min(Math.max((c.slope - 25) / 30, 0), 1);
+  _euler.set(0, view.modelYaw, exposure * 0.03 * Math.sin(view.time * 0.9) + c.shake * 0.12 * Math.sin(view.time * 29));
+  _qTarget.setFromEuler(_euler);
+  // Stepping over rocks: ease the body up and down rather than popping.
+  _offTarget.set(0, view.groundY - c.position.y - c.sink * 0.8, 0);
+  if (view.settle > 0) settleModel(dt, 5);
+  else {
+    model.quaternion.copy(_qTarget);
+    view.bodyOffset.copy(_offTarget);
+    model.position.copy(c.position).add(view.bodyOffset);
+  }
+  // The legs keep pace with how fast you're really going (shorter steps when you're
+  // crawling up high), at a believable rate however fast mountain time runs.
   // Backing down runs the climbing cycle in reverse.
-  const cadence = { walk: 5, climb: 3, steep: 3, rope: 2.5, hole: 2 }[c.mode] ?? 0;
+  const v = c.pace * c.timeScale;
+  let stride = 1;
+  let cadence = 0;
+  if (pose === 'walk') {
+    stride = Math.min(Math.max(v / 1.1, 0.35), 1);
+    cadence = Math.min(Math.max((Math.PI * v) / (0.56 * stride), 2.5), 7.5);
+  } else if (pose === 'climb') {
+    stride = Math.min(Math.max(v / 0.5, 0.35), 1);
+    cadence = Math.min(Math.max((Math.PI * v) / (0.28 * stride), 1.5), 4.5);
+  } else if (pose === 'rope') cadence = 2.5;
   if (c.moving) view.gait += dt * cadence * (backing ? -1 : 1);
   if (pose === 'rest') view.gait += (dt * c.body.breathRate / 60) * Math.PI * 2;
   // Ground rise in the direction the model faces, for fitting hands and feet to the slope.
-  const rise = riseAlong(model.rotation.y);
-  model.pose(pose, view.gait, c.moving, rise);
+  const rise = riseAlong(view.modelYaw);
+  model.pose(pose, view.gait, c.moving, rise, {
+    dt, stride, swing: c.swingProgress, grip: c.grip, time: view.time, fp: view.firstPerson,
+  });
   showAxe();
 }
 
@@ -571,7 +655,7 @@ function frame(now) {
   updateTether(dt);
   detailPatch.userData.update(climber.position);
   glacierBlocks.update(camera.position);
-  updateCamera();
+  updateCamera(dt);
   audio.update();
   wind.update(climber.conditions);
   precipitation.update(dt, camera.position, climber.conditions);
