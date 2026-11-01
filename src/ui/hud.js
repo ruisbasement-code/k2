@@ -85,15 +85,8 @@ export class Hud {
     $('stamina-fill').style.width = `${body.stamina}%`;
     $('stamina-fill').classList.toggle('low', body.exhausted || body.stamina < 25);
     $('stamina-cap').style.left = `${body.staminaCap(c.breathAltitude)}%`;
-    // Grip, only while you hang off the axe or are getting it back.
-    const showGrip = c.onAxeWall || c.grip < 99;
-    $('grip-row').hidden = !showGrip;
-    if (showGrip) {
-      $('grip-fill').style.width = `${c.grip}%`;
-      $('grip-fill').classList.toggle('low', c.grip < 30);
-    }
     // Quiet when all is well, clear when it isn't.
-    const fine = c.health > 90 && body.stamina > 85 && !body.exhausted && !showGrip;
+    const fine = c.health > 90 && body.stamina > 85 && !body.exhausted;
     $('vitals').classList.toggle('quiet', fine);
     if (this.held === 'map') this._drawMap();
     if (this.held === 'monitor') this._pulse(fill, hard);
@@ -166,9 +159,10 @@ export class Hud {
     if (c.tumbling) return out('Tumbling');
     if (c.falling && (c.fall.rope || c.fall.hole)) return out('Falling');
     if (c.falling) {
-      if (c.axe.have && !c.axeReady) {
-        if (!c.axe.inHand) acts.push(['I', 'Axe']);
-        else if (c.axe.dangling > 0) return out('Grabbing the axe');
+      if (!c.axe.have) return out('No axe to arrest with');
+      if (!c.axeReady) {
+        if (!c.axe.inHand) { acts.push(['I', 'Axe']); return out('Grab your axe!'); }
+        return out(c.axe.dangling > 0 ? 'Grabbing the axe' : 'Drawing the axe');
       }
       if (c.fall.arresting) return out('Digging in');
       if (c.runaway) return out('Too fast to arrest');
@@ -192,17 +186,13 @@ export class Hud {
       if (pack.dex) acts.push(['P', 'Dex']);
     }
     if (c.blockedByIce) alert ||= 'Ice wall';
-    if (c.onAxeWall) {
-      acts.push(['Click', 'Swing'], ['S + Click', 'Down']);
-      if (c.grip < 30) alert ||= 'Grip failing';
-    }
     if (c.polesOnSteep) {
       alert ||= 'Poles on steep ground';
       if (c.axe.have) acts.push(['I', 'Axe']);
     }
     if (c.blocked) {
       const axeGround = ['soft_snow', 'firm_snow', 'crust', 'slush', 'glacier', 'ice'].includes(c.surface.key);
-      if (axeGround && !c.axeReady && !c.polesOnSteep && c.slope <= tuning.axe_wall_max_deg && c.axe.have) acts.push(['I', 'Axe']);
+      if (axeGround && !c.axeReady && !c.polesOnSteep && c.slope <= tuning.axe_climb_max_deg && c.axe.have) acts.push(['I', 'Axe']);
       else alert ||= 'Too steep';
     }
 

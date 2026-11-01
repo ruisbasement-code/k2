@@ -161,10 +161,6 @@ input.on('KeyX', () => {
   if (!hasGear(climber.pack, 'probe') && !climber.axe.have) hud.showMessage('Nothing to probe with');
   else climber.probe();
 });
-// Left click swings the axe on a steep wall (once the mouse is captured for looking).
-canvas.addEventListener('mousedown', (e) => {
-  if (e.button === 0 && document.pointerLockElement === canvas) climber.swingAxe();
-});
 input.on('KeyL', () => hud.showMessage(`Headlamp: ${headlamp.cycle()}`));
 input.on('KeyI', () => climber.toggleAxe());
 input.on('KeyE', () => protect());
@@ -480,11 +476,8 @@ function sway(cam) {
   const queasy = c.phys.nausea * 0.5 + c.phys.rebound * 0.5 + c.mods.wobble * 0.5;
   const roll = exposure * (0.012 * Math.sin(t * 0.7) + 0.006 * breath) + queasy * 0.03 * Math.sin(t * 0.45)
     + c.shake * 0.05 * Math.sin(t * 37) * Math.sin(t * 23);
-  // The jolt of the pick biting, felt through the arms.
-  const sp = c.onAxeWall ? c.swingProgress : 0;
-  const bite = sp > 0.72 ? Math.exp(-(sp - 0.72) * 18) * Math.sin((sp - 0.72) * 40) * 0.02 : 0;
   cam.rotateZ(roll);
-  cam.rotateX(c.shake * 0.03 * Math.sin(t * 41) + exposure * 0.004 * breath - bite);
+  cam.rotateX(c.shake * 0.03 * Math.sin(t * 41) + exposure * 0.004 * breath);
 }
 
 const _basis = new THREE.Matrix4();
@@ -603,16 +596,15 @@ function animateModel(dt) {
     return;
   }
   let pose = { climb: 'climb', steep: 'climb', rope: 'rope', fly: 'fly', hole: 'climb' }[c.mode] ?? 'walk';
-  if (c.onAxeWall && c.mode === Mode.STEEP) pose = 'axe';
   const winded = c.body.stamina < c.body.staminaCap(c.breathAltitude) - 5 || c.body.exhausted;
-  if (!c.moving && c.mode !== Mode.FLY && pose !== 'axe' && winded) pose = 'rest';
+  if (!c.moving && c.mode !== Mode.FLY && winded) pose = 'rest';
   // On steep ground (or a rope) you always face into the slope: backing down it
   // or side-stepping across it. On gentler ground you face out and plunge-step down.
-  const steep = pose === 'climb' || pose === 'rope' || pose === 'axe';
+  const steep = pose === 'climb' || pose === 'rope';
   const faceIn = steep && riseAlong(c.heading) < 0.7 * Math.hypot(gx, gz);
   const backing = steep && riseAlong(c.heading) < -0.25;
   // In first person the body turns with your view, so you see your own arms and legs.
-  const faceYaw = faceIn || pose === 'axe' ? Math.atan2(-gx, -gz) : view.firstPerson ? c.yaw : c.heading;
+  const faceYaw = faceIn ? Math.atan2(-gx, -gz) : view.firstPerson ? c.yaw : c.heading;
   let diff = faceYaw - view.modelYaw;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   // Turn a little slower on steep ground, where each foot is placed with care.
@@ -647,7 +639,7 @@ function animateModel(dt) {
   // Ground rise in the direction the model faces, for fitting hands and feet to the slope.
   const rise = riseAlong(view.modelYaw);
   model.pose(pose, view.gait, c.moving, rise, {
-    dt, stride, swing: c.swingProgress, grip: c.grip, time: view.time,
+    dt, stride, time: view.time,
   });
   showAxe();
 }
