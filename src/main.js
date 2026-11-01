@@ -27,6 +27,7 @@ import { Hud } from './ui/hud.js';
 import { Sky } from './world/sky.js';
 import { RockfallMesh, FootprintMesh } from './world/hazardMeshes.js';
 import { Tether } from './world/tether.js';
+import { ProtectionView } from './world/protectionView.js';
 import { Weather, weatherTuning } from './sim/weather.js';
 import { Precipitation, AvalancheMesh } from './world/weatherView.js';
 import { WindAudio } from './player/windAudio.js';
@@ -79,7 +80,8 @@ const glacierBlocks = new GlacierBlocks(hm);
 scene.add(glacierBlocks);
 const featureMeshes = new FeatureMeshes(hm, features, terrain, ropes);
 scene.add(featureMeshes);
-scene.add(ropes.createMesh());
+const ropeMesh = ropes.createMesh(hm, features);
+scene.add(ropeMesh);
 const camps = createCamps(hm, route.places, ropes);
 scene.add(camps);
 
@@ -92,6 +94,10 @@ scene.add(prints);
 climber.trail.onPrint = (p) => prints.add(p);
 const tether = new Tether(hm);
 scene.add(tether);
+// Ice screws and pickets you put in, and your rope to the one you're on.
+const protection = new ProtectionView(hm);
+scene.add(protection);
+let myPiece = null;
 const precipitation = new Precipitation();
 scene.add(precipitation);
 const avalancheMesh = new AvalancheMesh(climber.avalanches);
@@ -148,7 +154,7 @@ input.on('KeyC', () => climber.toggleClip());
 input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
-input.on('KeyR', () => (climber.collapsed ? climber.giveUp() : respawn()));
+input.on('KeyR', () => (climber.collapsed ? climber.giveUp() : climber.dead ? respawn() : climber.getUp()));
 input.on('KeyZ', () => shelterOrSleep());
 input.on('KeyK', () => cook());
 input.on('KeyB', () => climber.eat());
@@ -305,6 +311,12 @@ async function cook() {
 }
 
 /** E: place an ice screw or snow picket and clip the rope to it. */
+/** Put a screw or picket in where you stand and clip your rope to it. */
+function placeProtection(kind) {
+  expedition.protect(kind);
+  myPiece = protection.place(expedition.anchor).id;
+}
+
 async function protect() {
   if (minigame.busy || climber.mode === Mode.FLY) return;
   const p = expedition.canProtect();
@@ -313,7 +325,7 @@ async function protect() {
     return;
   }
   if (await job(p.kind)) {
-    expedition.protect(p.kind);
+    placeProtection(p.kind);
     hud.showMessage(p.kind === 'screw' ? 'Screw in, rope clipped' : 'Picket in, rope clipped');
   } else hud.showMessage(p.kind === 'screw' ? "The screw won't bite" : "The picket won't hold");
 }
@@ -326,6 +338,7 @@ const menu = new ControlsMenu(document.getElementById('menu'), {
   onMute: () => { muted = audio.muted = wind.muted = !muted; },
 });
 menu.onClose = () => relock();
+menu.onGetUp = () => climber.getUp();
 let releasing = false;
 let lostLockAt = -1e9;
 function release() {
@@ -648,6 +661,18 @@ const _harness = new THREE.Vector3();
 const _clip = new THREE.Vector3();
 const _ropeDir = new THREE.Vector3();
 
+/** Your rope from the harness to the screw or picket you put in, while you're near it. */
+function updateProtection(dt) {
+  const on = myPiece != null && expedition.protectedNow && !climber.dead;
+  if (on) {
+    model.updateMatrixWorld(true);
+    model.joints.pelvis.localToWorld(_protHarness.set(0, 0.02, -0.17));
+  }
+  // Other climbers (multiplayer) go in this list the same way.
+  protection.update(dt, [{ id: 'me', harness: on ? _protHarness : null, piece: myPiece }]);
+}
+const _protHarness = new THREE.Vector3();
+
 /** The tether from the harness to the fixed rope: slides along it, locks on it in a fall. */
 function updateTether(dt) {
   const c = climber;
@@ -665,7 +690,7 @@ function updateTether(dt) {
     length = c.fall.rope.length;
   } else {
     id = c.ropeId;
-    ropes.pointAt(id, ropes.nearestOn(id, c.position).s, _clip);
+    ropes.visualPointAt(id, ropes.nearestOn(id, c.position).s, _clip);
     length = tuning.rope_leash_m + 1;
   }
   ropes.tangentAt(id, ropes.nearestOn(id, _clip).s, _ropeDir);
@@ -715,6 +740,8 @@ function frame(now) {
   featureMeshes.update(climber.position, climber);
   animateModel(dt);
   updateTether(dt);
+  updateProtection(dt);
+  ropeMesh.update(camera.position);
   detailPatch.userData.update(climber.position);
   glacierBlocks.update(camera.position);
   updateCamera(dt);
@@ -735,7 +762,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__k2 = { climber, signals: climber.signals, signalView, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
+window.__k2 = { climber, protection, placeProtection, ropeMesh, signals: climber.signals, signalView, hm, ropes, teleport, view, tether, features, featureMeshes, weather: climber.weather, expedition, hud, inventory, minigame, menu };
 
 /** Read and clear a one-off flag that survives a reload. */
 function takeFlag(key) {
