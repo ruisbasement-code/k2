@@ -220,3 +220,12 @@ button#set-off, #menu-resume, #start button { background: var(--accent); color: 
 #hotbar .hs.on { border-color: var(--accent); background: rgba(255, 138, 61, .22); }
 #hotbar .hs.flash { border-color: #fff; }
 #hotbar:empty { display: none; }
+
+/* How long supplies last, in the pack panel. */
+.lasts .last { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.lasts .last span { color: var(--muted); }
+.lasts .last b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.lasts .last.low b { color: #ffb36b; }
+.inv-col.store .hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; line-height: 1.4; }
+.inv-foot .ghost { margin-left: auto; margin-right: 8px; }
+.stepper button:disabled { opacity: .3; cursor: default; }
