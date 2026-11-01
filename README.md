@@ -42,11 +42,10 @@ lists every control (`src/ui/controls.js`), with the sound switch.
 | Key | Action |
 | --- | --- |
 | W A S D, Shift | Move, push the pace |
-| Space (hold) | Self-arrest when you start sliding |
+| Space (hold) | Self-arrest when you start sliding (ice axe in hand only) |
 | C | Clip into / unclip from a fixed rope (within 5 m) |
 | E | Place an ice screw or snow picket on steep ground (needs the rope) |
-| I | Draw / stow the ice axe |
-| Click | Swing the axe on a steep wall (S + click to climb down) |
+| I | Hold / stow the ice axe (or pick it in the hotbar) |
 | X | Probe ahead for hidden crevasses (needs a probe or an axe) |
 | Tab | Inventory: click a device to hold it, a supply to use it |
 | 1 – 9 | Hotbar along the bottom: hold or use what's in that slot |
@@ -115,8 +114,7 @@ realistic pace still gets you somewhere. All the speeds below are in mountain ti
   the line: you move freely up to 8 m from it. Moving along the rope gets the jumar's
   speed, the rope gently steers you back toward its line as you drift, it gets you up
   rock of any steepness near it, and slips are rarer. On snow and ice the rope only
-  protects you: past 35° you still need the ice axe out, and past 40° you swing up
-  it click by click, though you can sit back on the rope between swings to rest. If you do slip, the jumar locks and you
+  protects you: past 35° you still need the ice axe in your hand to go up. If you do slip, the jumar locks and you
   drop (and swing, if you were off to the side) until the rope comes tight; a hard
   jolt hurts. Fixed ropes are old: each time one takes a fall there is a small chance
   (about 2–5%) that the anchor rips out and you fall on, unroped. Reach either
@@ -163,24 +161,24 @@ bounces off them. Camps and the fixed-rope lines are kept smooth. Snow lies a
 quarter of a metre deep, with the route trodden into a boot-deep trench up the
 ropes and along the wanded trail.
 
-**Ice axe.** Press **I** to draw it from your pack (it takes a second, even mid-slide)
-or stow it. In hand it lets you walk up snow and ice to 40° unroped (rock is no easier),
-slower and harder, with fewer slips. Steeper snow and ice, up to about 68°, you climb
-swing by swing: each left click plants the axe and pulls you half a metre up (S +
-click to climb down), costing stamina. Between swings you hang on the axe and your
-grip drains, faster on steeper ground and when you're spent; let it run out and you
-come off. Ledges, easier ground and the fixed ropes let it recover. Holding Space in a slide, the pick
-bites over half a second and stops you from up to 14 m/s on snow, but it mostly
-skates on hard ice. Arresting very fast can wrench it from your grip, and in a tumble
-you often lose it: it hangs on its leash until you grab it again, unless the leash
-snaps and it's gone. Camps have spares (G). The axe is big and blue in your hand,
-in third person and in your first person view, and strapped to your pack when stowed.
+**Ice axe.** Hold it (pick it in the hotbar, or press **I**; drawing it takes a
+second, even mid-slide) or stow it. You need it in your hand for two things. First,
+steep snow and ice: holding it you walk up snow and ice to 65°, slower and harder,
+with fewer slips (rock is no easier). Without it, snow and ice steeper than the
+surface can hold (about 27–38°) sends you sliding, and you can't go up past 35°.
+Second, self-arrest: there is nothing else to dig in with, so without the axe in
+hand holding Space does nothing. With it, the pick bites over half a second and
+stops you from up to 14 m/s on snow, but it mostly skates on hard ice. Arresting
+very fast can wrench it from your grip, and in a tumble you often lose it: it hangs
+on its leash until you grab it again, unless the leash snaps and it's gone. Camps
+have spares (G). The axe is big and blue in your hand, in third person and in your
+first person view, and strapped to your pack when stowed.
 
 **Trekking poles.** Packed at Base Camp, they come out in both hands (orange shafts,
 baskets and wrist straps) and take a hotbar slot to put them away or get them out
 again. On walking ground gentler than 20° they make you about 10% faster and 15% less
 tired. On steeper ground they skate: unroped past 25°, slips are three times as likely
-and you can only self-arrest with your hands. Getting the axe out (I) straps the poles
+and you can't self-arrest at all. Getting the axe out (I) straps the poles
 to your pack.
 
 **Rock and ice fall** is built (`rockfall_enabled` in `tuning.json`) but switched off
@@ -192,9 +190,9 @@ it). Pushing the pace skips breaths; keep it up and you have to stop and gasp un
 your breathing catches up.
 
 **Falls.** A slip or too-steep ground starts a slide. You pick up speed down the
-fall line, slowed by the surface's friction. Hold **Space** straight away to
-self-arrest: it works while you are still slow (under 8 m/s) and within about 2
-seconds, much better on snow than ice. A runaway slide that slows down again (on a
+fall line, slowed by the surface's friction. With the ice axe in your hand, hold
+**Space** straight away to self-arrest: it works while you are still slow (under
+14 m/s), much better on snow than ice. Without the axe you can't arrest at all. A runaway slide that slows down again (on a
 ledge or a gentler run-out) can still be arrested. How you landed matters: slipping while facing
 into the slope puts you on your front, feet first, the best position; facing out
 puts you on your back. Holding Space rolls you onto your front (half a second) and
@@ -441,7 +439,7 @@ added on top of it (`src/sim/terrainFeatures.js`, placed in
   snow camps.
 - **The climber** wears a red one-piece down suit, helmet, goggles and mask, a harness
   and a pack with a foam pad, and big double boots with crampons. They walk with the axe
-  like a cane, swing it overhead on steep ground, and stow it to jumar up fixed ropes.
+  like a cane, plant it on the slope above on steep ground, and stow it to jumar up fixed ropes.
   The body is a joint hierarchy (`ClimberModel.joints` and `.bones`), ready for ragdoll.
 
 ![The climber](docs/screenshots/climber.png)

@@ -282,11 +282,10 @@ export class ClimberModel extends THREE.Group {
    * quickly within a gait, more slowly when the pose changes (walking to climbing,
    * standing to sliding, getting up after a fall).
    *
-   * @param mode 'walk' | 'climb' | 'axe' | 'rope' | 'rest' | 'kneel' | 'lie' | 'slide' | 'fly'
+   * @param mode 'walk' | 'climb' | 'rope' | 'rest' | 'kneel' | 'lie' | 'slide' | 'fly'
    * @param o {dt, stride, swing, arrest, time, grip}: dt in real seconds (0 or
    *   missing snaps straight to the pose); stride 0..1 how long the steps are;
-   *   swing 0..1 through an axe swing; arrest digging the axe in a slide; time for
-   *   flailing; grip 0..100 on the axe
+   *   arrest digging the axe in a slide; time for flailing
    */
   pose(mode, phase, moving, rise = 0, o = {}) {
     const dt = o.dt ?? 0;
@@ -382,47 +381,6 @@ export class ClimberModel extends THREE.Group {
         footMax = 0.6;
         head = 0.25 + 0.6 * up;
         spread = 0.22;
-        break;
-      }
-      case 'axe': {
-        // Hanging on the axe on a wall too steep to walk. Each swing: pull on the
-        // planted axe, rip it out, swing it back overhead and strike higher, while
-        // the feet kick in one after the other. Between swings you hang, arms
-        // shaking as the grip goes.
-        const p = o.swing ?? 0;
-        const ease = (x) => x * x * (3 - 2 * x);
-        const e = ease(p);
-        const win = (a, b) => ease(Math.min(Math.max((p - a) / (b - a), 0), 1));
-        pelvis = [0.78, 0.22 * Math.sin(up)];
-        pt = -0.15 * up;
-        sp = -0.3 * up - 0.08 + 0.1 * Math.sin(Math.PI * win(0.25, 0.75)); // lean back to swing
-        feet = [0, 1].map((i) => {
-          const w = win(0.2 + 0.35 * i, 0.55 + 0.35 * i);
-          return onSlope((i ? -0.1 : 0.04) + 0.25 * (w - e), 0.09 + 0.12 * Math.sin(Math.PI * w));
-        });
-        // The axe hand: [progress, up the slope, out from it, wrist].
-        const keys = [[0, 1.2, 0.34, 0.7], [0.3, 0.95, 0.36, 0.7], [0.55, 1.45, 0.6, 1.1], [0.78, 1.25, 0.32, 0.5], [1, 1.2, 0.34, 0.7]];
-        let a = keys[0];
-        let b = keys[1];
-        for (let k = 1; k < keys.length; k++) {
-          a = keys[k - 1];
-          b = keys[k];
-          if (p <= b[0]) break;
-        }
-        const f = ease(Math.min(Math.max((p - a[0]) / (b[0] - a[0]), 0), 1));
-        const axeHand = [1, 2, 3].map((n) => a[n] + (b[n] - a[n]) * f);
-        // The other mitt presses into the slope and moves up after the axe.
-        const w = win(0.6, 0.95);
-        const shake = (o.grip ?? 100) < 35 && p === 0 ? 0.012 * Math.sin((o.time ?? 0) * 47) : 0;
-        hands = [
-          onSlope(1.0 + 0.3 * (w - e), 0.1 + 0.1 * Math.sin(Math.PI * w) + shake),
-          onSlope(axeHand[0], axeHand[1] + shake),
-        ];
-        wrists = [-0.4, axeHand[2]];
-        footMax = 0.6;
-        head = 0.35 + 0.6 * up + 0.25 * Math.sin(Math.PI * win(0.4, 0.85)); // eyes on the placement
-        spread = 0.2;
-        tool = 'axeSwing';
         break;
       }
       case 'kneel': {
@@ -593,15 +551,8 @@ export class ClimberModel extends THREE.Group {
    * the slope; on fixed ropes it's stowed on the pack and the jumar comes out. */
   _tools(tool) {
     const j = this.joints;
-    if (tool === 'axeSwing') {
-      // Swinging: gripped near the spike, head out past the mitt, pick forward.
-      this.axe.position.set(0, -0.6, 0);
-      this.axe.rotation.set(Math.PI, 0, 0);
-      tool = 'axe';
-    } else {
-      this.axe.position.set(0, 0.03, 0);
-      this.axe.rotation.set(0, 0, 0);
-    }
+    this.axe.position.set(0, 0.03, 0);
+    this.axe.rotation.set(0, 0, 0);
     this.axe.visible = tool === 'axe';
     this.stowedAxe.visible = tool !== 'axe';
     // Poles out in both hands, unless you're on the jumar.

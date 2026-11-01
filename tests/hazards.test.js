@@ -192,7 +192,6 @@ describe('breath pace', () => {
     for (let t = 0; t < 30; t += FRAME) {
       const tan = ropes.tangentAt(c.ropeId, c.ropeS);
       c.yaw = Math.atan2(-tan.x, -tan.z);
-      if (c.onAxeWall) c.swingAxe();
       c.update(FRAME, { x: 0, y: 1, push });
       if (!c.clipped) break;
     }
@@ -216,6 +215,8 @@ describe('how you slide', () => {
     const spot = find(({ x, z, s, y }) => s > 30 && s < 34 && Pace.surfaceAt(y, s, hm.glacierAt(x, z)).key === 'firm_snow');
     const c = new Climber(hm, ropes, route.places);
     c.placeAt(spot.x, spot.z, 0, 0);
+    c.toggleAxe();
+    c.axe.drawing = 0;
     const [gx, gz] = hm.gradient(spot.x, spot.z);
     c._startFall(gx, gz, 'test', how);
     run(c, 1.5, { x: 0, y: 0, arrest: true });
@@ -240,6 +241,6 @@ describe('how you slide', () => {
     const good = slide({ back: false, head: false });
     expect(good.falling).toBe(false);
     const bad = slide({ back: true, head: true });
-    expect(bad.falling || bad.dead).toBe(true);
+    expect(bad.falling || bad.dead || bad.fall.distance > good.fall.distance).toBe(true);
   });
 });

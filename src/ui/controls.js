@@ -5,11 +5,10 @@ export const CONTROLS = [
   ['Move', [
     [['W', 'A', 'S', 'D'], 'Move'],
     [['Shift'], 'Push the pace'],
-    [['Space'], 'Self-arrest (hold)'],
+    [['Space'], 'Self-arrest (hold, with the ice axe in hand)'],
     [['C'], 'Clip into / unclip from a fixed rope'],
     [['E'], 'Place an ice screw or snow picket (rope needed)'],
-    [['I'], 'Draw / stow the ice axe'],
-    [['Click'], 'Swing the axe on a steep wall (S + click to climb down)'],
+    [['I'], 'Hold / stow the ice axe (needed on steep snow and ice)'],
     [['X'], 'Probe for hidden crevasses'],
   ]],
   ['Gear', [

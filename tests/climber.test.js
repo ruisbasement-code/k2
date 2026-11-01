@@ -58,7 +58,6 @@ describe('climber', () => {
     for (let t = 0; t < 20; t += FRAME) {
       const tan = ropes.tangentAt(c.ropeId, c.ropeS);
       c.yaw = Math.atan2(-tan.x, -tan.z);
-      if (c.onAxeWall) c.swingAxe();
       c.update(FRAME, { x: 0, y: 1 });
     }
     roll.mockRestore();
@@ -182,8 +181,8 @@ describe('climber', () => {
     expect(c.fall.distance).toBeGreaterThan(5);
   });
 
-  it('can self-arrest a slide on snow by holding Space early, but not on ice', () => {
-    const slide = (surfaceWanted, arrest) => {
+  it('can self-arrest a slide on snow by holding Space with the axe, but not on ice or without it', () => {
+    const slide = (surfaceWanted, arrest, axe = true) => {
       // A 30-34° slope of the wanted surface somewhere on the mountain.
       let spot = null;
       for (let r = 300; r < 420 && !spot; r += 2) {
@@ -196,15 +195,22 @@ describe('climber', () => {
       const c = new Climber(hm, ropes, route.places);
       c.placeAt(spot.x, spot.z, 0, 0);
       const [gx, gz] = hm.gradient(spot.x, spot.z);
+      if (axe) axeOut(c);
       c._startFall(gx, gz, 'test');
-      run(c, 1.5, { x: 0, y: 0, arrest });
+      c.everArrested = false;
+      for (let t = 0; t < 1.5; t += FRAME) {
+        c.update(FRAME, { x: 0, y: 0, arrest });
+        c.everArrested ||= !!c.fall.arresting;
+      }
       return c;
     };
     const held = slide('firm_snow', true);
     expect(held.falling).toBe(false);
     expect(held.tumbling).toBe(false);
     const notHeld = slide('firm_snow', false);
-    expect(notHeld.falling).toBe(true);
+    expect(notHeld.everArrested).toBe(false);
+    const noAxe = slide('firm_snow', true, false);
+    expect(noAxe.everArrested).toBe(false);
     const ice = slide('ice', true);
     expect(ice.falling).toBe(true);
   });
@@ -274,8 +280,7 @@ describe('climber', () => {
       const roll = vi.spyOn(Math, 'random').mockReturnValue(0.999999);
       const y0 = c.position.y;
       for (let k = 0; k < 90; k++) {
-        if (c.onAxeWall) c.swingAxe();
-        c.update(FRAME, { x: 0, y: 1 });
+          c.update(FRAME, { x: 0, y: 1 });
       }
       roll.mockRestore();
       return c.position.y - y0;
@@ -287,40 +292,31 @@ describe('climber', () => {
 
   it('clipped in, still needs the axe on steep snow and ice: the rope only catches you', () => {
     const c = new Climber(hm, ropes, route.places);
-    // The Bottleneck: steep ice on the summit-day rope.
-    const p = ropes.ropes[1].find((q) => q.y > 7900 && hm.slopeDeg(q.x, q.z) > tuning.axe_climb_max_deg + 2);
-    const climb = (axe, swing) => {
+    // The Bottleneck: steep snow and ice on the summit-day rope.
+    const p = ropes.ropes[1].find((q) => {
+      const s = hm.slopeDeg(q.x, q.z);
+      return q.y > 7900 && s > tuning.no_rope_max_deg + 3 && s < tuning.axe_climb_max_deg - 3;
+    });
+    expect(p).toBeTruthy();
+    const climb = (axe) => {
       c.placeAt(p.x, p.z, 0, 0);
       c.ropeId = -1;
       c.toggleClip();
       c.axe = { have: true, inHand: false, drawing: 0, dangling: 0 };
       if (axe) axeOut(c);
-      c.grip = 100;
       const t = ropes.tangentAt(c.ropeId, c.ropeS);
       c.yaw = Math.atan2(-t.x, -t.z);
       const roll = vi.spyOn(Math, 'random').mockReturnValue(0.99);
       const y0 = c.position.y;
-      for (let k = 0; k < 90; k++) {
-        if (swing && c.onAxeWall) c.swingAxe();
-        c.update(FRAME, { x: 0, y: 1 });
-      }
+      for (let k = 0; k < 90; k++) c.update(FRAME, { x: 0, y: 1 });
       roll.mockRestore();
       return c.position.y - y0;
     };
     // No axe: walking at the rope gets you nowhere.
-    expect(climb(false, false)).toBeLessThanOrEqual(0.05);
+    expect(climb(false)).toBeLessThanOrEqual(0.05);
     expect(c.blocked).toBe(true);
-    // Axe out but no swings: you hang on the rope, grip holding, going nowhere.
-    expect(climb(true, false)).toBeLessThanOrEqual(0.05);
-    expect(c.onAxeWall).toBe(true);
-    expect(c.grip).toBe(100);
-    // Swinging the axe takes you up.
-    expect(climb(true, true)).toBeGreaterThan(0.5);
-    // Spent on the wall: you come off, and the rope catches you.
-    c.grip = 0;
-    c.update(FRAME, { x: 0, y: 0 });
-    expect(c.falling).toBe(true);
-    expect(c.fall.rope).not.toBe(null);
+    // Holding the axe takes you up.
+    expect(climb(true)).toBeGreaterThan(0.3);
   });
 
   it('counts expedition days', () => {
