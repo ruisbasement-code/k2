@@ -364,7 +364,9 @@ export class Hud {
     $('m-core').textContent = `${ph.core.toFixed(1)} °C`;
     $('m-air').textContent = air ? `${Math.round(air.feelsLikeC)} °C` : '—';
     const left = pack.bottles.length ? Math.round((pack.bottles[0] / tuning.pack.oxygen.litres) * 100) : 0;
-    $('m-o2').textContent = pack.bottles.length ? `${ph.flow ? `${ph.flow} L/min` : 'off'} · ${left}% · ${pack.bottles.length}` : 'none';
+    const o2Min = ph.flow ? pack.oxygenLitres / ph.flow : 0;
+    const o2Time = o2Min >= 60 ? `${Math.floor(o2Min / 60)}h${String(Math.floor(o2Min % 60)).padStart(2, '0')}` : `${Math.floor(o2Min)} min`;
+    $('m-o2').textContent = pack.bottles.length ? `${ph.flow ? `${ph.flow} L/min · ${o2Time} left` : 'off'} · ${left}% · ${pack.bottles.length}` : 'none';
     $('m-eff').textContent = `${Math.round(ph.effectiveAltitude).toLocaleString('en-US')} m`;
     $('m-acc').textContent = `${Math.round(ph.acclimatized).toLocaleString('en-US')} m`;
     $('m-pack').textContent = `${pack.kg.toFixed(1)} kg`;

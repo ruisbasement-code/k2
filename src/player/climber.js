@@ -719,6 +719,30 @@ export class Climber {
     return took.length > 0;
   }
 
+  /** The camp you are in and its stores, or null. */
+  storesHere() {
+    const camp = this._campNearby();
+    const stores = camp && this.campStores[camp.name];
+    return stores ? { name: camp.name, stores } : null;
+  }
+
+  /** Take one of an item from this camp's stores. Returns null, or why not. */
+  takeFromCamp(item) {
+    const here = this.storesHere();
+    if (!here) return 'No camp here';
+    return this.pack.take(here.stores, item);
+  }
+
+  /** Leave one of an item in this camp's stores for later. Returns null, or why not. */
+  leaveAtCamp(item) {
+    const here = this.storesHere();
+    if (!here) return 'No camp here';
+    const why = this.pack.leave(here.stores, item);
+    // Leaving the bottle on your mask: close the regulator first.
+    if (!why && item === 'oxygen' && !this.pack.bottles.length) this.phys.flow = 0;
+    return why;
+  }
+
   cycleTurnaround() {
     const hours = tuning.turnaround_hours;
     this.turnaroundHour = hours[(hours.indexOf(this.turnaroundHour) + 1) % hours.length];

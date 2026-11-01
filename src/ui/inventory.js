@@ -4,6 +4,7 @@
 
 import { GEAR, PACKS, EXTRAS, CONSUMABLE_LITRES } from '../sim/gear.js';
 import { tuning } from '../sim/paceModel.js';
+import { ITEMS } from '../sim/pack.js';
 import { icon } from './icons.js';
 
 export const DEVICES = ['gps', 'monitor', 'map'];
@@ -166,10 +167,12 @@ export class Inventory {
       <div class="sec"><h3>Backpack <span class="cap-text">${used.toFixed(1)} / ${cap} L</span></h3>
         <div class="cap"><div style="width:${(full * 100).toFixed(1)}%" class="${used > cap - 2 ? 'full' : ''}"></div></div>
         <div class="grid" style="--cols:${cols};--rows:${usedRows}"><div class="cells">${cells}</div>${blocks}</div></div>
+      ${this._forecast()}
       ${p.gear.size ? '' : '<p class="empty">No gear yet. Gear up at Base Camp (G).</p>'}
     </div>`;
     let store = '';
-    if (this.store) {
+    if (this.store === 'camp') store = this._campStore(note);
+    else if (this.store) {
       const groups = {};
       for (const id of ex.available()) (groups[GEAR[id].group] ??= []).push(id);
       const packs = ex.packs().map((id) => `<button class="chip${p.size === id ? ' on' : ''}" data-pack="${id}">${PACKS[id].label}</button>`).join('');
@@ -199,6 +202,46 @@ export class Inventory {
     scrollers().forEach((s, i) => { if (kept[i]) s.scrollTop = kept[i]; });
   }
 
+  /** How long what you carry lasts, and what the weight costs you. */
+  _forecast() {
+    const c = this.ex.c;
+    const f = this.ex.pack.forecast(c.phys?.flow ?? 0);
+    const hrs = (h) => (h >= 10 ? `${Math.round(h)} h` : h >= 1 ? `${Math.floor(h)} h ${String(Math.round((h % 1) * 60)).padStart(2, '0')}` : `${Math.round(h * 60)} min`);
+    const slow = Math.round(f.slower * 100);
+    const rows = [
+      ['oxygen', 'Oxygen', f.o2Hours > 0 ? `${hrs(f.o2Hours)} at ${f.flow} L/min` : 'none', f.o2Hours > 0 && f.o2Hours < 2],
+      ['snack', 'Food', f.foodHours > 0 ? `${hrs(f.foodHours)} of climbing` : 'none', f.foodHours < 4],
+      ['gas', 'Gas', f.brews ? `${f.brews} brew${f.brews > 1 ? 's' : ''}: a night's water and a meal each` : 'none: no water once your bottles run dry', f.brews < 1],
+      ['pack', 'Weight', slow > 0 ? `${slow}% slower, harder work` : 'light: no penalty', slow >= 15],
+    ];
+    return `<div class="sec lasts"><h3>Lasts</h3>${rows.map(([id, label, text, low]) => `<div class="last${low ? ' low' : ''}"><span>${label}</span><b>${text}</b></div>`).join('')}</div>`;
+  }
+
+  /** A camp's stores: take what you need, or leave supplies for later. */
+  _campStore(note) {
+    const c = this.ex.c;
+    const here = c.storesHere();
+    if (!here) return '';
+    const { name, stores } = here;
+    const rows = ITEMS.map((id) => {
+      const label = SUPPLY_LABEL[id];
+      const left = stores[id] ?? 0;
+      const parts = id === 'oxygen' ? (stores.o2_part ?? []) : [];
+      let has = left < 0 ? 'plenty' : id === 'water' ? `${left} L` : `${left}`;
+      if (parts.length) has += ` + ${parts.length} part-used`;
+      const mine = id === 'water' ? `${this.ex.pack.water.toFixed(1)} L` : this._count(id);
+      const each = id === 'gas' ? `${tuning.pack.gas.kg} kg, ${tuning.pack.gas.brews} brews` : id === 'oxygen' ? `${(tuning.pack.oxygen.shell_kg + tuning.pack.oxygen.litres * tuning.pack.oxygen.kg_per_l).toFixed(1)} kg full` : id === 'water' ? '1 kg per L' : `${tuning.pack[id].kg} kg`;
+      return `<div class="row step"><span class="ri g-supply">${icon(id)}</span><span class="name">${label}<small>Here: ${has} · ${each}</small></span>
+        <span class="stepper"><button data-leave="${id}" title="Leave one here"${id === 'water' ? ' disabled' : ''}>−</button><b>${mine}</b><button data-take="${id}" title="Take one">+</button></span></div>`;
+    }).join('');
+    return `<div class="inv-col store">
+      <div class="inv-head"><h2>${name} stores</h2></div>
+      <p class="hint">Take what you need for the next push, or leave supplies here to pick up on the way back or the next carry. What you leave stays.</p>
+      <div class="rows">${rows}</div>
+      <div class="inv-foot"><span class="note">${note}</span><button class="ghost" data-loadout>Take the usual</button><button id="set-off">Done</button></div>
+    </div>`;
+  }
+
   _click(e) {
     const b = e.target.closest('button');
     if (!b) {
@@ -208,7 +251,13 @@ export class Inventory {
     const ex = this.ex;
     let note = '';
     if (b.id === 'set-off') return this.hide();
-    if (b.dataset.gear) { if (!ex.toggle(b.dataset.gear)) note = 'No room in the pack.'; }
+    const c = ex.c;
+    if (b.dataset.take) note = c.takeFromCamp(b.dataset.take) ?? '';
+    else if (b.dataset.leave) note = c.leaveAtCamp(b.dataset.leave) ?? '';
+    else if (b.dataset.loadout !== undefined) {
+      const took = c.resupply();
+      note = took ? '' : 'Nothing more to take for the usual load';
+    } else if (b.dataset.gear) { if (!ex.toggle(b.dataset.gear)) note = 'No room in the pack.'; }
     else if (b.dataset.hold) this.actions.hold(b.dataset.hold);
     else if (b.dataset.use) this.actions.use(b.dataset.use);
     else if (b.dataset.pack) { if (!ex.setPack(b.dataset.pack)) note = 'Too much to fit in that pack.'; }

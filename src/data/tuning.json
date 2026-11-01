@@ -244,6 +244,7 @@
   "o2_flows": [0, 0.5, 1, 2, 3, 4],
   "_o2_altitude_drop": "How many metres lower the air feels at each flow in litres per minute.",
   "o2_altitude_drop": [[0, 0], [0.5, 500], [1, 1000], [2, 1700], [3, 2200], [4, 2600]],
+  "o2_low_warn_min": 30,
   "o2_floor_m": 4500,
 
   "food_kcal_full": 5000,

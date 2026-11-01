@@ -255,7 +255,7 @@ function holdDevice(id) {
   inventory.render();
 }
 
-/** G: strike your tent, gear up at Base Camp, or restock at another camp. */
+/** G: strike your tent, gear up at Base Camp, or open another camp's stores to take or leave supplies. */
 function gearUp() {
   const own = expedition.ownTentNearby();
   if (own) {
@@ -264,6 +264,7 @@ function gearUp() {
     return;
   }
   if (climber._campNearby()?.name === 'Base Camp') openInventory(true);
+  else if (climber.storesHere() && !climber.collapsed) openInventory('camp');
   else climber.resupply();
 }
 
