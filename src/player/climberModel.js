@@ -73,7 +73,11 @@ export class ClimberModel extends THREE.Group {
       mitt: mat(0x1b1d22, { roughness: 0.9 }),
       boot: mat(0xf2b705, { roughness: 0.6 }),
       sole: mat(0x111214, { roughness: 0.9 }),
-      axe: mat(0x2b5fa8, { roughness: 0.4, metalness: 0.5 }),
+      axe: mat(0x1f6fe0, { roughness: 0.35, metalness: 0.4 }),
+      grip: mat(0x15161a, { roughness: 0.95 }),
+      head: mat(0xc4cad2, { roughness: 0.3, metalness: 0.35 }),
+      pole: mat(0x2a2d33, { roughness: 0.4, metalness: 0.6 }),
+      poleBand: mat(0xff7a1a, { roughness: 0.45, metalness: 0.3 }),
     };
     const part = (parent, geo, material, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {
       const m = new THREE.Mesh(geo, material);
@@ -119,8 +123,18 @@ export class ClimberModel extends THREE.Group {
     part(pack, new THREE.CylinderGeometry(0.07, 0.07, 0.5, 12), M.pad, 0, 0.36, -0.02, 0, 0, Math.PI / 2);
     for (const s of [-1, 1]) part(pack, new THREE.BoxGeometry(0.012, 0.03, 0.23), M.harness, s * 0.17, 0.05 - 0.15 * (s + 1), 0);
     part(pack, new THREE.BoxGeometry(0.28, 0.035, 0.02), M.harness, 0, -0.08, 0.115);
-    this.stowedAxe = part(pack, new THREE.CylinderGeometry(0.013, 0.013, 0.62, 6), M.axe, 0.1, 0.02, 0.125, 0, 0, 0.05);
-    part(this.stowedAxe, new THREE.BoxGeometry(0.26, 0.03, 0.02), M.metal, 0, -0.32, 0);
+    this.stowedAxe = part(pack, new THREE.CylinderGeometry(0.016, 0.016, 0.66, 8), M.axe, 0.1, 0.02, 0.13, 0, 0, 0.05);
+    part(this.stowedAxe, new THREE.BoxGeometry(0.3, 0.035, 0.022), M.metal, 0, -0.34, 0);
+    // Trekking poles, collapsed and strapped down the side of the pack.
+    this.stowedPoles = new THREE.Group();
+    this.stowedPoles.position.set(-0.19, 0.02, 0.02);
+    this.stowedPoles.rotation.set(0.08, 0, 0.06);
+    pack.add(this.stowedPoles);
+    for (const dz of [-0.03, 0.03]) {
+      part(this.stowedPoles, new THREE.CylinderGeometry(0.012, 0.012, 0.62, 6), M.poleBand, 0, 0, dz);
+      part(this.stowedPoles, new THREE.CylinderGeometry(0.02, 0.018, 0.12, 8), M.grip, 0, 0.36, dz);
+      part(this.stowedPoles, new THREE.CylinderGeometry(0.035, 0.035, 0.008, 10), M.grip, 0, -0.26, dz);
+    }
 
     // Neck: puffy hood collar. Head: balaclava, helmet with a stripe, wraparound goggles.
     const neck = joint(spine, 'neck', 0, BONES.spine, 0);
@@ -156,10 +170,33 @@ export class ClimberModel extends THREE.Group {
     this.joints.wristR.add(hand);
     this.axe = new THREE.Group();
     hand.add(this.axe);
-    // Head at the origin, shaft hanging along -y.
-    part(this.axe, new THREE.CylinderGeometry(0.014, 0.014, 0.6, 6), M.axe, 0, -0.3, 0);
-    part(this.axe, new THREE.BoxGeometry(0.03, 0.03, 0.28), M.metal, 0, 0, -0.04); // head and pick
-    part(this.axe, new THREE.ConeGeometry(0.012, 0.06, 6), M.steel, 0, -0.63, 0, Math.PI); // spike
+    // Head at the origin, shaft hanging along -y: a bright blue shaft with a rubber
+    // grip at the spike end, a steel head with a long drooping pick forward (-z),
+    // a broad adze behind, and a leash loop. Big enough to read from a distance.
+    part(this.axe, new THREE.CylinderGeometry(0.019, 0.017, 0.66, 8), M.axe, 0, -0.33, 0);
+    part(this.axe, new THREE.CylinderGeometry(0.022, 0.022, 0.16, 8), M.grip, 0, -0.56, 0);
+    part(this.axe, new THREE.ConeGeometry(0.017, 0.08, 6), M.steel, 0, -0.7, 0, Math.PI); // spike
+    part(this.axe, new THREE.BoxGeometry(0.03, 0.06, 0.07), M.head, 0, 0.005, 0); // head
+    part(this.axe, new THREE.BoxGeometry(0.014, 0.035, 0.2), M.head, 0, -0.015, -0.12, -0.25); // pick
+    part(this.axe, new THREE.ConeGeometry(0.012, 0.06, 4), M.head, 0, -0.06, -0.225, -Math.PI / 2 - 0.6); // pick tip
+    part(this.axe, new THREE.BoxGeometry(0.06, 0.012, 0.12), M.head, 0, 0.01, 0.09, 0.15); // adze
+    part(this.axe, new THREE.TorusGeometry(0.05, 0.006, 4, 12), M.poleBand, 0, -0.38, 0.03, 0, Math.PI / 2); // leash
+    // Trekking poles, one per mitt, grip at the hand and hanging along -y.
+    this.poles = ['L', 'R'].map((side) => {
+      const g = new THREE.Group();
+      g.position.set(0, -0.08, -0.01);
+      this.joints[`wrist${side}`].add(g);
+      part(g, new THREE.CylinderGeometry(0.022, 0.02, 0.14, 8), M.grip, 0, 0.01, 0); // foam grip
+      part(g, new THREE.TorusGeometry(0.045, 0.006, 4, 12), M.poleBand, 0, 0.09, 0, 0, Math.PI / 2); // wrist strap
+      part(g, new THREE.CylinderGeometry(0.012, 0.012, 0.46, 6), M.poleBand, 0, -0.29, 0); // upper section
+      part(g, new THREE.CylinderGeometry(0.008, 0.008, 0.5, 6), M.pole, 0, -0.76, 0); // lower section
+      part(g, new THREE.CylinderGeometry(0.014, 0.014, 0.03, 6), M.grip, 0, -0.52, 0); // lever lock
+      part(g, new THREE.CylinderGeometry(0.045, 0.045, 0.01, 10), M.grip, 0, -0.95, 0); // snow basket
+      part(g, new THREE.ConeGeometry(0.008, 0.05, 6), M.steel, 0, -1.03, 0, Math.PI); // carbide tip
+      return g;
+    });
+    /** What's in the hands, set from outside before posing: { axe, poles }. */
+    this.held = { axe: false, poles: false };
     this.jumar = new THREE.Group();
     this.jumar.position.set(0, -0.1, -0.02);
     this.joints.wristL.add(this.jumar);
@@ -230,6 +267,7 @@ export class ClimberModel extends THREE.Group {
 
   /** In first person the camera sits in the head: hide it (and the chest) so you see your own limbs. */
   set firstPerson(on) {
+    this._fp = on;
     for (const o of this.fpHidden) o.visible = !on;
   }
 
@@ -245,10 +283,10 @@ export class ClimberModel extends THREE.Group {
    * standing to sliding, getting up after a fall).
    *
    * @param mode 'walk' | 'climb' | 'axe' | 'rope' | 'rest' | 'kneel' | 'lie' | 'slide' | 'fly'
-   * @param o {dt, stride, swing, arrest, time, grip, fp}: dt in real seconds (0 or
+   * @param o {dt, stride, swing, arrest, time, grip}: dt in real seconds (0 or
    *   missing snaps straight to the pose); stride 0..1 how long the steps are;
    *   swing 0..1 through an axe swing; arrest digging the axe in a slide; time for
-   *   flailing; grip 0..100 on the axe; fp seen from the eyes (first person)
+   *   flailing; grip 0..100 on the axe
    */
   pose(mode, phase, moving, rise = 0, o = {}) {
     const dt = o.dt ?? 0;
@@ -315,11 +353,11 @@ export class ClimberModel extends THREE.Group {
         pt = -0.05 - 0.25 * up + 0.1 * Math.min(th, 0) - (moving ? 0.04 * stride : 0);
         sp = -0.1 - 0.35 * up;
         armsFK = [[-sw * 0.4 * stride + 0.1, 0.35 + 0.15 * Math.max(0, -sw)], [sw * 0.4 * stride + 0.25, 0.5 + 0.15 * Math.max(0, sw)]];
-        if (o.fp) {
-          // Seen from your own eyes: mitts carried a little forward, so they show at
-          // the bottom of the view and swing with your steps.
-          armsFK = armsFK.map(([a, e]) => [a + 0.35, e + 0.55]);
-        }
+        // Poles: elbows bent, each pole planted with the opposite foot's stride.
+        if (this.held.poles) armsFK = [[-sw * 0.35 * stride + 0.2, 0.75], [sw * 0.35 * stride + 0.2, 0.75]];
+        // The axe carried like a cane in the uphill hand.
+        else if (this.held.axe) armsFK[1] = [sw * 0.2 + 0.25, 0.7];
+        if (this._fp) armsFK = this._fpArms(sw, armsFK);
         footMax = 0.45;
         head = 0.1 + 0.4 * up;
         break;
@@ -438,6 +476,10 @@ export class ClimberModel extends THREE.Group {
         pt = -0.15;
         sp = -0.6 - breath;
         armsFK = [[0.9, -0.05], [0.9, -0.05]];
+        // Leaning on the poles, or on the axe planted in front.
+        if (this.held.poles) armsFK = [[0.55, 0.5], [0.55, 0.5]];
+        else if (this.held.axe) armsFK[1] = [0.6, 0.45];
+        if (this._fp) armsFK = this._fpArms(0, armsFK);
         footMax = 0.45;
         head = 0.55;
         spread = 0.16;
@@ -486,6 +528,33 @@ export class ClimberModel extends THREE.Group {
     });
 
     this._tools(tool);
+    // Held upright rather than along the forearm: undo the arm's lean so the pole
+    // tips reach the ground a little behind the hands, and the axe is a cane.
+    const lean = (side) => pt + sp + j[`shoulder${side}`].rotation.x + j[`elbow${side}`].rotation.x + j[`wrist${side}`].rotation.x;
+    const fwd = this._fp ? 0.6 : 0; // tilted out ahead in first person, so you see them
+    if (this.held.poles) {
+      ['L', 'R'].forEach((side, i) => {
+        const plant = mode === 'walk' && moving ? -0.3 + (i ? 1 : -1) * sw * 0.2 : mode === 'climb' ? 0.4 : -0.12;
+        this.poles[i].rotation.set(plant + fwd - lean(side), 0, (i ? -1 : 1) * spread * 0.8);
+      });
+    }
+    if (tool === 'axe' && !hands) {
+      this.axe.rotation.set(-0.15 - lean('R'), 0, -spread * 0.8);
+      if (this._fp) {
+        // In first person: gripped by the shaft below the head, head leaning out ahead
+        // and turned side-on, so the pick shows in profile above your mitt.
+        this.axe.rotation.set(-0.5 - lean('R'), 1.2, 0, 'XYZ');
+        _v.set(0, 0.22, 0).applyEuler(this.axe.rotation);
+        this.axe.position.add(_v);
+      }
+    }
+  }
+
+  /** First person: hold what's in your hands up in front of you, where you can see it. */
+  _fpArms(sw, arms) {
+    if (this.held.poles) return [[1.4 - sw * 0.1, 0.35], [1.4 + sw * 0.1, 0.35]];
+    if (this.held.axe) return [arms[0], [1.45 + sw * 0.06, 0.3]];
+    return arms;
   }
 
   /** Simple forward-kinematics poses for sliding and scout flying. */
@@ -535,6 +604,13 @@ export class ClimberModel extends THREE.Group {
     }
     this.axe.visible = tool === 'axe';
     this.stowedAxe.visible = tool !== 'axe';
+    // Poles out in both hands, unless you're on the jumar.
+    const poles = this.held.poles && tool !== 'jumar';
+    for (const p of this.poles) {
+      p.visible = poles;
+      p.rotation.set(0, 0, 0);
+    }
+    this.stowedPoles.visible = this.held.stowedPoles || (this.held.poles && !poles);
     this.jumar.visible = tool === 'jumar';
     this.tether.visible = tool === 'jumar';
     if (this.tether.visible) {
@@ -552,6 +628,8 @@ export class ClimberModel extends THREE.Group {
  * straight down, positive forward (-z). bend -1 bends the middle joint backward
  * (a knee), +1 forward (an elbow). Returns [first bone angle, middle joint angle].
  */
+const _v = new THREE.Vector3();
+
 function twoBone(root, target, l1, l2, bend) {
   const dy = target[0] - root[0];
   const dz = target[1] - root[1];
