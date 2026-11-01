@@ -43,6 +43,7 @@ lists every control (`src/ui/controls.js`), with the sound switch.
 | --- | --- |
 | W A S D, Shift | Move, push the pace |
 | Space (hold) | Self-arrest when you start sliding (ice axe in hand only) |
+| Q | Catch your footing when it flashes up on steep ground |
 | C | Clip into / unclip from a fixed rope (within 5 m) |
 | E | Place an ice screw or snow picket on steep ground (needs the rope) |
 | I | Hold / stow the ice axe (or pick it in the hotbar) |
@@ -120,6 +121,19 @@ realistic pace still gets you somewhere. All the speeds below are in mountain ti
   (about 2–5%) that the anchor rips out and you fall on, unroped. Reach either
   end and you unclip. There are two ropes: the Abruzzi Spur from Advanced Base Camp to
   Camp 4, and the Bottleneck and Traverse from above Camp 4 to about 8,450 m.
+
+**Footing checks.** Climbing ground of 38° or steeper, every now and then a foot
+skids and a **Q** comes up in a ring that drains. Press Q before it runs out and you
+keep climbing. Miss it and you slip: unroped you slide (self-arrest with the axe if
+it's in your hand); clipped to a fixed rope, the old clip tears free 60% of the time
+and you fall unroped, otherwise the rope catches you; on your own ice screw or picket
+it rips out 40% / 50% of the time, otherwise you drop onto it and take a knock. They
+come more often the steeper it gets (about every 20 s of climbing at 38°, every 9 s
+on the steepest walls) and you get less time: about 1.7 s down to 1.15 s. The ice axe
+planted on snow or ice gives you a quarter longer; poles skating on steep ground,
+numb hands, no crampons and injuries give you less, never under 0.75 s. The clock
+only runs while you move on steep ground, and stops in the pause menu
+(`footing` in `tuning.json`).
 
 **Momentum.** You speed up and slow down over a moment instead of instantly, and a
 sharp turn costs the speed you built up. Running downhill (Shift) on ground over
