@@ -123,6 +123,34 @@ describe('ice axe', () => {
     }
   });
 
+  it('keeps a click made late in a swing for the next one, and eases the pull', () => {
+    const spot = find(({ x, z, s, key }) => s > 44 && s < 52 && (key === 'firm_snow' || key === 'ice') && !ledgeAt(x, z, s));
+    const c = climber(spot, true);
+    const [gx, gz] = hm.gradient(spot.x, spot.z);
+    c.yaw = Math.atan2(-gx, -gz);
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    run(c, 0.2);
+    expect(c.onAxeWall).toBe(true);
+    // An early click is dropped: one swing, then you hang.
+    c.swingAxe();
+    run(c, FRAME);
+    c.swingAxe();
+    const p0 = c.position.clone();
+    run(c, 2 * FRAME);
+    const early = c.position.distanceTo(p0); // the pull starts slowly
+    run(c, tuning.axe_swing_s + 0.1);
+    expect(c.swingProgress).toBe(0);
+    // A late click carries straight into the next swing.
+    c.swingAxe();
+    run(c, tuning.axe_swing_s * 0.8);
+    c.swingAxe();
+    run(c, tuning.axe_swing_s * 0.3);
+    expect(c.swingProgress).toBeGreaterThan(0);
+    const mid = c.position.clone();
+    run(c, 2 * FRAME);
+    expect(c.position.distanceTo(mid)).toBeGreaterThan(early);
+  });
+
   it('can be lost in a tumble: on its leash, or gone if the leash snaps', () => {
     const spot = find(({ s, key }) => s > 28 && s < 33 && key === 'firm_snow');
     const c = climber(spot, true);
