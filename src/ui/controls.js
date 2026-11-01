@@ -13,7 +13,7 @@ export const CONTROLS = [
   ]],
   ['Gear', [
     [['Tab'], 'Inventory'],
-    [['1', '9'], 'Hotbar: hold or use what\'s in that slot (trekking poles: out / away)'],
+    [['1', '9'], 'Hotbar: hold or use what\'s in that slot (trekking poles: out / away; crampons: strap on / take off, on a ledge, gentle ground or the rope)'],
     [['G'], 'Gear up at Base Camp · restock at a camp · strike your tent'],
     [['J'], 'Hold the Wympr GPS'],
     [['U'], 'Hold the vitals monitor'],

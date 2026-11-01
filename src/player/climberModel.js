@@ -232,6 +232,7 @@ export class ClimberModel extends THREE.Group {
       const c = crampon.clone();
       c.position.set(0, -0.105, -0.05);
       ankle.add(c);
+      (this.cramponMeshes ??= []).push(c);
     }
 
     // Hidden in first person: the head and collar (the camera is in them) and the
@@ -562,6 +563,7 @@ export class ClimberModel extends THREE.Group {
       p.rotation.set(0, 0, 0);
     }
     this.stowedPoles.visible = this.held.stowedPoles || (this.held.poles && !poles);
+    for (const m of this.cramponMeshes ?? []) m.visible = this.held.crampons ?? true;
     this.jumar.visible = tool === 'jumar';
     this.tether.visible = tool === 'jumar';
     if (this.tether.visible) {
