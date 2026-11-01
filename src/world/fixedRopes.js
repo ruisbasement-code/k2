@@ -220,7 +220,12 @@ export class FixedRopes {
     if (!d) return this.pointAt(rope, s, out);
     const f = Math.min(Math.max(s / d.ds, 0), d.n - 1e-6);
     const i = Math.floor(f), t = f - i;
-    return out.set(d.x[i] + (d.x[i + 1] - d.x[i]) * t, d.y[i] + (d.y[i + 1] - d.y[i]) * t, d.z[i] + (d.z[i + 1] - d.z[i]) * t);
+    // Across the ground it runs on the rope's own line (the drape only sags it):
+    // between two samples either side of a bend, the straight chord cut the corner
+    // by up to 18 cm, off the line you clip into.
+    this.pointAt(rope, s, out);
+    out.y = d.y[i] + (d.y[i + 1] - d.y[i]) * t;
+    return out;
   }
 
   /**

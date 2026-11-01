@@ -47,13 +47,22 @@ export function createTerrain(hm) {
       nrm[i * 3] = -gx / len;
       nrm[i * 3 + 1] = 1 / len;
       nrm[i * 3 + 2] = -gz / len;
-      const slope = (Math.atan(Math.hypot(gx, gz)) * 180) / Math.PI;
+      // Ground type (snow or bare rock) goes mostly by the slope over ~190 m: per
+      // 31 m vertex, the faces sit right at the steepness snow holds on, so snow and
+      // rock switched from one triangle to the next in angular camouflage blotches.
+      const ax = (hm.at(r, c + 3) - hm.at(r, c - 3)) / (6 * cell);
+      const az = (hm.at(r + 3, c) - hm.at(r - 3, c)) / (6 * cell);
+      const slope = (Math.atan(0.3 * Math.hypot(gx, gz) + 0.7 * Math.hypot(ax, az)) * 180) / Math.PI;
       // Glaciers are wide, flat and low: judge flatness over ~190 m so the mask is not spotty.
       const wx = (hm.at(r, c + 3) - hm.at(r, c - 3)) / (6 * cell);
       const wz = (hm.at(r + 3, c) - hm.at(r - 3, c)) / (6 * cell);
       const wide = (Math.atan(Math.hypot(wx, wz)) * 180) / Math.PI;
       const glacier = smooth(5650, 5250, y) * smooth(17, 8, wide);
-      const lap = (hm.at(r, c + 2) + hm.at(r, c - 2) + hm.at(r + 2, c) + hm.at(r - 2, c) - 4 * y) / (4 * cell * cell);
+      // Curvature, mostly over ~250 m: at ~60 m alone it flipped between hollow and
+      // ridge from one vertex to the next, and the snow it decides came out in
+      // angular camouflage blotches.
+      const lap = (hm.at(r, c + 2) + hm.at(r, c - 2) + hm.at(r + 2, c) + hm.at(r - 2, c) - 4 * y) / (4 * cell * cell) * 0.36
+        + (hm.at(r, c + 4) + hm.at(r, c - 4) + hm.at(r + 4, c) + hm.at(r - 4, c) - 4 * y) / (4 * cell * cell) * 0.16;
       surf[i * 4] = slope / 90;
       surf[i * 4 + 1] = glacier;
       surf[i * 4 + 2] = Math.min(Math.max(0.5 + lap * 25, 0), 1);
@@ -142,12 +151,18 @@ function createFineTerrain(hm, holes) {
       nrm[k * 3 + 1] = 1 / len;
       nrm[k * 3 + 2] = -gz / len;
       const y = h[k];
+      // Ground type (snow or bare rock) goes mostly by the slope over ~190 m, as on
+      // the coarse terrain, not of each facet: the faces sit right at the steepness
+      // snow holds on, and per facet snow and rock flickered in blotches.
+      const sx = 0.3 * (at(i + 2, j) - at(i - 2, j)) / (4 * step) + 0.7 * (at(i + 12, j) - at(i - 12, j)) / (24 * step);
+      const sz = 0.3 * (at(i, j + 2) - at(i, j - 2)) / (4 * step) + 0.7 * (at(i, j + 12) - at(i, j - 12)) / (24 * step);
       const lapBig = (at(i + 8, j) + at(i - 8, j) + at(i, j + 8) + at(i, j - 8) - 4 * y) / (4 * coarse * coarse);
+      const lapWide = (at(i + 16, j) + at(i - 16, j) + at(i, j + 16) + at(i, j - 16) - 4 * y) / (4 * coarse * coarse);
       const lapSmall = (at(i + 2, j) + at(i - 2, j) + at(i, j + 2) + at(i, j - 2) - 4 * y) / (4 * coarse * coarse);
       const glacier = hm.glacierAt(x, z);
-      surf[k * 4] = (Math.atan(Math.hypot(gx, gz)) * 180) / Math.PI / 90;
+      surf[k * 4] = (Math.atan(Math.hypot(sx, sz)) * 180) / Math.PI / 90;
       surf[k * 4 + 1] = glacier;
-      surf[k * 4 + 2] = Math.min(Math.max(0.5 + lapBig * 25 + lapSmall * 6, 0), 1);
+      surf[k * 4 + 2] = Math.min(Math.max(0.5 + lapBig * 9 + lapWide * 4 + lapSmall * 3, 0), 1);
       surf[k * 4 + 3] = glacier > 0.01 ? moraineAt(x, z) : 0;
     }
   }

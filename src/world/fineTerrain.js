@@ -56,22 +56,54 @@ export function buildFineTerrain(hm, places = [], lines = []) {
     return { ...c, pts };
   });
   const h = new Float32Array(n * n);
+  const base = new Float32Array(n * n);
   const edge = (R.c1 - R.c0) * hm.cell * 0.5;
   const cx = x0 + edge, cz = z0 + edge;
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const x = x0 + i * step, z = z0 + j * step;
       const y = hm.baseHeightAt(x, z);
+      base[j * n + i] = y;
       // Fade to nothing at the region's edge, to meet the coarse terrain there.
       const rim = Math.max(Math.abs(x - cx), Math.abs(z - cz));
       const keep = smooth(edge, edge - 250, rim);
-      let off = keep > 0 ? keep * relief(hm, x, z, y, camps, smooth(18, 60, routeDist(x, z))) : 0;
-      for (const c of couloirs) off = couloir(c, x, z, off);
-      h[j * n + i] = y + off;
+      h[j * n + i] = keep > 0 ? keep * relief(hm, x, z, y, camps, smooth(18, 60, routeDist(x, z))) : 0;
+    }
+  }
+  // Soften the relief: the ribs' creases, the towers' walls and the benches' step
+  // edges all change faster than the 7.8 m grid can draw, and came out as saw-tooth
+  // spikes along the ridges and a speckle of tiny facets over the faces. Blurred
+  // over about 8 m they keep their shape and lose the noise.
+  blur(h, n, 1);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const k = j * n + i;
+      let off = h[k];
+      if (couloirs.length) {
+        const x = x0 + i * step, z = z0 + j * step;
+        for (const c of couloirs) off = couloir(c, x, z, off);
+      }
+      h[k] = base[k] + off;
     }
   }
   hm.fine = { x0, z0, step, n, h };
   return hm.fine;
+}
+
+/** Binomial (1 2 1) blur of an n x n grid in place, `passes` times along each axis. */
+function blur(a, n, passes) {
+  const t = new Float32Array(n);
+  for (let p = 0; p < passes; p++) {
+    for (let j = 0; j < n; j++) {
+      const o = j * n;
+      for (let i = 0; i < n; i++) t[i] = (a[o + Math.max(i - 1, 0)] + 2 * a[o + i] + a[o + Math.min(i + 1, n - 1)]) / 4;
+      a.set(t, o);
+    }
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) t[j] = (a[Math.max(j - 1, 0) * n + i] + 2 * a[j * n + i] + a[Math.min(j + 1, n - 1) * n + i]) / 4;
+      for (let j = 0; j < n; j++) a[j * n + i] = t[j];
+    }
+  }
 }
 
 /**
