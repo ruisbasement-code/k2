@@ -110,6 +110,13 @@ export class Climber {
      * the health they take off the top. Rest and sleep only heal up to maxHealth.
      */
     this.permanentInjuries = [];
+    /**
+     * How many real injuries (hits, falls, avalanches) you have taken. Each one
+     * leaves a share of its damage for good, and the share grows with the count:
+     * a body that has been hurt again and again heals worse. Death resets it
+     * (respawn starts a fresh climber).
+     */
+    this.injuryCount = 0;
     /** Sleeping tents, {camp, x, z}; set from the camp layouts (createCamps). */
     this.tents = [];
     /** Food, water, warmth, oxygen and altitude illness. */
@@ -492,6 +499,46 @@ export class Climber {
     return Math.max(0, 100 - this.permanentInjuries.reduce((sum, i) => sum + i.health, 0));
   }
 
+  /**
+   * Health as the screen should show it: you get used to old injuries, so at
+   * full (lowered) max health the view is only a little darker, not dying.
+   */
+  get feltHealth() {
+    return this.health + 0.5 * (100 - this.maxHealth);
+  }
+
+  /** The share of the next injury's damage that will never heal (0..1). */
+  get permanentShare() {
+    const t = tuning;
+    return Math.min(t.injury_permanent_max_share, t.injury_permanent_share + t.injury_permanent_share_per_injury * this.injuryCount);
+  }
+
+  /**
+   * A physical injury (a hit, a hard landing, an avalanche): it hurts, and part
+   * of it never heals. Slow wear (cold, illness) uses _hurt and heals fully.
+   * Knocks below injury_min_damage scar you a little but don't count as an
+   * injury of their own; scrapes below injury_scar_min_damage heal completely.
+   */
+  _injure(amount, cause = null) {
+    if (this.dead || !(amount > 0)) return;
+    const t = tuning;
+    // Scrapes and bumps under injury_scar_min_damage heal completely.
+    const lasting = Number.isFinite(amount) && amount >= t.injury_scar_min_damage ? amount * this.permanentShare : 0;
+    this._hurt(amount, cause);
+    if (this.dead || lasting <= 0) return;
+    if (amount >= t.injury_min_damage) this.injuryCount++;
+    const room = Math.max(0, this.maxHealth - t.injury_min_max_health);
+    const add = Math.min(lasting, room);
+    if (add <= 0) return;
+    let old = this.permanentInjuries.find((i) => i.key === 'trauma');
+    if (!old) this.permanentInjuries.push(old = { key: 'trauma', label: 'Old injuries', health: 0 });
+    const before = Math.round(old.health);
+    old.health += add;
+    this.health = Math.min(this.health, this.maxHealth);
+    // For the HUD: how much max health this injury took, shown by the health bar.
+    if (Math.round(old.health) > before) this.lastScar = { amount: Math.round(old.health) - before, at: performance.now() };
+  }
+
   /** An injury that rest and sleep will not heal. */
   addPermanentInjury(label, health) {
     this.permanentInjuries.push({ label, health });
@@ -559,7 +606,7 @@ export class Climber {
       : `You napped ${slept} in the tent at ${tent.camp}.`;
     text += r.rested ? ' Well rested.' : ' A little rested.';
     if (healed > 0) text += ` Healed ${healed}.`;
-    if (this.permanentInjuries.length && this.health >= this.maxHealth) text += ' Some injuries will not heal.';
+    if (this.permanentInjuries.length && this.health >= this.maxHealth) text += ` Some injuries will not heal: max health ${Math.round(this.maxHealth)}.`;
     this.onMessage(text);
     return { ...plan, healed, rested: r.rested, camp: tent.camp };
   }
@@ -708,6 +755,30 @@ export class Climber {
     }
     this.onMessage(took.length ? `Restocked at ${camp.name}: ${took.join(', ')}. Pack ${this.pack.kg.toFixed(1)} kg.` : `Nothing more to take at ${camp.name}.`);
     return took.length > 0;
+  }
+
+  /** The camp you are in and its stores, or null. */
+  storesHere() {
+    const camp = this._campNearby();
+    const stores = camp && this.campStores[camp.name];
+    return stores ? { name: camp.name, stores } : null;
+  }
+
+  /** Take one of an item from this camp's stores. Returns null, or why not. */
+  takeFromCamp(item) {
+    const here = this.storesHere();
+    if (!here) return 'No camp here';
+    return this.pack.take(here.stores, item);
+  }
+
+  /** Leave one of an item in this camp's stores for later. Returns null, or why not. */
+  leaveAtCamp(item) {
+    const here = this.storesHere();
+    if (!here) return 'No camp here';
+    const why = this.pack.leave(here.stores, item);
+    // Leaving the bottle on your mask: close the regulator first.
+    if (!why && item === 'oxygen' && !this.pack.bottles.length) this.phys.flow = 0;
+    return why;
   }
 
   cycleTurnaround() {
@@ -1295,7 +1366,7 @@ export class Climber {
         if (into < 0) {
           const hit = -into;
           if (hit > t.safe_impact_m_s) {
-            this._hurt((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * surface.impact);
+            this._injure((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * surface.impact);
             this.fall.worstHit = Math.max(this.fall.worstHit, hit);
           }
           if (hit > t.tumble_on_hit_m_s && !f.rope) this._tumble();
@@ -1326,7 +1397,7 @@ export class Climber {
           if (f.phase === 'slide') v.multiplyScalar(Math.max(0, 1 - surface.slide_drag * speed * h));
           const decel = mu * t.gravity * baseNy * h;
           v.multiplyScalar(Math.max(0, 1 - decel / speed));
-          if (surface.key === 'rock' && speed > t.slide_damage_above_m_s) this._hurt(t.rock_slide_damage * speed * h);
+          if (surface.key === 'rock' && speed > t.slide_damage_above_m_s) this._injure(t.rock_slide_damage * speed * h);
         }
       }
       if (this.fall.rope && this._ropeConstraint(p, v, h)) touching = true;
@@ -1400,7 +1471,7 @@ export class Climber {
       v.addScaledVector(d, -out);
       if (out > t.rope_safe_jolt_m_s) {
         this.fall.worstHit = Math.max(this.fall.worstHit, out);
-        this._hurt((out - t.rope_safe_jolt_m_s) ** 2 * t.rope_jolt_damage);
+        this._injure((out - t.rope_safe_jolt_m_s) ** 2 * t.rope_jolt_damage);
       }
       if (out > 1) this.shake = 1;
     }
@@ -1464,7 +1535,7 @@ export class Climber {
     this.shake = 1;
     const what = rock.ice ? 'A chunk of ice' : 'A falling rock';
     this.onMessage(`${what} hit you! Health ${Math.round(Math.max(0, this.health - damage))}.`);
-    this._hurt(damage, `${what} hit you.`);
+    this._injure(damage, `${what} hit you.`);
     if (this.dead || this.falling || damage < t.rock_knockoff_damage || this.slope < t.climb_start_deg) return;
     const [gx, gz] = this.hm.gradient(this.position.x, this.position.z);
     this._slip(gx, gz, `${what} knocked you off your feet!`);
@@ -1536,12 +1607,12 @@ export class Climber {
       return;
     }
     if (Math.random() < W.deep_burial_chance * (1 - 0.5 * fought)) {
-      this._hurt(W.deep_burial_damage * (0.8 + 0.4 * Math.random()), 'You were buried deep in avalanche debris.');
+      this._injure(W.deep_burial_damage * (0.8 + 0.4 * Math.random()), 'You were buried deep in avalanche debris.');
       this.mountainSeconds += 3600;
       if (!this.dead) this.onMessage(`Buried deep! An hour clawing at the set snow before you broke out. Health ${Math.round(this.health)}.`);
       return;
     }
-    this._hurt(W.burial_damage * (0.5 + Math.random()), 'You were buried by the avalanche.');
+    this._injure(W.burial_damage * (0.5 + Math.random()), 'You were buried by the avalanche.');
     this.mountainSeconds += 1200;
     if (!this.dead) this.onMessage(`Buried! It took twenty minutes to dig yourself out of the debris. Health ${Math.round(this.health)}.`);
   }
@@ -1631,7 +1702,7 @@ export class Climber {
   _caughtInAvalanche(blob) {
     this.shake = 1;
     if (this.clipped) {
-      this._hurt(W.rope_hold_damage, 'You were battered by an avalanche on the rope.');
+      this._injure(W.rope_hold_damage, 'You were battered by an avalanche on the rope.');
       if (!this.dead) this.onMessage(`The avalanche poured over you, but the rope held. Health ${Math.round(this.health)}.`);
       return;
     }
@@ -1643,7 +1714,7 @@ export class Climber {
     this.fall.phase = 'tumble';
     this.fall.arresting = false;
     this.fall.avalanche = true;
-    this._hurt(W.catch_damage, 'You were swept away by an avalanche.');
+    this._injure(W.catch_damage, 'You were swept away by an avalanche.');
   }
 
   // ------------------------------------------------------------ terrain features
@@ -1794,7 +1865,7 @@ export class Climber {
         this.fall.worstHit = Math.max(this.fall.worstHit, hit);
         this.fall.topSpeed = Math.max(this.fall.topSpeed, hit);
         const what = hole.kind === 'bergschrund' ? 'the bergschrund' : `a ${hole.kind === 'crevasse' ? 'crevasse' : hole.kind}`;
-        if (hit > t.safe_impact_m_s) this._hurt((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell ${Math.round(hole.depth)} m into ${what}.`);
+        if (hit > t.safe_impact_m_s) this._injure((hit - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell ${Math.round(hole.depth)} m into ${what}.`);
         if (this.dead) return;
         v.set(0, 0, 0);
         this.mode = Mode.HOLE;
@@ -1832,7 +1903,7 @@ export class Climber {
       p.y = bottom;
       this.shake = 1;
       const speed = Math.sqrt(2 * t.gravity * drop) * 0.7;
-      if (speed > t.safe_impact_m_s) this._hurt((speed - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell back down the crevasse wall.`);
+      if (speed > t.safe_impact_m_s) this._injure((speed - t.safe_impact_m_s) ** 2 * t.impact_damage * t.hole_landing_impact, `You fell back down the crevasse wall.`);
       if (!this.dead) this.onMessage(`You peeled off the ice and fell ${drop.toFixed(1)} m back to the bottom.`);
       return;
     }

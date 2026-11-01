@@ -132,8 +132,20 @@ export class Physiology {
     // Oxygen.
     const wanted = this.flow;
     if (wanted > 0 && pack) {
+      const before = pack.bottles.length;
       const got = pack.breatheOxygen(wanted, dtH * 60);
       this.flowGot = got / (dtH * 60);
+      if (pack.bottles.length && pack.bottles.length < before) {
+        const n = pack.bottles.length;
+        this.onMessage(`Bottle empty: you swap to a fresh one. ${n} bottle${n > 1 ? 's' : ''} left.`);
+      }
+      // A warning while there is still time to turn the flow down or head for a camp.
+      const minutesLeft = pack.oxygenLitres / wanted;
+      if (minutesLeft > tuning.o2_low_warn_min * 1.5) this._o2Warned = false;
+      else if (!this._o2Warned && minutesLeft > 0 && minutesLeft <= tuning.o2_low_warn_min) {
+        this._o2Warned = true;
+        this.onMessage(`Oxygen low: about ${Math.round(minutesLeft)} minutes left at ${wanted} L/min. Turn it down (O) or get to a camp.`);
+      }
       if (this.flowGot < wanted * 0.98) {
         this.flow = 0;
         if (altitude > 7000 && wanted >= 1) this.rebound = clamp(this.rebound + 0.3 + 0.15 * wanted, 0, 1);
