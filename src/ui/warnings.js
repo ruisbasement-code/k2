@@ -31,7 +31,7 @@ function frostTexture(w = 1280, h = 800) {
   const fern = (x, y, ang, len, width, depth) => {
     const steps = Math.max(3, Math.round(len / 7));
     const bend = (Math.random() - 0.5) * 0.06;
-    g.strokeStyle = `rgba(232,244,255,${0.28 + 0.1 * depth})`;
+    g.strokeStyle = `rgba(236,246,255,${0.5 + 0.15 * depth})`;
     for (let i = 0; i < steps; i++) {
       const seg = len / steps;
       const nx = x + Math.cos(ang) * seg, ny = y + Math.sin(ang) * seg;
@@ -56,7 +56,7 @@ function frostTexture(w = 1280, h = 800) {
     const y = edge === 0 ? inset * h : edge === 1 ? u * h : edge === 2 ? (1 - inset) * h : u * h;
     const toward = Math.atan2(h / 2 - y, w / 2 - x) + (Math.random() - 0.5) * 1.8;
     const corner = Math.hypot(x / w - 0.5, y / h - 0.5) * 2; // 1 at the edges' middles, ~1.4 in the corners
-    fern(x, y, toward, (40 + Math.random() * 80) * corner * corner, 1.4 + Math.random() * 1.2, 2);
+    fern(x, y, toward, (50 + Math.random() * 90) * corner * corner, 2.2 + Math.random() * 1.6, 2);
   }
   // Frost blooms: small six-armed crystals scattered near the rim.
   for (let i = 0; i < 160; i++) {
