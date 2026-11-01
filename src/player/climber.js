@@ -1418,7 +1418,8 @@ export class Climber {
     f.next -= dt;
     if (f.next > 0) return;
     const window = this._footingWindow(s);
-    f.prompt = { left: window, window };
+    const keys = t.keys ?? ['KeyQ'];
+    f.prompt = { left: window, window, key: keys[Math.floor(Math.random() * keys.length) % keys.length] };
     f.next = (t.gap_easy_s + (t.gap_hard_s - t.gap_easy_s) * s) * (0.67 + Math.random() * 0.66);
   }
 
@@ -1434,10 +1435,14 @@ export class Climber {
     return Math.max(w, t.min_window_s);
   }
 
-  /** Q: catch your footing. True if there was one to catch. */
-  catchFooting() {
+  /**
+   * Catch your footing with the key the prompt shows (one of tuning.footing.keys).
+   * The wrong key and the foot goes. True if there was a footing to catch.
+   */
+  catchFooting(key) {
     const f = this.footing;
     if (!f.prompt) return false;
+    if (key !== f.prompt.key) { this._footingFailed(); return true; }
     f.prompt = null;
     f.result = 'held';
     f.flash = 0.8;

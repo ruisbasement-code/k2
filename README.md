@@ -90,7 +90,7 @@ lists every control (`src/ui/controls.js`), with the sound switch.
 | --- | --- |
 | W A S D, Shift | Move, push the pace |
 | Space (hold) | Self-arrest when you start sliding (ice axe in hand only) |
-| Q | Catch your footing when it flashes up on steep ground |
+| Q E R F | Catch your footing on steep ground: press whichever key flashes up (wrong key = slip; harder to read when hurt) |
 | C | Clip into / unclip from a fixed rope (within 5 m) |
 | E | Place an ice screw or snow picket on steep ground (needs the rope) |
 | I | Hold / stow the ice axe (or pick it in the hotbar) |

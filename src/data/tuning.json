@@ -133,14 +133,15 @@
   "rope_slack_m": 1.2,
   "rope_safe_jolt_m_s": 2.5,
   "rope_jolt_damage": 2.6,
-  "_footing": "Footing checks: climbing ground at least min_deg steep (after any ledge), every gap_s real seconds of moving (gap_easy_s at min_deg down to gap_hard_s at max_deg, give or take a third), a foot skids and Q flashes up. Press it within the window (window_easy_s to window_hard_s, longer with the axe planted on snow or ice, shorter with poles skating, numb hands, no crampons or injuries, never under min_window_s) or you slip. Unroped you slide; clipped to a fixed rope the clip tears free clip_fail_chance of the time and you fall unroped, else the rope catches you; on your own screw or picket it rips out screw_fail_chance or picket_fail_chance of the time, else you drop onto it and get a knock (held_damage).",
+  "_footing": "Footing checks: climbing ground at least min_deg steep (after any ledge), every gap_s real seconds of moving (gap_easy_s at min_deg down to gap_hard_s at max_deg, give or take a third), a foot skids and one of keys (picked at random) flashes up. Press that key (the wrong one and the foot goes) within the window (window_easy_s to window_hard_s, longer with the axe planted on snow or ice, shorter with poles skating, numb hands, no crampons or injuries, never under min_window_s) or you slip. Unroped you slide; clipped to a fixed rope the clip tears free clip_fail_chance of the time and you fall unroped, else the rope catches you; on your own screw or picket it rips out screw_fail_chance or picket_fail_chance of the time, else you drop onto it and get a knock (held_damage).",
   "footing": {
-    "enabled": true, "min_deg": 38, "max_deg": 70,
+    "enabled": true, "min_deg": 38, "max_deg": 70, "keys": ["KeyQ", "KeyE", "KeyR", "KeyF"],
     "gap_easy_s": 22, "gap_hard_s": 9, "first_gap_s": 6,
     "window_easy_s": 1.7, "window_hard_s": 1.15, "min_window_s": 0.75,
     "axe_window": 1.25, "poles_window": 0.75,
     "clip_fail_chance": 0.6, "screw_fail_chance": 0.4, "picket_fail_chance": 0.5, "held_damage": 3
   },
+  "_footing_hurt": "The more hurt you are (felt health under 100), the harder the key is to read: it blurs, fades and flickers, and badly hurt it briefly shows the wrong letter.",
   "_rope_failure": "Fixed ropes are old and anchored in snow, ice and rock of mixed quality. Each time the rope comes tight on a fall there is a rope_fail_chance that the anchor rips out or the rope breaks, plus rope_fail_per_m_s for every m/s of the jolt. Then you fall free, unroped.",
   "rope_fail_chance": 0.02,
   "rope_fail_per_m_s": 0.008,

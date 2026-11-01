@@ -180,7 +180,6 @@ function teleport(i) {
 // 1 to 9: the hotbar slots along the bottom.
 for (let i = 0; i < 9; i++) input.on(`Digit${i + 1}`, () => useSlot(i));
 input.on('KeyC', () => climber.toggleClip());
-input.on('KeyQ', () => climber.catchFooting());
 input.on('KeyV', () => { view.firstPerson = !view.firstPerson; });
 input.on('KeyT', () => climber.cycleTimeScale());
 input.on('KeyF', () => climber.toggleFly());
@@ -208,6 +207,11 @@ const playing = () => !document.getElementById('start') && !menu.open && !invent
 input.on('Enter', () => { if (playing()) mp.enter(); });
 input.on('NumpadEnter', () => { if (playing()) mp.enter(); });
 input.on('Slash', () => { if (playing() && mp.connected) mp.openChat(); });
+// Footing checks: while one is up, its keys catch (or miss) the foot instead of their usual job.
+for (const key of tuning.footing.keys) {
+  const usual = input.handlers[key];
+  input.on(key, () => (climber.footing.prompt ? climber.catchFooting(key) : usual?.()));
+}
 input.on('Tab', () => (inventory.open ? inventory.hide() : openInventory(false)));
 // Dev tool: step through the kinds of weather.
 input.on('KeyN', () => {
