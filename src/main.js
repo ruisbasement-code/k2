@@ -59,6 +59,7 @@ const sky = new Sky(scene);
 const params = new URLSearchParams(location.search);
 const loading = document.getElementById('loading');
 const hm = await Heightmap.load();
+sky.setTerrain(hm);
 // The mountain's benches, ribs, buttresses and glacier hummocks, before anything stands on it.
 buildFineTerrain(hm, route.places, route.fixed_ropes);
 const terrain = createTerrain(hm);
